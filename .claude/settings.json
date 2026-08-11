@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet run *)",
+      "Bash(curl -s -o /dev/null http://localhost:5229/api/v1/ping)",
+      "Bash(curl -s http://localhost:5229/health)",
+      "Bash(curl -s http://localhost:5229/debug/db)",
+      "Bash(powershell -NoProfile -Command 'Get-Service | Where-Object {$_.Name -like '\\\\''*postgre*'\\\\'' -or $_.DisplayName -like '\\\\''*postgre*'\\\\''} | Select-Object Name,Status; Get-NetTCPConnection -LocalPort 5432 -State Listen | Select-Object LocalAddress,OwningProcess')",
+      "Bash(docker compose *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5229/scalar/v1)",
+      "Bash(dotnet test *)",
+      "Bash(grep -niE \"^\\\\.env|\\\\.env$\" .gitignore)"
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/BeyondMovement.Api/BeyondMovement.Api.csproj" />
+    <Project Path="src/BeyondMovement.Infrastructure/BeyondMovement.Infrastructure.csproj" />
+    <Project Path="src/BeyondMovement.SharedKernel/BeyondMovement.SharedKernel.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/BeyondMovement.IntegrationTests/BeyondMovement.IntegrationTests.csproj" />
+    <Project Path="tests/BeyondMovement.UnitTests/BeyondMovement.UnitTests.csproj" />
+  </Folder>
+</Solution>
