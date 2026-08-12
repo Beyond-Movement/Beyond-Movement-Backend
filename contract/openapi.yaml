@@ -1,0 +1,287 @@
+# Beyond Movement API contract.
+# Generated from the running API: GET /openapi/v1.json, converted to YAML.
+# Do not hand-edit - regenerate after changing an endpoint, and record the
+# change in contract/CHANGELOG.md.
+openapi: 3.1.1
+info:
+  title: BeyondMovement.Api | v1
+  version: 1.0.0
+servers:
+- url: http://localhost:5229/
+paths:
+  /api/v1/ping:
+    get:
+      tags:
+      - BeyondMovement.Api
+      responses:
+        '200':
+          description: OK
+  /api/v1/me:
+    get:
+      tags:
+      - Authentication
+      summary: Identity of the caller, taken from the access token.
+      operationId: CurrentUser
+      responses:
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/auth/login:
+    post:
+      tags:
+      - Authentication
+      summary: Exchange email and password for an access token and a refresh token.
+      operationId: Login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '423':
+          description: Locked
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /api/v1/auth/refresh:
+    post:
+      tags:
+      - Authentication
+      summary: Rotate a refresh token for a new token pair. Reusing a spent token revokes the whole family.
+      operationId: Refresh
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /api/v1/auth/logout:
+    post:
+      tags:
+      - Authentication
+      summary: Revoke the presented refresh token.
+      operationId: Logout
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+        required: true
+      responses:
+        '204':
+          description: No Content
+  /api/v1/auth/forgot-password:
+    post:
+      tags:
+      - Authentication
+      summary: Send a password reset link. Always succeeds, so it cannot be used to discover accounts.
+      operationId: ForgotPassword
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /api/v1/auth/reset-password:
+    post:
+      tags:
+      - Authentication
+      summary: Set a new password using a reset token. Revokes every refresh token for that user.
+      operationId: ResetPassword
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+components:
+  schemas:
+    AuthResponse:
+      required:
+      - accessToken
+      - refreshToken
+      - expiresInSeconds
+      - user
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresInSeconds:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+          - integer
+          - string
+          format: int32
+        user:
+          $ref: '#/components/schemas/UserSummary'
+    ForgotPasswordRequest:
+      required:
+      - email
+      type: object
+      properties:
+        email:
+          type: string
+    LoginRequest:
+      required:
+      - email
+      - password
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+        deviceId:
+          type:
+          - 'null'
+          - string
+    LogoutRequest:
+      required:
+      - refreshToken
+      type: object
+      properties:
+        refreshToken:
+          type: string
+    ProblemDetails:
+      type: object
+      properties:
+        type:
+          type:
+          - 'null'
+          - string
+        title:
+          type:
+          - 'null'
+          - string
+        status:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+          - 'null'
+          - integer
+          - string
+          format: int32
+        detail:
+          type:
+          - 'null'
+          - string
+        instance:
+          type:
+          - 'null'
+          - string
+    RefreshRequest:
+      required:
+      - refreshToken
+      type: object
+      properties:
+        refreshToken:
+          type: string
+        deviceId:
+          type:
+          - 'null'
+          - string
+    ResetPasswordRequest:
+      required:
+      - token
+      - newPassword
+      type: object
+      properties:
+        token:
+          type: string
+        newPassword:
+          type: string
+    UserSummary:
+      required:
+      - id
+      - role
+      - fullName
+      - email
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        role:
+          type: string
+        fullName:
+          type: string
+        email:
+          type: string
+  securitySchemes:
+    bearerAuth:
+      type: http
+      description: Paste the accessToken returned by POST /api/v1/auth/login.
+      scheme: bearer
+      bearerFormat: JWT
+tags:
+- name: BeyondMovement.Api
+- name: Authentication

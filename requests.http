@@ -1,0 +1,111 @@
+# Beyond Movement API — manual request sheet
+# Open in VS Code with the REST Client extension (Huachao Mao) and click "Send Request".
+# Start the API first:  dotnet run --project src/BeyondMovement.Api
+
+@host = http://localhost:5229
+@email = admin@beyondmovement.com
+
+# Fill this in locally and do not commit the value. It is whatever you set as
+#   dotnet user-secrets set "Seed:AdminPassword" "<value>" --project src/BeyondMovement.Api
+# Read it back with: dotnet user-secrets list --project src/BeyondMovement.Api
+@password = PUT_YOUR_LOCAL_SEED_PASSWORD_HERE
+
+### health — proves the database connection
+GET {{host}}/health
+
+### ping — no auth required
+GET {{host}}/api/v1/ping
+
+### ---------------------------------------------------------------- login
+# @name login
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}" }
+
+###
+@accessToken = {{login.response.body.accessToken}}
+@refreshToken = {{login.response.body.refreshToken}}
+
+### the caller's identity, from the token — 401 without the header
+GET {{host}}/api/v1/me
+Authorization: Bearer {{accessToken}}
+
+### no token at all — must be 401
+GET {{host}}/api/v1/me
+
+### wrong password — must be 401, with the SAME body as the unknown address below
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "definitely-not-the-password" }
+
+### unknown address — must be indistinguishable from the request above
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{ "email": "stranger@nowhere.com", "password": "definitely-not-the-password" }
+
+### ------------------------------------------------------------- refresh
+# @name refresh
+POST {{host}}/api/v1/auth/refresh
+Content-Type: application/json
+
+{ "refreshToken": "{{refreshToken}}" }
+
+###
+@rotatedToken = {{refresh.response.body.refreshToken}}
+
+### replay the OLD refresh token — 401, and every token in the family is revoked
+POST {{host}}/api/v1/auth/refresh
+Content-Type: application/json
+
+{ "refreshToken": "{{refreshToken}}" }
+
+### the rotated token is now dead too — that is the point of family revocation
+POST {{host}}/api/v1/auth/refresh
+Content-Type: application/json
+
+{ "refreshToken": "{{rotatedToken}}" }
+
+### -------------------------------------------------------------- logout
+POST {{host}}/api/v1/auth/logout
+Content-Type: application/json
+
+{ "refreshToken": "{{rotatedToken}}" }
+
+### ------------------------------------------------------ password reset
+# Always 200, whether or not the address exists. The link is printed to the
+# API console by the development email stub — copy the token from there.
+POST {{host}}/api/v1/auth/forgot-password
+Content-Type: application/json
+
+{ "email": "{{email}}" }
+
+### same 200 for an address that does not exist
+POST {{host}}/api/v1/auth/forgot-password
+Content-Type: application/json
+
+{ "email": "stranger@nowhere.com" }
+
+### paste the token from the API console
+POST {{host}}/api/v1/auth/reset-password
+Content-Type: application/json
+
+{ "token": "PASTE_TOKEN_FROM_THE_API_CONSOLE", "newPassword": "NewAdmin#Dev2026" }
+
+### rejected: shorter than 8 characters
+POST {{host}}/api/v1/auth/reset-password
+Content-Type: application/json
+
+{ "token": "PASTE_TOKEN_FROM_THE_API_CONSOLE", "newPassword": "short" }
+
+### rejected: on the common-password list
+POST {{host}}/api/v1/auth/reset-password
+Content-Type: application/json
+
+{ "token": "PASTE_TOKEN_FROM_THE_API_CONSOLE", "newPassword": "password123" }
+
+### --------------------------------------------------------- the contract
+# Save this response as contract/openapi.yaml after converting it to YAML.
+GET {{host}}/openapi/v1.json

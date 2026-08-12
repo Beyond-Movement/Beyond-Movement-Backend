@@ -182,7 +182,9 @@ Build in this order. A phase is done only when its backend work is integrated wi
 | 13 | Chat & Files | Conversations, SignalR, voice notes, uploads |
 | 14 | Hardening & Release | Security tests, concurrency tests, monitoring, deployment |
 
-**Current phase: 0** ← update this line as you progress.
+**Current phase: 1** ← update this line as you progress.
+Phase 0 and the phase 1 backend are complete. Phase 1 is not *done* by the definition
+below until the available Flutter screens are connected to the real API.
 
 ### Definition of done for a phase
 - Migration and model applied
