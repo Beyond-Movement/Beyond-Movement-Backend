@@ -9,7 +9,10 @@
       "Bash(docker compose *)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5229/scalar/v1)",
       "Bash(dotnet test *)",
-      "Bash(grep -niE \"^\\\\.env|\\\\.env$\" .gitignore)"
+      "Bash(grep -niE \"^\\\\.env|\\\\.env$\" .gitignore)",
+      "Bash(python -c ' *)",
+      "Bash(grep -vE \"^#|^$\" .env.example)",
+      "Bash(rm contract/openapi.json)"
     ]
   }
 }

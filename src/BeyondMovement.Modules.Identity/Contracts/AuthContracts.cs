@@ -24,12 +24,19 @@ public sealed record ChangePasswordRequest(string CurrentPassword, string NewPas
 /// Role and status are enums, not free strings, so the generated client gets exact values.
 /// They serialise as their names: "Admin"/"Athlete" and "Active"/"Paused"/"Deleted".
 /// </summary>
+/// <param name="ProfileCompleted">
+/// False for an athlete who has an account but has not finished Complete Profile. Present on
+/// every authentication response so the app can route straight from login, Google sign-in,
+/// refresh or registration without a follow-up call. The Admin has no such step, so it is
+/// always true for them.
+/// </param>
 public sealed record UserSummary(
     Guid Id,
     UserRole Role,
     UserStatus Status,
     string FullName,
-    string Email);
+    string Email,
+    bool ProfileCompleted);
 
 public sealed record AuthResponse(
     string AccessToken,

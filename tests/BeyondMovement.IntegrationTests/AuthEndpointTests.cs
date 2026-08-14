@@ -52,6 +52,51 @@ public sealed class AuthEndpointTests(ApiFactory factory) : IClassFixture<ApiFac
     }
 
     [Fact]
+    public async Task Login_reports_profile_completion_so_the_app_can_route_without_a_second_call()
+    {
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/v1/auth/login", new
+        {
+            email = ApiFactory.AdminEmail,
+            password = ApiFactory.AdminPassword
+        });
+
+        var user = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("user");
+
+        // The Admin has no Complete Profile step, so this is always true for them.
+        Assert.True(user.GetProperty("profileCompleted").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Refreshing_carries_profile_completion_too()
+    {
+        var client = factory.CreateClient();
+        var auth = await LoginAsync(client);
+
+        var response = await client.PostAsJsonAsync("/api/v1/auth/refresh",
+            new { refreshToken = auth.RefreshToken });
+
+        var user = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("user");
+
+        Assert.True(user.GetProperty("profileCompleted").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Google_sign_in_carries_profile_completion_too()
+    {
+        factory.GoogleValidator.NextIdentity = new Modules.Identity.Services.GoogleIdentity(
+            "google-sub-profile-flag", ApiFactory.AdminEmail, true, "Integration Admin");
+
+        var response = await factory.CreateClient()
+            .PostAsJsonAsync("/api/v1/auth/google", new { idToken = "any" });
+
+        var user = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("user");
+
+        Assert.True(user.GetProperty("profileCompleted").GetBoolean());
+    }
+
+    [Fact]
     public async Task Every_error_carries_an_error_code_and_a_correlation_id()
     {
         var client = factory.CreateClient();

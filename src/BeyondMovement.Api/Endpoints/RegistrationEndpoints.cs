@@ -65,7 +65,7 @@ public static class RegistrationEndpoints
             "account's verified email must match the invited address or the request is refused " +
             "with GOOGLE_EMAIL_MISMATCH, and no name or password is needed. termsAccepted must be " +
             "true. Returns the same token pair as login, so the app is signed in immediately, but " +
-            "profileCompleted is false: route to Complete Profile, not Home. The invitation is " +
+            "user.profileCompleted is false: route to Complete Profile, not Home. The invitation is " +
             "redeemed only on success, and re-posting the same token afterwards returns " +
             "INVITATION_USED.")
         .Produces<AuthResponse>()
@@ -128,8 +128,9 @@ public static class RegistrationEndpoints
         .WithSummary("Fill in the athlete's own profile after registration.")
         .WithDescription(
             "Athlete-only, and always scoped to the caller's own profile — the user id comes from " +
-            "the token, never the body. Sets profileCompleted to true, after which /auth/me routes " +
-            "the app to Home instead of Complete Profile. Safe to call again to edit the details. " +
+            "the token, never the body. Sets profileCompleted to true, after which both /auth/me " +
+            "and every later authentication response report it as true, so the app routes to Home " +
+            "instead of Complete Profile. Safe to call again to edit the details. " +
             "Profile photo is not accepted yet; it needs file storage, which arrives in phase 13.")
         .Produces<AthleteProfileResponse>()
         .Produces<ApiProblemDetails>(StatusCodes.Status400BadRequest, ProblemJson)

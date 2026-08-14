@@ -150,6 +150,67 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
     }
 
+    /// <summary>
+    /// The incomplete-then-complete transition, seen through the authentication responses the
+    /// app actually routes on — not through /auth/me. This is what lets login decide between
+    /// Home and Complete Profile without a follow-up request.
+    /// </summary>
+    [Fact]
+    public async Task Authentication_responses_report_profile_completion_before_and_after()
+    {
+        var admin = await AdminClientAsync();
+        const string email = "athlete.routing@nowhere.test";
+        const string password = "Athlete#Strong2026";
+
+        var (_, code) = await InviteAsync(admin, email);
+        var validated = await ValidateAsync(code);
+
+        var client = factory.CreateClient();
+
+        // 1. Registration itself must say "not finished".
+        var registered = await client.PostAsJsonAsync("/api/v1/auth/register", new
+        {
+            registrationToken = validated.RegistrationToken,
+            termsAccepted = true,
+            password,
+            fullName = "Robin Vale"
+        });
+        await AssertSucceededAsync(registered);
+
+        var registeredBody = await registered.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(registeredBody.GetProperty("user").GetProperty("profileCompleted").GetBoolean());
+
+        // 2. So must a fresh login before the profile is filled in.
+        var beforeLogin = await client.PostAsJsonAsync("/api/v1/auth/login", new { email, password });
+        var beforeBody = await beforeLogin.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(beforeBody.GetProperty("user").GetProperty("profileCompleted").GetBoolean());
+
+        // 3. Complete it.
+        var accessToken = registeredBody.GetProperty("accessToken").GetString();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        var completed = await client.PostAsJsonAsync("/api/v1/athletes/me/profile", new
+        {
+            fullName = "Robin Vale",
+            dateOfBirth = "1999-02-11",
+            gender = "Female",
+            sport = "Swimming"
+        });
+        await AssertSucceededAsync(completed);
+
+        // 4. Every later authentication response must now say "finished".
+        var afterLogin = await factory.CreateClient()
+            .PostAsJsonAsync("/api/v1/auth/login", new { email, password });
+        var afterBody = await afterLogin.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(afterBody.GetProperty("user").GetProperty("profileCompleted").GetBoolean());
+
+        // ...including a refresh, which builds its payload the same way.
+        var refreshed = await factory.CreateClient().PostAsJsonAsync("/api/v1/auth/refresh",
+            new { refreshToken = afterBody.GetProperty("refreshToken").GetString() });
+        var refreshedBody = await refreshed.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(refreshedBody.GetProperty("user").GetProperty("profileCompleted").GetBoolean());
+    }
+
     [Fact]
     public async Task An_invited_athlete_can_register_with_google_and_needs_no_password()
     {

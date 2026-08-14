@@ -7,6 +7,45 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ---
 
+## Phase 1.3 — `profileCompleted` on every authentication response
+
+**Additive.** One new field; nothing was renamed or removed.
+
+`UserSummary` gains **`profileCompleted`** (boolean, required), so it now appears inside
+`AuthResponse` from **all four** authentication endpoints:
+
+- `POST /auth/login`
+- `POST /auth/google`
+- `POST /auth/refresh`
+- `POST /auth/register`
+
+**Why:** the app can now route straight from any successful authentication without a
+follow-up `GET /auth/me`. It also fixes a real inconsistency — the register endpoint's
+documentation promised `profileCompleted: false`, but its response schema had no field
+that could carry it.
+
+```jsonc
+// POST /auth/login  →  200
+{
+  "accessToken": "…", "refreshToken": "…",
+  "expiresInSeconds": 900, "refreshExpiresInSeconds": 2592000,
+  "user": {
+    "id": "…", "role": "Athlete", "status": "Active",
+    "fullName": "Robin Vale", "email": "robin@example.com",
+    "profileCompleted": false        // ← route to Complete Profile, not Home
+  }
+}
+```
+
+`true` for the Admin always — there is no Complete Profile step for that role.
+
+**`GET /auth/me` is unchanged and still the right call for** restoring a stored session on
+app start, picking up role or status changed server-side since the token was issued,
+detecting a pause mid-session, and `minimumSupportedAppVersion`. The new field removes the
+extra request after *login*, not the endpoint.
+
+---
+
 ## Phase 1.2 — Invitations, registration, profile completion
 
 **Additive only.** Nothing existing changed shape, so the Increment 3 work already underway

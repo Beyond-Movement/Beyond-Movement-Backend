@@ -55,7 +55,9 @@ public static class AuthEndpoints
             "Returns 401 INVALID_CREDENTIALS for both a wrong password and an unknown address — " +
             "the two are deliberately indistinguishable. Returns 423 ACCOUNT_LOCKED after five " +
             "failed attempts, with retryAfterSeconds and a Retry-After header. Returns 403 " +
-            "ACCOUNT_PAUSED when the credentials are correct but the account is paused.")
+            "ACCOUNT_PAUSED when the credentials are correct but the account is paused. " +
+            "user.profileCompleted tells the app where to go next without a further call: " +
+            "false means route to Complete Profile rather than Home.")
         .Produces<AuthResponse>()
         .Produces<ApiProblemDetails>(StatusCodes.Status400BadRequest, ProblemJson)
         .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
