@@ -79,6 +79,116 @@ you use the VS Code REST Client extension.
 
 ---
 
+## Looking at the database
+
+`docker compose up -d` also starts **pgAdmin** on <http://localhost:5050>. Log in with the
+`PGADMIN_DEFAULT_EMAIL` / `PGADMIN_DEFAULT_PASSWORD` values from your `.env`.
+
+Then *Add New Server*:
+
+| Field | Value |
+|---|---|
+| Name | anything |
+| **Host** | **`postgres`** |
+| **Port** | **`5432`** |
+| Database | `mentalcoaching` |
+| Username / Password | `POSTGRES_USER` / `POSTGRES_PASSWORD` from `.env` |
+
+**The host is `postgres`, not `localhost`.** pgAdmin runs inside Docker, so it reaches the
+database over the container network, where the service is named `postgres` and still
+listens on 5432. `localhost:5433` is the address from *your machine*, which pgAdmin
+cannot see. Getting this wrong gives "could not translate host name".
+
+Tables are three levels down, which is where most people conclude the database is empty:
+
+```
+Servers → <your server> → Databases → mentalcoaching → Schemas → public → Tables
+```
+
+Make sure you are under **`mentalcoaching`** and not the default `postgres` database,
+which genuinely is empty.
+
+### From your machine instead
+
+A desktop client such as DBeaver, or `psql`, connects to `localhost` on the port in
+`POSTGRES_HOST_PORT` — **5432 by default, but check your `.env`**, since a locally
+installed PostgreSQL often already owns that port.
+
+Quickest look of all, no GUI:
+
+```bash
+docker exec -it mc-postgres psql -U mc -d mentalcoaching -c '\dt'
+docker exec -it mc-postgres psql -U mc -d mentalcoaching -c 'select "Email","Role","Status" from "Users";'
+```
+
+Column names are PascalCase, so the double quotes are required — unquoted identifiers get
+folded to lowercase by PostgreSQL and the query fails.
+
+> Reading is fine. Do not edit rows by hand to change application state — pausing an
+> account, redeeming an invitation and so on all have endpoints, and the API keeps
+> invariants the database alone does not.
+
+---
+
+## Getting a test athlete account
+
+A fresh database has **only the Admin**. Athlete screens need an athlete, and there is no
+public sign-up by design (BR-01) — accounts exist only by invitation. The whole loop takes
+about a minute.
+
+**1. Sign in as the Admin** and keep the `accessToken`:
+
+```bash
+curl -s -X POST http://localhost:5229/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@beyondmovement.com","password":"<your Seed:AdminPassword>"}'
+```
+
+**2. Invite an athlete** (any address — nothing is actually sent):
+
+```bash
+curl -s -X POST http://localhost:5229/api/v1/invitations \
+  -H "Authorization: Bearer <accessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"athlete@example.com"}'
+```
+
+**3. Read the code from the API console.** The terminal running `dotnet run` prints the
+email the stub "sent":
+
+```
+Your invitation code is: MRPZB-AXZYY
+```
+
+**4. Validate it** — this does not consume the invitation, and returns a
+`registrationToken` valid for 30 minutes:
+
+```bash
+curl -s "http://localhost:5229/api/v1/invitations/validate?code=MRPZB-AXZYY"
+```
+
+**5. Create the account** with that token:
+
+```bash
+curl -s -X POST http://localhost:5229/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"registrationToken":"<from step 4>","termsAccepted":true,
+       "password":"Athlete#Strong2026","fullName":"Alex Thompson"}'
+```
+
+You are now signed in as the athlete, with `profileCompleted: false` — which is exactly
+the state the app must route to **Complete Profile** rather than Home. Finish it with
+`POST /api/v1/athletes/me/profile`, after which `GET /api/v1/auth/me` reports
+`profileCompleted: true`.
+
+From then on that athlete signs in normally with email and password.
+
+All of this is also in [`requests.http`](requests.http) as clickable requests if you use
+the VS Code REST Client extension, and every endpoint can be driven from the Scalar UI at
+<http://localhost:5229/scalar/v1>.
+
+---
+
 ## Connecting the Flutter app
 
 ### Base URL — this is the usual first stumble
