@@ -22,25 +22,23 @@ public sealed class StubGoogleTokenValidator : IGoogleTokenValidator
         Task.FromResult(NextIdentity);
 }
 
-public sealed record SentEmail(string To, string Subject, string Body);
-
 /// <summary>
 /// Stands in for the athlete's inbox. Invitation codes are never returned by the API — only
 /// emailed — so tests read them from here, exactly as the real recipient would.
 /// </summary>
 public sealed class TestEmailOutbox : IEmailSender
 {
-    private readonly List<SentEmail> _messages = [];
+    private readonly List<EmailMessage> _messages = [];
     private readonly Lock _gate = new();
 
-    public IReadOnlyList<SentEmail> Messages
+    public IReadOnlyList<EmailMessage> Messages
     {
         get { lock (_gate) return [.. _messages]; }
     }
 
-    public Task SendAsync(string toEmail, string subject, string body, CancellationToken ct = default)
+    public Task SendAsync(EmailMessage message, CancellationToken ct = default)
     {
-        lock (_gate) _messages.Add(new SentEmail(toEmail, subject, body));
+        lock (_gate) _messages.Add(message);
         return Task.CompletedTask;
     }
 }

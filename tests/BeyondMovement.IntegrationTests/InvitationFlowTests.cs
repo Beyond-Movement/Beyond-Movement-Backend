@@ -80,7 +80,7 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
         var tokens = scope.ServiceProvider.GetRequiredService<ITokenService>();
 
         var code = outbox.Messages
-            .SelectMany(m => m.Body.Split(['\n', ' '], StringSplitOptions.RemoveEmptyEntries))
+            .SelectMany(m => m.TextBody.Split(['\n', ' '], StringSplitOptions.RemoveEmptyEntries))
             .Select(word => word.Trim())
             .FirstOrDefault(word => tokens.Hash(InvitationCode.Normalize(word)) == invitation.CodeHash);
 

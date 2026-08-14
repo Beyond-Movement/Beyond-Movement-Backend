@@ -5,6 +5,7 @@ using BeyondMovement.Modules.Identity.Services;
 using BeyondMovement.SharedKernel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace BeyondMovement.Modules.Identity.Features.Invitations;
 
@@ -14,6 +15,7 @@ public sealed class ManageInvitationsHandler(
     IEmailSender email,
     IAuditLogger audit,
     IClock clock,
+    IOptions<EmailBrandingOptions> branding,
     ILogger<ManageInvitationsHandler> logger)
 {
     public async Task<IReadOnlyList<InvitationResponse>> ListAsync(
@@ -57,15 +59,8 @@ public sealed class ManageInvitationsHandler(
         await db.SaveChangesAsync(ct);
 
         await email.SendAsync(
-            invitation.Email,
-            "Your Beyond Movement invitation code",
-            $"""
-             Here is your invitation code: {rawCode}
-
-             Open the app, choose "Enter invitation code", and enter it before {invitation.ExpiresAtUtc:d MMMM yyyy}.
-             Any code you received earlier no longer works.
-             """,
-            ct);
+            EmailTemplates.Invitation(invitation.Email, rawCode, invitation.ExpiresAtUtc,
+                isResend: true, logoUrl: branding.Value.LogoUrl), ct);
 
         await audit.WriteAsync("InvitationResent", adminUserId, $"Invitation {invitation.Id} resent.", ct);
         logger.LogInformation("Invitation {InvitationId} resent (send #{SendCount})",

@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\BeyondMovement.SharedKernel\BeyondMovement.SharedKernel.csproj" />
     <ProjectReference Include="..\..\src\BeyondMovement.Modules.Identity\BeyondMovement.Modules.Identity.csproj" />
+    <ProjectReference Include="..\..\src\BeyondMovement.Infrastructure\BeyondMovement.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

@@ -5,6 +5,7 @@ using BeyondMovement.Modules.Identity.Services;
 using BeyondMovement.SharedKernel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace BeyondMovement.Modules.Identity.Features.Invitations;
 
@@ -14,6 +15,7 @@ public sealed class CreateInvitationHandler(
     IEmailSender email,
     IAuditLogger audit,
     IClock clock,
+    IOptions<EmailBrandingOptions> branding,
     ILogger<CreateInvitationHandler> logger)
 {
     public async Task<Result<InvitationResponse>> HandleAsync(
@@ -48,7 +50,9 @@ public sealed class CreateInvitationHandler(
 
         await db.SaveChangesAsync(ct);
 
-        await SendInvitationEmailAsync(address, rawCode, invitation.ExpiresAtUtc, ct);
+        await email.SendAsync(
+            EmailTemplates.Invitation(address, rawCode, invitation.ExpiresAtUtc,
+                logoUrl: branding.Value.LogoUrl), ct);
 
         await audit.WriteAsync("InvitationSent", adminUserId, $"Invitation {invitation.Id} issued.", ct);
 
@@ -59,18 +63,6 @@ public sealed class CreateInvitationHandler(
         return Result<InvitationResponse>.Success(invitation.ToResponse());
     }
 
-    private Task SendInvitationEmailAsync(string address, string rawCode, DateTime expiresAtUtc, CancellationToken ct) =>
-        email.SendAsync(
-            address,
-            "You have been invited to Beyond Movement",
-            $"""
-             Your coach has invited you to join Beyond Movement.
-
-             Your invitation code is: {rawCode}
-
-             Open the app, choose "Enter invitation code", and enter it before {expiresAtUtc:d MMMM yyyy}.
-             """,
-            ct);
 }
 
 internal static class InvitationMappings

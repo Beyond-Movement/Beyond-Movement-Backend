@@ -5,6 +5,7 @@ using BeyondMovement.Modules.Identity.Services;
 using BeyondMovement.SharedKernel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace BeyondMovement.Modules.Identity.Features.ForgotPassword;
 
@@ -13,6 +14,7 @@ public sealed class ForgotPasswordHandler(
     ITokenService tokens,
     IEmailSender email,
     IClock clock,
+    IOptions<EmailBrandingOptions> branding,
     ILogger<ForgotPasswordHandler> logger)
 {
     /// <summary>
@@ -40,10 +42,8 @@ public sealed class ForgotPasswordHandler(
         var link = resetUrlTemplate.Replace("{token}", Uri.EscapeDataString(raw), StringComparison.Ordinal);
 
         await email.SendAsync(
-            user.Email,
-            "Reset your Beyond Movement password",
-            $"Use this link within {PasswordResetToken.LifetimeHours} hour(s) to set a new password: {link}",
-            ct);
+            EmailTemplates.PasswordReset(user.Email, link, PasswordResetToken.LifetimeHours,
+                logoUrl: branding.Value.LogoUrl), ct);
 
         // Note the user id, never the address or the token itself (CLAUDE.md section 7).
         logger.LogInformation("Password reset token issued for user {UserId}", user.Id);

@@ -76,8 +76,31 @@ builder.Services.Configure<GoogleOptions>(builder.Configuration.GetSection(Googl
 builder.Services.AddSingleton<IPasswordHasher<User>, PasswordHasher<User>>();
 
 builder.Services.AddSingleton<ITokenService, TokenService>();
-builder.Services.AddScoped<IEmailSender, ConsoleEmailSender>();
 builder.Services.AddSingleton<IGoogleTokenValidator, GoogleTokenValidator>();
+
+// --- email ---------------------------------------------------------------
+builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
+builder.Services.Configure<EmailBrandingOptions>(
+    builder.Configuration.GetSection(EmailBrandingOptions.SectionName));
+
+var emailOptions = builder.Configuration.GetSection(EmailOptions.SectionName).Get<EmailOptions>() ?? new();
+
+if (emailOptions.IsConfigured)
+{
+    // Typed client: pooled connections and a sane timeout, rather than a new socket per email.
+    builder.Services.AddHttpClient<IEmailSender, PostmarkEmailSender>(client =>
+        client.Timeout = TimeSpan.FromSeconds(15));
+}
+else
+{
+    // A fresh clone has no email account, so fall back rather than fail. Codes are then read
+    // from the API console - the README says so, and this warning repeats it at run time.
+    builder.Services.AddScoped<IEmailSender, ConsoleEmailSender>();
+
+    Console.WriteLine(
+        "WARNING  Email:Postmark:ServerToken and Email:FromAddress are not configured. " +
+        "Invitation codes and password-reset links will be printed to this console instead of sent.");
+}
 
 builder.Services.AddScoped<LoginHandler>();
 builder.Services.AddScoped<GoogleSignInHandler>();
@@ -145,6 +168,11 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi().AllowAnonymous();
     app.MapScalarApiReference().AllowAnonymous();   // local UI at /scalar/v1
 }
+
+// Serves wwwroot, which holds the brand assets referenced by emails. A mail client fetches
+// the logo over the public internet when the message is opened, so the file needs a real URL —
+// committing it to the repository alone is not enough.
+app.UseStaticFiles();
 
 app.UseRateLimiter();
 

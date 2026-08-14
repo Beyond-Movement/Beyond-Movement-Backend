@@ -12,7 +12,8 @@
       "Bash(grep -niE \"^\\\\.env|\\\\.env$\" .gitignore)",
       "Bash(python -c ' *)",
       "Bash(grep -vE \"^#|^$\" .env.example)",
-      "Bash(rm contract/openapi.json)"
+      "Bash(rm contract/openapi.json)",
+      "Bash(python build_preview.py)"
     ]
   }
 }

@@ -217,9 +217,10 @@ host) in the **debug** manifest only — never in release.
 
 ### Codes arrive in the terminal, not an inbox
 
-Email delivery is a console stub until a provider is wired up. Invitation codes and
-password-reset links are printed to the **API console**. Watch that window after calling
-`POST /api/v1/invitations` or `POST /api/v1/auth/forgot-password`.
+Until Postmark is configured (below), invitation codes and password-reset links are printed
+to the **API console** rather than sent. Watch that window after calling
+`POST /api/v1/invitations` or `POST /api/v1/auth/forgot-password`. The app logs a warning at
+startup when it is in this mode, so there is no doubt about which is in play.
 
 ### Google sign-in
 
@@ -237,6 +238,63 @@ beyondmovement://reset-password?token=<url-encoded token>
 ```
 
 URL-decode the token before posting it to `/auth/reset-password`. Single use, one hour.
+
+---
+
+## Sending real email
+
+The API sends two messages: the **invitation code** and the **password-reset link**. Their
+wording and markup live in one file, `EmailTemplates`, so copy can be reviewed without
+reading handler code. Every message carries an HTML body and a plain-text body — clients
+that refuse HTML must still show the code, and a message with no text part scores worse
+with spam filters.
+
+**With nothing configured, the app prints emails to the console instead of sending them.**
+That is deliberate: a fresh clone runs with no email account. To send for real:
+
+**1. Create a Postmark account** and verify a sending domain — add the DKIM and Return-Path
+DNS records Postmark gives you. Unverified domains are rejected, and mail that skips SPF and
+DKIM lands in spam, which for an invitation means the athlete never joins (BR-01).
+
+**2. Configure it.** The token is a secret and belongs in user secrets, never a file:
+
+```bash
+dotnet user-secrets set "Email:Postmark:ServerToken" "<server token>" --project src/BeyondMovement.Api
+dotnet user-secrets set "Email:FromAddress" "no-reply@yourdomain.com" --project src/BeyondMovement.Api
+```
+
+`Email:FromName` and `Email:Postmark:MessageStream` are non-secret and already in
+`appsettings.json`. Keep the stream as `outbound` — Postmark separates transactional from
+broadcast mail, and sending invitations on a broadcast stream harms deliverability for both.
+
+In deployment these arrive as `Email__Postmark__ServerToken` and `Email__FromAddress`.
+
+**3. Restart.** The startup warning disappears and mail goes out through Postmark. A refused
+send throws with Postmark's own reason attached — an unconfirmed sender signature is the
+usual first-time cause.
+
+### Putting the logo in the emails
+
+Save the logo as `src/BeyondMovement.Api/wwwroot/brand/logo.png` — the API serves that folder
+publicly — then point the templates at it:
+
+```bash
+dotnet user-secrets set "Email:LogoUrl" "https://api.yourdomain.com/brand/logo.png" --project src/BeyondMovement.Api
+```
+
+Committing the file is not enough on its own: mail clients fetch the image over the internet
+when the message is opened, so the URL must be the **public HTTPS address of the deployed
+API**, not `localhost`. A `data:` URI is not an alternative — Gmail strips them, so the logo
+would be missing for most recipients while looking correct in local testing.
+
+Leave `Email:LogoUrl` empty and the masthead falls back to the wordmark set as type, which is
+also what recipients see when images are switched off. See
+[`wwwroot/brand/README.md`](src/BeyondMovement.Api/wwwroot/brand/README.md) for the file
+requirements.
+
+> **Not yet handled:** a failed send is not retried. The invitation row already exists, so
+> the athlete simply never receives a code and the Admin must resend. Architecture §5 puts
+> email behind Hangfire from phase 5 for exactly this reason.
 
 ---
 
