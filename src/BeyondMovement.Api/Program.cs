@@ -28,6 +28,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
+using System.Text;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -58,7 +59,17 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
 // --- identity module -----------------------------------------------------
-builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
+// Validated at startup, not on first use. Without this the app boots happily and then
+// returns 500 for every request - including anonymous ones - because the authentication
+// handler cannot build its options. Failing here says exactly what is missing.
+builder.Services.AddOptions<JwtOptions>()
+    .Bind(builder.Configuration.GetSection(JwtOptions.SectionName))
+    .Validate(o => !string.IsNullOrWhiteSpace(o.SigningKey),
+        "Jwt:SigningKey is not configured. Set it with: dotnet user-secrets set " +
+        "\"Jwt:SigningKey\" \"<64+ character value>\" --project src/BeyondMovement.Api")
+    .Validate(o => string.IsNullOrWhiteSpace(o.SigningKey) || Encoding.UTF8.GetByteCount(o.SigningKey) >= 32,
+        "Jwt:SigningKey must be at least 32 bytes, or HMAC-SHA256 signing fails with IDX10720.")
+    .ValidateOnStart();
 builder.Services.Configure<GoogleOptions>(builder.Configuration.GetSection(GoogleOptions.SectionName));
 
 // Only the vetted password-hashing part of ASP.NET Core Identity is used, not the full stack.
