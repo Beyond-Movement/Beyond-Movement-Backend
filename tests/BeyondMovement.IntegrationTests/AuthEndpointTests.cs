@@ -11,7 +11,8 @@ namespace BeyondMovement.IntegrationTests;
 
 public sealed class AuthEndpointTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
-    private sealed record AuthPayload(string AccessToken, string RefreshToken, int ExpiresInSeconds);
+    private sealed record AuthPayload(
+        string AccessToken, string RefreshToken, int ExpiresInSeconds, int RefreshExpiresInSeconds);
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -27,8 +28,18 @@ public sealed class AuthEndpointTests(ApiFactory factory) : IClassFixture<ApiFac
         return (await response.Content.ReadFromJsonAsync<AuthPayload>(Json))!;
     }
 
+    private async Task<HttpClient> SignedInClientAsync()
+    {
+        var client = factory.CreateClient();
+        var auth = await LoginAsync(client);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
+        return client;
+    }
+
+    // ---------------------------------------------------------------- login
+
     [Fact]
-    public async Task Correct_credentials_return_both_tokens()
+    public async Task Correct_credentials_return_both_tokens_and_both_expiries()
     {
         var client = factory.CreateClient();
 
@@ -37,6 +48,22 @@ public sealed class AuthEndpointTests(ApiFactory factory) : IClassFixture<ApiFac
         Assert.False(string.IsNullOrWhiteSpace(auth.AccessToken));
         Assert.False(string.IsNullOrWhiteSpace(auth.RefreshToken));
         Assert.Equal(900, auth.ExpiresInSeconds);
+        Assert.Equal(30 * 24 * 60 * 60, auth.RefreshExpiresInSeconds);
+    }
+
+    [Fact]
+    public async Task Every_error_carries_an_error_code_and_a_correlation_id()
+    {
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/v1/auth/login",
+            new { email = ApiFactory.AdminEmail, password = "definitely-not-it" });
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal("INVALID_CREDENTIALS", body.GetProperty("errorCode").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("correlationId").GetString()));
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
     }
 
     [Fact]
@@ -64,19 +91,49 @@ public sealed class AuthEndpointTests(ApiFactory factory) : IClassFixture<ApiFac
     }
 
     [Fact]
-    public async Task A_protected_endpoint_rejects_an_anonymous_call_and_accepts_a_token()
+    public async Task Validation_failures_report_the_offending_field()
     {
         var client = factory.CreateClient();
 
-        var anonymous = await client.GetAsync("/api/v1/me");
-        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        var response = await client.PostAsJsonAsync("/api/v1/auth/login",
+            new { email = "not-an-email", password = "" });
 
-        var auth = await LoginAsync(client);
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
 
-        var authenticated = await client.GetAsync("/api/v1/me");
-        Assert.Equal(HttpStatusCode.OK, authenticated.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("VALIDATION_FAILED", body.GetProperty("errorCode").GetString());
+        Assert.True(body.GetProperty("errors").TryGetProperty("Email", out _));
     }
+
+    // ------------------------------------------------------- current user
+
+    [Fact]
+    public async Task Current_user_returns_everything_needed_to_restore_a_session()
+    {
+        var client = await SignedInClientAsync();
+
+        var response = await client.GetAsync("/api/v1/auth/me");
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("Admin", body.GetProperty("role").GetString());
+        Assert.Equal("Active", body.GetProperty("status").GetString());
+        Assert.Equal(ApiFactory.AdminEmail, body.GetProperty("email").GetString());
+        Assert.True(body.GetProperty("profileCompleted").GetBoolean());
+        Assert.Equal("1.0.0", body.GetProperty("minimumSupportedAppVersion").GetString());
+    }
+
+    [Fact]
+    public async Task Current_user_rejects_an_anonymous_call()
+    {
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/api/v1/auth/me");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    // ------------------------------------------------------------- refresh
 
     [Fact]
     public async Task Refreshing_issues_a_new_pair()
@@ -109,6 +166,9 @@ public sealed class AuthEndpointTests(ApiFactory factory) : IClassFixture<ApiFac
             new { refreshToken = auth.RefreshToken });
         Assert.Equal(HttpStatusCode.Unauthorized, replay.StatusCode);
 
+        var body = await replay.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("INVALID_REFRESH_TOKEN", body.GetProperty("errorCode").GetString());
+
         // The legitimate holder's newest token must die too — that is the point of
         // family revocation. Without this assertion the test passes on a broken system.
         var afterRevocation = await client.PostAsJsonAsync("/api/v1/auth/refresh",
@@ -116,11 +176,27 @@ public sealed class AuthEndpointTests(ApiFactory factory) : IClassFixture<ApiFac
         Assert.Equal(HttpStatusCode.Unauthorized, afterRevocation.StatusCode);
     }
 
+    // -------------------------------------------------------------- logout
+
+    [Fact]
+    public async Task Logout_requires_authentication()
+    {
+        var client = factory.CreateClient();
+        var auth = await LoginAsync(client);
+
+        // No bearer token: architecture section 14.1 marks logout as authenticated.
+        var anonymous = await client.PostAsJsonAsync("/api/v1/auth/logout",
+            new { refreshToken = auth.RefreshToken });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+    }
+
     [Fact]
     public async Task Logging_out_revokes_the_presented_token()
     {
         var client = factory.CreateClient();
         var auth = await LoginAsync(client);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
 
         var logout = await client.PostAsJsonAsync("/api/v1/auth/logout",
             new { refreshToken = auth.RefreshToken });
@@ -130,6 +206,8 @@ public sealed class AuthEndpointTests(ApiFactory factory) : IClassFixture<ApiFac
             new { refreshToken = auth.RefreshToken });
         Assert.Equal(HttpStatusCode.Unauthorized, afterLogout.StatusCode);
     }
+
+    // ------------------------------------------------------ password reset
 
     [Fact]
     public async Task Forgot_password_returns_the_same_answer_for_known_and_unknown_addresses()
@@ -146,23 +224,174 @@ public sealed class AuthEndpointTests(ApiFactory factory) : IClassFixture<ApiFac
     }
 
     [Fact]
-    public async Task A_paused_account_is_blocked_on_the_very_next_request()
+    public async Task A_weak_or_common_password_is_rejected_on_reset()
     {
         var client = factory.CreateClient();
-        var auth = await LoginAsync(client);
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
 
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/v1/me")).StatusCode);
+        var tooShort = await client.PostAsJsonAsync("/api/v1/auth/reset-password",
+            new { token = "irrelevant", newPassword = "short" });
+        var tooCommon = await client.PostAsJsonAsync("/api/v1/auth/reset-password",
+            new { token = "irrelevant", newPassword = "password123" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, tooShort.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, tooCommon.StatusCode);
+
+        var body = await tooCommon.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("VALIDATION_FAILED", body.GetProperty("errorCode").GetString());
+    }
+
+    [Fact]
+    public async Task An_unknown_reset_token_is_refused()
+    {
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/v1/auth/reset-password",
+            new { token = "never-issued", newPassword = "Perfectly#Fine2026" });
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("INVALID_RESET_TOKEN", body.GetProperty("errorCode").GetString());
+    }
+
+    // ----------------------------------------------------- change password
+
+    [Fact]
+    public async Task Change_password_rejects_a_wrong_current_password()
+    {
+        var client = await SignedInClientAsync();
+
+        var response = await client.PostAsJsonAsync("/api/v1/auth/change-password",
+            new { currentPassword = "not-the-current-one", newPassword = "Perfectly#Fine2026" });
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal("INVALID_CREDENTIALS", body.GetProperty("errorCode").GetString());
+    }
+
+    [Fact]
+    public async Task Change_password_requires_authentication()
+    {
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/v1/auth/change-password",
+            new { currentPassword = ApiFactory.AdminPassword, newPassword = "Perfectly#Fine2026" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    // ---------------------------------------------------------- Google SSO
+
+    [Fact]
+    public async Task Google_sign_in_refuses_a_token_that_fails_verification()
+    {
+        factory.GoogleValidator.NextIdentity = null;
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/v1/auth/google", new { idToken = "not-a-real-token" });
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal("INVALID_GOOGLE_TOKEN", body.GetProperty("errorCode").GetString());
+    }
+
+    [Fact]
+    public async Task Google_sign_in_refuses_an_unverified_google_email()
+    {
+        factory.GoogleValidator.NextIdentity =
+            new Modules.Identity.Services.GoogleIdentity("google-sub-1", ApiFactory.AdminEmail, false, "Admin");
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/v1/auth/google", new { idToken = "any" });
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal("INVALID_GOOGLE_TOKEN", body.GetProperty("errorCode").GetString());
+    }
+
+    [Fact]
+    public async Task Google_sign_in_never_creates_an_account_for_a_stranger()
+    {
+        factory.GoogleValidator.NextIdentity = new Modules.Identity.Services.GoogleIdentity(
+            "google-sub-stranger", "stranger@nowhere.test", true, "A Stranger");
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/v1/auth/google", new { idToken = "any" });
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        // BR-01: the platform is invitation-only. Google authenticates, it never registers.
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal("INVITATION_REQUIRED", body.GetProperty("errorCode").GetString());
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.False(await db.Users.AnyAsync(u => u.Email == "stranger@nowhere.test"));
+    }
+
+    [Fact]
+    public async Task Google_sign_in_links_to_an_existing_account_with_the_same_verified_email()
+    {
+        factory.GoogleValidator.NextIdentity = new Modules.Identity.Services.GoogleIdentity(
+            "google-sub-admin", ApiFactory.AdminEmail, true, "Integration Admin");
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/v1/auth/google", new { idToken = "any" });
+
+        response.EnsureSuccessStatusCode();
+        var auth = (await response.Content.ReadFromJsonAsync<AuthPayload>(Json))!;
+        Assert.False(string.IsNullOrWhiteSpace(auth.AccessToken));
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var admin = await db.Users.SingleAsync(u => u.Email == ApiFactory.AdminEmail);
+        Assert.Equal("google-sub-admin", admin.GoogleSubjectId);
+
+        // And a second sign-in now matches on the subject rather than the email.
+        var again = await client.PostAsJsonAsync("/api/v1/auth/google", new { idToken = "any" });
+        again.EnsureSuccessStatusCode();
+    }
+
+    // -------------------------------------------------------------- paused
+
+    [Fact]
+    public async Task A_paused_account_is_blocked_on_the_very_next_request()
+    {
+        var client = await SignedInClientAsync();
+
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/v1/auth/me")).StatusCode);
 
         await SetAdminStatusAsync(UserStatus.Paused);
         try
         {
             // The access token is still cryptographically valid and unexpired. Only the
             // per-request status check closes this window (BR-10).
-            var blocked = await client.GetAsync("/api/v1/me");
+            var blocked = await client.GetAsync("/api/v1/auth/me");
             Assert.Equal(HttpStatusCode.Forbidden, blocked.StatusCode);
 
             var body = await blocked.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("ACCOUNT_PAUSED", body.GetProperty("errorCode").GetString());
+            Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("correlationId").GetString()));
+        }
+        finally
+        {
+            await SetAdminStatusAsync(UserStatus.Active);
+        }
+    }
+
+    [Fact]
+    public async Task A_paused_account_cannot_log_in()
+    {
+        await SetAdminStatusAsync(UserStatus.Paused);
+        try
+        {
+            var client = factory.CreateClient();
+
+            var response = await client.PostAsJsonAsync("/api/v1/auth/login",
+                new { email = ApiFactory.AdminEmail, password = ApiFactory.AdminPassword });
+            var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
             Assert.Equal("ACCOUNT_PAUSED", body.GetProperty("errorCode").GetString());
         }
         finally

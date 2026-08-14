@@ -1,9 +1,26 @@
+using BeyondMovement.Modules.Identity.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Testcontainers.PostgreSql;
 
 namespace BeyondMovement.IntegrationTests;
+
+/// <summary>
+/// A Google token validator the tests drive directly. Everything downstream of verification —
+/// the three account-matching branches that enforce BR-01 — is the real code path.
+/// </summary>
+public sealed class StubGoogleTokenValidator : IGoogleTokenValidator
+{
+    /// <summary>The identity the next call returns. Null means "the token failed verification".</summary>
+    public GoogleIdentity? NextIdentity { get; set; }
+
+    public Task<GoogleIdentity?> ValidateAsync(string idToken, CancellationToken ct = default) =>
+        Task.FromResult(NextIdentity);
+}
 
 /// <summary>
 /// Starts the real application against a throwaway PostgreSQL container, so these tests
@@ -14,6 +31,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     public const string AdminEmail = "admin@beyondmovement.test";
     public const string AdminPassword = "Integration#Test2026";
+
+    public StubGoogleTokenValidator GoogleValidator { get; } = new();
 
     // Pinned to the same major version as docker-compose, so tests and local development
     // run against the same PostgreSQL.
@@ -37,8 +56,16 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
                 ["Seed:AdminEmail"] = AdminEmail,
                 ["Seed:AdminFullName"] = "Integration Admin",
                 ["Seed:AdminPassword"] = AdminPassword,
-                ["App:PasswordResetUrlTemplate"] = "https://example.test/reset?token={token}"
+                ["App:PasswordResetUrlTemplate"] = "beyondmovement://reset-password?token={token}",
+                ["App:MinimumSupportedAppVersion"] = "1.0.0",
+                ["Google:ClientId:Web"] = "test-web-client-id.apps.googleusercontent.com"
             });
+        });
+
+        builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<IGoogleTokenValidator>();
+            services.AddSingleton<IGoogleTokenValidator>(GoogleValidator);
         });
     }
 

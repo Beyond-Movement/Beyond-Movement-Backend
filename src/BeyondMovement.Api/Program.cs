@@ -6,8 +6,12 @@ using BeyondMovement.Api.Seeding;
 using BeyondMovement.Infrastructure;
 using BeyondMovement.Infrastructure.Auditing;
 using BeyondMovement.Infrastructure.Email;
+using BeyondMovement.Infrastructure.Google;
 using BeyondMovement.Modules.Identity.Domain;
+using BeyondMovement.Modules.Identity.Features.ChangePassword;
+using BeyondMovement.Modules.Identity.Features.CurrentUser;
 using BeyondMovement.Modules.Identity.Features.ForgotPassword;
+using BeyondMovement.Modules.Identity.Features.GoogleSignIn;
 using BeyondMovement.Modules.Identity.Features.Login;
 using BeyondMovement.Modules.Identity.Features.Logout;
 using BeyondMovement.Modules.Identity.Features.Refresh;
@@ -19,6 +23,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Scalar.AspNetCore;
@@ -42,20 +47,30 @@ builder.Services.AddScoped<IIdentityDbContext>(sp => sp.GetRequiredService<AppDb
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddScoped<IAuditLogger, AuditLogger>();
 
+// Enums travel as their names ("Admin", "Active"), never as integers, so the contract
+// advertises exact values the client can switch on.
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
 // --- identity module -----------------------------------------------------
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
+builder.Services.Configure<GoogleOptions>(builder.Configuration.GetSection(GoogleOptions.SectionName));
 
 // Only the vetted password-hashing part of ASP.NET Core Identity is used, not the full stack.
 builder.Services.AddSingleton<IPasswordHasher<User>, PasswordHasher<User>>();
 
 builder.Services.AddSingleton<ITokenService, TokenService>();
 builder.Services.AddScoped<IEmailSender, ConsoleEmailSender>();
+builder.Services.AddSingleton<IGoogleTokenValidator, GoogleTokenValidator>();
 
 builder.Services.AddScoped<LoginHandler>();
+builder.Services.AddScoped<GoogleSignInHandler>();
 builder.Services.AddScoped<RefreshHandler>();
 builder.Services.AddScoped<LogoutHandler>();
 builder.Services.AddScoped<ForgotPasswordHandler>();
 builder.Services.AddScoped<ResetPasswordHandler>();
+builder.Services.AddScoped<ChangePasswordHandler>();
+builder.Services.AddScoped<CurrentUserHandler>();
 
 builder.Services.AddValidatorsFromAssemblyContaining<LoginValidator>();
 
@@ -77,7 +92,10 @@ builder.Services.AddAuthorization(options =>
 });
 
 builder.Services.AddOpenApi(options =>
-    options.AddDocumentTransformer<BearerSecurityTransformer>());
+{
+    options.AddDocumentTransformer<BearerSecurityTransformer>();
+    options.AddSchemaTransformer<SchemaNormalizingTransformer>();
+});
 
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<AppDbContext>();

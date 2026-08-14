@@ -70,10 +70,6 @@ public sealed class RefreshHandler(
 
         await db.SaveChangesAsync(ct);
 
-        return Result<AuthResponse>.Success(new AuthResponse(
-            tokens.CreateAccessToken(user),
-            rawRefresh,
-            _jwt.AccessTokenMinutes * 60,
-            new UserSummary(user.Id, user.Role.ToString(), user.FullName, user.Email)));
+        return Result<AuthResponse>.Success(AuthResponseFactory.Create(user, tokens, rawRefresh, _jwt));
     }
 }

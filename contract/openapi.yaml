@@ -16,26 +16,15 @@ paths:
       responses:
         '200':
           description: OK
-  /api/v1/me:
-    get:
-      tags:
-      - Authentication
-      summary: Identity of the caller, taken from the access token.
-      operationId: CurrentUser
-      responses:
-        '401':
-          description: Unauthorized
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetails'
-      security:
-      - bearerAuth: []
   /api/v1/auth/login:
     post:
       tags:
       - Authentication
       summary: Exchange email and password for an access token and a refresh token.
+      description: Returns 401 INVALID_CREDENTIALS for both a wrong password and an unknown address â€”
+        the two are deliberately indistinguishable. Returns 423 ACCOUNT_LOCKED after five failed attempts,
+        with retryAfterSeconds and a Retry-After header. Returns 403 ACCOUNT_PAUSED when the credentials
+        are correct but the account is paused.
       operationId: Login
       requestBody:
         content:
@@ -55,30 +44,77 @@ paths:
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
+                $ref: '#/components/schemas/ApiProblemDetails'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
+                $ref: '#/components/schemas/ApiProblemDetails'
         '423':
           description: Locked
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
+                $ref: '#/components/schemas/ApiProblemDetails'
+  /api/v1/auth/google:
+    post:
+      tags:
+      - Authentication
+      summary: Sign in with a Google ID token obtained by the native sign-in on the device.
+      description: Authentication only â€” it never creates an account (BR-01). If the Google account
+        is unknown and no user exists with the same verified email, returns 403 INVITATION_REQUIRED. If
+        a password account already exists for that verified email, the Google identity is linked to it
+        and tokens are returned. Returns 401 INVALID_GOOGLE_TOKEN when the token fails verification or
+        the Google email is unverified.
+      operationId: GoogleSignIn
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleSignInRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
   /api/v1/auth/refresh:
     post:
       tags:
       - Authentication
-      summary: Rotate a refresh token for a new token pair. Reusing a spent token revokes the whole family.
+      summary: Rotate a refresh token for a new token pair.
+      description: 'Refresh tokens are single-use. Each call returns a NEW refresh token; store it and
+        discard the old one. Replaying a token that was already spent is treated as theft: every token
+        in that family is revoked and 401 INVALID_REFRESH_TOKEN is returned, so the user must sign in
+        again. An expired or revoked token returns the same 401. Returns 403 ACCOUNT_PAUSED if the account
+        was paused since the token was issued.'
       operationId: Refresh
       requestBody:
         content:
@@ -98,18 +134,21 @@ paths:
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
+                $ref: '#/components/schemas/ApiProblemDetails'
   /api/v1/auth/logout:
     post:
       tags:
       - Authentication
       summary: Revoke the presented refresh token.
+      description: Requires a valid access token as well as the refresh token in the body (architecture
+        section 14.1 marks logout as authenticated). Succeeds even if the refresh token is already unknown
+        or revoked, so a retry is safe.
       operationId: Logout
       requestBody:
         content:
@@ -120,11 +159,30 @@ paths:
       responses:
         '204':
           description: No Content
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
   /api/v1/auth/forgot-password:
     post:
       tags:
       - Authentication
-      summary: Send a password reset link. Always succeeds, so it cannot be used to discover accounts.
+      summary: Send a password reset link to the address, if an account exists.
+      description: Always returns 200, whether or not the address exists â€” it cannot be used to discover
+        accounts, so never show a 'no account found' message. When an account does exist, an email is
+        sent containing a deep link of the form beyondmovement://reset-password?token=<token>. The token
+        is single-use, expires after one hour, and is URL-encoded in the link, so decode it before sending
+        it to /auth/reset-password.
       operationId: ForgotPassword
       requestBody:
         content:
@@ -140,12 +198,17 @@ paths:
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
+                $ref: '#/components/schemas/ApiProblemDetails'
   /api/v1/auth/reset-password:
     post:
       tags:
       - Authentication
-      summary: Set a new password using a reset token. Revokes every refresh token for that user.
+      summary: Set a new password using the token from the reset email.
+      description: The token is single-use and valid for one hour; a used, unknown or expired token returns
+        400 INVALID_RESET_TOKEN. On success every refresh token for that user is revoked, so any other
+        signed-in device is signed out. Passwords must be at least 8 characters and are rejected if they
+        appear on a common-password list; both arrive as 400 VALIDATION_FAILED with per-field messages
+        in 'errors'.
       operationId: ResetPassword
       requestBody:
         content:
@@ -161,14 +224,135 @@ paths:
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
+                $ref: '#/components/schemas/ApiProblemDetails'
+  /api/v1/auth/change-password:
+    post:
+      tags:
+      - Authentication
+      summary: Change the password while signed in.
+      description: Requires the current password. Returns 401 INVALID_CREDENTIALS if it is wrong, and
+        400 PASSWORD_NOT_SET for a Google-only account that has no password yet â€” those accounts set
+        a first password through Forgot Password. On success every refresh token for the user is revoked,
+        including this device's, so the app must sign in again.
+      operationId: ChangePassword
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/auth/me:
+    get:
+      tags:
+      - Authentication
+      summary: The signed-in user, for restoring a session on app start.
+      description: Read live from the database, not from the token, so a role or status changed since
+        the token was issued is reflected immediately. Returns 403 ACCOUNT_PAUSED if the account was paused
+        after this access token was issued â€” treat that as an immediate sign-out. When profileCompleted
+        is false, route the user to Complete Profile rather than Home. minimumSupportedAppVersion drives
+        the forced-upgrade prompt.
+      operationId: CurrentUser
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUserResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
 components:
   schemas:
+    ApiProblemDetails:
+      required:
+      - errorCode
+      - correlationId
+      type: object
+      properties:
+        type:
+          type:
+          - 'null'
+          - string
+        title:
+          type:
+          - 'null'
+          - string
+        status:
+          type: integer
+          format: int32
+        detail:
+          type:
+          - 'null'
+          - string
+        errorCode:
+          enum:
+          - VALIDATION_FAILED
+          - INVALID_CREDENTIALS
+          - ACCOUNT_LOCKED
+          - ACCOUNT_PAUSED
+          - INVALID_TOKEN
+          - INVALID_REFRESH_TOKEN
+          - INVALID_RESET_TOKEN
+          - INVALID_GOOGLE_TOKEN
+          - INVITATION_REQUIRED
+          - PASSWORD_NOT_SET
+          type: string
+        correlationId:
+          type: string
+        retryAfterSeconds:
+          type:
+          - 'null'
+          - integer
+          format: int32
+        errors:
+          type:
+          - 'null'
+          - object
+          additionalProperties:
+            type: array
+            items:
+              type: string
     AuthResponse:
       required:
       - accessToken
       - refreshToken
       - expiresInSeconds
+      - refreshExpiresInSeconds
       - user
       type: object
       properties:
@@ -177,13 +361,53 @@ components:
         refreshToken:
           type: string
         expiresInSeconds:
-          pattern: ^-?(?:0|[1-9]\d*)$
-          type:
-          - integer
-          - string
+          type: integer
+          format: int32
+        refreshExpiresInSeconds:
+          type: integer
           format: int32
         user:
           $ref: '#/components/schemas/UserSummary'
+    ChangePasswordRequest:
+      required:
+      - currentPassword
+      - newPassword
+      type: object
+      properties:
+        currentPassword:
+          type: string
+        newPassword:
+          type: string
+    CurrentUserResponse:
+      required:
+      - id
+      - role
+      - status
+      - fullName
+      - email
+      - coachId
+      - profileCompleted
+      - minimumSupportedAppVersion
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        role:
+          $ref: '#/components/schemas/UserRole'
+        status:
+          $ref: '#/components/schemas/UserStatus'
+        fullName:
+          type: string
+        email:
+          type: string
+        coachId:
+          type: string
+          format: uuid
+        profileCompleted:
+          type: boolean
+        minimumSupportedAppVersion:
+          type: string
     ForgotPasswordRequest:
       required:
       - email
@@ -191,6 +415,17 @@ components:
       properties:
         email:
           type: string
+    GoogleSignInRequest:
+      required:
+      - idToken
+      type: object
+      properties:
+        idToken:
+          type: string
+        deviceId:
+          type:
+          - 'null'
+          - string
     LoginRequest:
       required:
       - email
@@ -212,32 +447,6 @@ components:
       properties:
         refreshToken:
           type: string
-    ProblemDetails:
-      type: object
-      properties:
-        type:
-          type:
-          - 'null'
-          - string
-        title:
-          type:
-          - 'null'
-          - string
-        status:
-          pattern: ^-?(?:0|[1-9]\d*)$
-          type:
-          - 'null'
-          - integer
-          - string
-          format: int32
-        detail:
-          type:
-          - 'null'
-          - string
-        instance:
-          type:
-          - 'null'
-          - string
     RefreshRequest:
       required:
       - refreshToken
@@ -259,10 +468,20 @@ components:
           type: string
         newPassword:
           type: string
+    UserRole:
+      enum:
+      - Admin
+      - Athlete
+    UserStatus:
+      enum:
+      - Active
+      - Paused
+      - Deleted
     UserSummary:
       required:
       - id
       - role
+      - status
       - fullName
       - email
       type: object
@@ -271,7 +490,9 @@ components:
           type: string
           format: uuid
         role:
-          type: string
+          $ref: '#/components/schemas/UserRole'
+        status:
+          $ref: '#/components/schemas/UserStatus'
         fullName:
           type: string
         email:

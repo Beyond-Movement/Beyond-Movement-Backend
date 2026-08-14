@@ -33,7 +33,7 @@ public sealed class LoginHandler(
             return Result<AuthResponse>.Failure(IdentityErrors.InvalidCredentials);
 
         if (user.IsLockedOut(now))
-            return Result<AuthResponse>.Failure(IdentityErrors.AccountLocked);
+            return Result<AuthResponse>.Failure(IdentityErrors.LockedFor(user.LockedOutUntilUtc!.Value - now));
 
         if (user.Status == UserStatus.Deleted || user.PasswordHash is null)
             return Result<AuthResponse>.Failure(IdentityErrors.InvalidCredentials);
@@ -66,10 +66,6 @@ public sealed class LoginHandler(
 
         logger.LogInformation("User {UserId} logged in", user.Id);
 
-        return Result<AuthResponse>.Success(new AuthResponse(
-            tokens.CreateAccessToken(user),
-            rawRefresh,
-            _jwt.AccessTokenMinutes * 60,
-            new UserSummary(user.Id, user.Role.ToString(), user.FullName, user.Email)));
+        return Result<AuthResponse>.Success(AuthResponseFactory.Create(user, tokens, rawRefresh, _jwt));
     }
 }

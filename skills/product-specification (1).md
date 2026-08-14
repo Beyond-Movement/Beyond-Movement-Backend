@@ -231,7 +231,7 @@ The Admin owns and manages the platform. There is one Admin account in Version 1
 
 Athletes are invited by the Admin. Each athlete can access only their own data and interactions.
 
-- Create an account from an invitation link or access code.
+- Create an account using a code emailed to the address invited by the Admin. Invitation links may be added later as an alternative entry method.
 
 - Log in using email/password or Google.
 
@@ -294,9 +294,11 @@ Provide secure, private access to the platform without public sign-up.
 
 **Core capabilities**
 
-- Admin can generate a unique athlete invitation link or access code.
+- From the Athlete List, Admin can open an Invite Athlete modal, enter the athlete's email address, and send an invitation.
 
-- Athlete can open the invitation, enter required details, and create an account.
+- The backend generates a unique code bound to that email and sends it directly to the address.
+
+- Athlete can enter the code from the Login screen and create an account using a password or a matching Google account.
 
 - Admin and Athlete can sign in using email/password or Google OAuth.
 
@@ -312,17 +314,37 @@ Provide secure, private access to the platform without public sign-up.
 
 - Each invitation can be used only for its intended athlete and should expire after use or after a configurable period.
 
+- Successful validation of a code delivered by the backend to the intended email counts as verification of that email.
+
+- The verified invitation email is read-only during account creation.
+
+- Invitation validation does not consume the invitation; it is redeemed only when account creation succeeds.
+
+- Google registration requires the Google account email to match the verified invitation email and does not require a password.
+
+- Account creation collects authentication details only. Full name and athlete-specific details are collected on Complete Profile before Athlete Home.
+
+- No username is required; email is the login identifier.
+
+- A Google-created account holder who still controls the verified email can use Forgot Password to set a first local password.
+
 - A paused athlete cannot log in or use the app.
 
 - User data remains stored while the account is paused.
 
 **Primary screens**
 
-Welcome / Login, Create Account, Enter Access Code, Forgot Password, Invitation Error.
+Welcome / Login, Invite Athlete modal, Enter Invitation Code, Create Account, Complete Profile, Forgot Password, Invitation Error.
 
 **Acceptance criteria**
 
 - A valid invitation creates exactly one athlete account.
+
+- The backend sends the invitation code only to the intended email, and successful validation opens Create Account with that email read-only.
+
+- Password registration requires a password; Google registration requires a matching Google email and no password.
+
+- Both registration methods continue to Complete Profile, where the athlete enters their full name and required profile information.
 
 - A paused athlete receives an access-disabled message.
 
@@ -800,15 +822,15 @@ Reports Dashboard, Report Detail (optional).
 
 ## 5.2 Athlete Onboarding Journey
 
-1\. Receive invitation link or access code from the coach.
+1\. Receive an invitation code at the email address entered by the coach.
 
-2\. Open invitation and create an account using email/password or Google.
+2\. From Login, select Enter invitation code and validate the emailed code.
 
-3\. Complete profile information.
+3\. Create an account using a password or a Google account with the same verified email.
 
-4\. Log in and reach the Athlete Dashboard.
+4\. Complete profile information, including full name.
 
-5\. View active package and available actions.
+5\. Reach the Athlete Dashboard and view available actions.
 
 ## 5.3 Athlete Booking Journey
 
@@ -844,8 +866,11 @@ Reports Dashboard, Report Detail (optional).
 
 | **Screen**               | **Role** | **Purpose**              | **Key Elements**                                 | **Primary Actions**                |
 |--------------------------|----------|--------------------------|--------------------------------------------------|------------------------------------|
-| Welcome / Login          | Both     | Authenticate user        | Email, password, Google sign-in, forgot password | Sign in                            |
-| Invitation / Access Code | Athlete  | Start private onboarding | Code/link validation, account creation           | Create account                     |
+| Welcome / Login          | Both     | Authenticate user or start invited onboarding | Email, password, Google sign-in, forgot password, Enter invitation code | Sign in / enter code |
+| Invite Athlete modal     | Admin    | Invite an athlete by email | Athlete email | Send invitation |
+| Enter Invitation Code    | Athlete  | Validate invitation and verify email | Invitation code, validation and error states | Continue to Create Account |
+| Create Account           | Athlete  | Establish authentication | Read-only verified email, password fields or Google, legal acceptance | Create account |
+| Complete Profile         | Athlete  | Collect athlete details after authentication | Full name, profile photo, date of birth, gender, sport | Finish setup |
 | Admin Dashboard          | Admin    | Practice overview        | Date filter, KPIs, alerts, upcoming sessions     | Open details                       |
 | Athlete Dashboard        | Athlete  | Personal overview        | Package, next session, to-dos, unread chat       | Book / open item                   |
 | Athlete List             | Admin    | Find and manage athletes | Search, filters, status, balance                 | Open athlete                       |
@@ -920,7 +945,7 @@ The following entities describe the information the system must store. This is n
 |---------------------|-----------------------------------------------------------------------------------------------------|
 | **User**            | ID, role, name, email, phone, password/OAuth details, photo, status, notification preferences       |
 | **Athlete Profile** | User ID, sport, gender, date of birth, contact details, notes link, account status                  |
-| **Invitation**      | Code/token, athlete email, status, created date, expiry date, used date                             |
+| **Invitation**      | Hashed code, athlete email, status, created date, expiry date, validation date, redeemed date       |
 | **Package**         | Athlete ID, total sessions, used sessions, remaining sessions, price, start date, status, notes     |
 | **Session**         | Athlete ID, Calendly event ID, date/time, duration, delivery type, status, observations, notes link |
 | **To-Do**           | Athlete ID, title, description, due date, priority, status, created by                              |

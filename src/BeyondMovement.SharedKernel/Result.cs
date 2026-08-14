@@ -4,7 +4,14 @@ namespace BeyondMovement.SharedKernel;
 /// An expected failure. <see cref="Code"/> is the stable string the mobile app switches on
 /// (CLAUDE.md section 7) — renaming one is a contract change.
 /// </summary>
-public sealed record Error(string Code, string Message, int StatusCode);
+/// <param name="Code">The stable string the mobile app switches on. Renaming one is a contract change.</param>
+/// <param name="Message">Human-readable text. Clients must never branch on this.</param>
+/// <param name="StatusCode">HTTP status to return.</param>
+/// <param name="RetryAfterSeconds">
+/// How long until the caller may retry, when that is knowable — a lockout, for example.
+/// Surfaces both as a <c>Retry-After</c> header and in the problem body.
+/// </param>
+public sealed record Error(string Code, string Message, int StatusCode, int? RetryAfterSeconds = null);
 
 /// <summary>
 /// The outcome of a use-case handler. Handlers return this for expected failures;

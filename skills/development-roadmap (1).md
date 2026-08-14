@@ -84,17 +84,20 @@ Open this document → find the current phase → pick your role → work on the
 
 **CHECK:** Architecture: Athletes module + Database Design. UI/UX: Athlete List and Athlete Profile.
 
-# PHASE 3 — Invitations & Athlete Account Creation
+# PHASE 3 — Invitation Codes & Athlete Account Creation
 
 | **BACKEND**                                                               | **FLUTTER / MOBILE**                                 |
 |---------------------------------------------------------------------------|------------------------------------------------------|
-| • Create invitation code/link.                                            | • Admin Invite Athlete flow.                         |
-| • Invitation expiry, single-use validation and intended-email validation. | • Athlete Enter Access Code / invitation validation. |
-| • Redeem invitation.                                                      | • Create Account flow when Athlete UI is ready.      |
-| • Create athlete account/profile/conversation in one transaction.         | • Invitation error states.                           |
-| • Invitation email integration.                                           |                                                      |
+| • Create an invitation code bound to the Admin-entered athlete email.      | • Athlete List (+) opens the Invite Athlete modal.             |
+| • Email the code directly to that address; support resend and revoke.      | • Login links to a dedicated Enter Invitation Code screen.     |
+| • Enforce expiry, single use, revocation, and rate-limited validation.     | • Handle invalid, expired, used, and revoked invitation states.|
+| • Treat successful emailed-code validation as email verification.         | • Show the verified email as read-only on Create Account.      |
+| • Issue a short-lived registration token without consuming the invitation.| • Support password or matching-email Google account creation.  |
+| • Redeem invitation and create user/profile/conversation transactionally. | • Collect full name and athlete details on Complete Profile.   |
 
 **CHECK:** Architecture: Invitation Flow + Identity module. Product Spec: BR-01 / BR-02.
+
+Invitation links are a later enhancement over the same invitation record and validation flow. They are not required for the code-first Phase 3 increment.
 
 # PHASE 4 — Packages
 

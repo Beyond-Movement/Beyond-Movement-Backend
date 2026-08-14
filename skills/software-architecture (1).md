@@ -376,7 +376,7 @@ graph TB
     Check -->|Yes, Admin| AdminShell
     Check -->|Yes, Athlete| AthleteShell
 
-    Auth --> Invite[Enter Access Code] --> Create[Create Account] --> AthleteShell
+    Auth --> Invite[Enter Invitation Code] --> Create[Create Account] --> Profile[Complete Profile] --> AthleteShell
     Auth --> Forgot[Forgot Password]
 
     subgraph AdminShell["Admin — bottom nav"]
@@ -687,7 +687,7 @@ erDiagram
 ### 6.2 Core entities
 
 **Users** — the single identity table for both roles.
-`Id (uuid) · Role (Admin|Athlete) · Email (unique, citext) · PasswordHash (nullable — null for Google-only) · GoogleSubjectId (nullable, unique) · FullName · Phone · PhotoFileId · Status (Active|Paused|Deleted) · TimeZone · NotificationPreferences (jsonb) · **UiPreferences (jsonb)** · EmailVerifiedAt · LastLoginAt · CoachId · CreatedAt · UpdatedAt`
+`Id (uuid) · Role (Admin|Athlete) · Email (unique, citext) · PasswordHash (nullable — null for Google-only) · GoogleSubjectId (nullable, unique) · FullName (nullable until athlete profile completion) · Phone · PhotoFileId · Status (Active|Paused|Deleted) · TimeZone · NotificationPreferences (jsonb) · **UiPreferences (jsonb)** · EmailVerifiedAt · LastLoginAt · CoachId · CreatedAt · UpdatedAt`
 
 `CoachId` is present from day one and always the single admin's ID in v1. This is the cheapest possible investment in the multi-coach future (section 17.1).
 
@@ -745,7 +745,9 @@ Unique on `(CoachId, AthleteProfileId)` — one thread per athlete (BR-16). Deno
 `DedupKey` is the mechanism behind "duplicate notifications should be avoided".
 
 **InvitationCodes**
-`Id · Code (unique, hashed) · Email · CoachId · CreatedByUserId · Status (Pending|Redeemed|Expired|Revoked) · ExpiresAt · RedeemedAt · RedeemedByUserId · CreatedAt`
+`Id · CodeHash (unique) · Email · CoachId · CreatedByUserId · Status (Pending|Redeemed|Expired|Revoked) · ExpiresAt · ValidatedAt · RedeemedAt · RedeemedByUserId · CreatedAt`
+
+The code is the v1 invitation entry credential. It is generated randomly, displayed in a human-friendly format that excludes ambiguous characters, normalized case-insensitively, and stored only as a cryptographic hash. A future long link token may be added to the same invitation record without changing validation, registration, or redemption behavior.
 
 **WhiteboardLinks**
 `Id · AthleteProfileId · Label · Url · IsPrimary · CreatedByUserId · CreatedAt · UpdatedAt`
@@ -858,32 +860,38 @@ sequenceDiagram
     participant Athlete
     participant App
 
-    Admin->>API: POST /invitations {email, name, sport}
-    API->>API: generate 32-byte token, store SHA-256 hash only
+    Admin->>API: POST /invitations {email}
+    API->>API: generate invitation code, store hash only
     API->>API: set ExpiresAt = now + 14d, Status = Pending
-    API->>Email: send invitation (deep link + 6-char code)
-    Email-->>Athlete: invitation
-    Athlete->>App: open deep link OR enter code
+    API->>Email: send invitation code to intended email
+    Email-->>Athlete: invitation code
+    Athlete->>App: Login -> Enter Invitation Code
     App->>API: GET /invitations/validate?code=...
-    alt invalid / expired / already redeemed
-        API-->>App: 400 INVITATION_INVALID | INVITATION_EXPIRED
+    alt invalid / expired / redeemed / revoked
+        API-->>App: 400 INVITATION_INVALID | INVITATION_EXPIRED | INVITATION_USED | INVITATION_REVOKED
         App-->>Athlete: Invitation Error screen
     else valid
-        API-->>App: 200 {email, prefilled name}
+        API-->>App: 200 {email, expiresAt, registrationToken}
         Athlete->>App: set password OR continue with Google
-        App->>API: POST /auth/register {code, password | googleIdToken, profile}
+        App->>API: POST /auth/register {registrationToken, password | googleIdToken, termsAccepted}
+        API->>API: require Google email == invitation email
         API->>API: TX - create User, AthleteProfile, Conversation<br/>and mark invitation Redeemed
         API-->>App: access + refresh tokens
+        App-->>Athlete: Complete Profile (name and athlete details)
     end
 ```
 
 Design points:
 
+- The Admin enters only the intended athlete email in the Invite Athlete modal. The backend generates the code and sends it directly to that address; the Admin does not normally copy or distribute the raw code.
 - The raw code is **never stored** — only its hash, exactly like a password. A database leak does not yield usable invitations.
-- Redemption and account creation are one transaction, satisfying *"a valid invitation creates exactly one athlete account."*
-- The invitation carries the intended email; if the Google account's email differs, registration is rejected. This enforces *"each invitation can be used only for its intended athlete."*
-- Both a deep link (convenience) and a short code (works when links break in email clients) are issued, matching the two screens in the catalogue.
-- Rate-limited by IP and by code prefix to prevent brute-forcing.
+- Because the code is delivered by the backend only to the intended email, successful code validation verifies control of that email. Create Account displays the email as read-only and cannot substitute another address.
+- Validation does not consume the invitation. The API exchanges the code for a short-lived, single-purpose registration token; redemption occurs only when account creation succeeds.
+- Redemption, User creation, the initial AthleteProfile record, Conversation creation, and marking the invitation Redeemed occur in one transaction, satisfying *"a valid invitation creates exactly one athlete account."*
+- Password registration requires a password and confirmation at the UI boundary. Google registration requires no password, but the verified Google email must exactly match the invitation email. Both methods require acceptance of the Terms of Service and Privacy Policy.
+- Account creation collects authentication data only. Full name and the remaining athlete details are collected on Complete Profile before Athlete Home; a Google display name may be offered as an editable prefill there.
+- Validation is rate-limited by IP and code prefix to prevent brute-forcing. Codes are single-use, expiring, revocable, and case-insensitive after normalization.
+- Invitation links are intentionally deferred. Later, a verified HTTPS App Link / Universal Link can carry a separate long random token that resolves to this same invitation-validation and registration flow.
 
 ### 7.2 Email/password
 
@@ -916,6 +924,8 @@ sequenceDiagram
 
 The last branch is the whole point: **Google sign-in is an authentication method, not a registration path.** BR-01 holds — no one enters the platform without an invitation.
 
+During invited registration, Google sign-in creates a Google-linked account only after a valid registration token is supplied and the Google email matches the invitation email. It does not require the athlete to create a password or enter a name on Create Account. The athlete supplies their name and other required details on Complete Profile.
+
 ### 7.4 JWT and refresh tokens
 
 | Token | Lifetime | Storage | Contents |
@@ -933,6 +943,8 @@ Short access-token life plus a **paused-account middleware check** (below) means
 2. A single-use token (hashed at rest, 1-hour expiry) is emailed as a deep link.
 3. `POST /auth/reset-password` validates, sets the new hash, **revokes all refresh tokens** for that user, and writes an audit log.
 4. A confirmation email is sent, so an unexpected reset is visible to the account owner.
+
+The reset flow also applies to a Google-created account whose `PasswordHash` is null. If that user still controls the verified email inbox, completing Forgot Password sets their first local password, after which both Google and email/password sign-in are available. If the user has lost both Google access and access to the email inbox, self-service recovery is not permitted.
 
 ### 7.6 Role authorization
 
@@ -1486,15 +1498,15 @@ Base: `/api/v1`. All endpoints authenticated unless marked **(anon)**. `A` = Adm
 |---|---|---|---|
 | POST | `/auth/login` | anon | Email/password sign-in |
 | POST | `/auth/google` | anon | Google ID-token sign-in |
-| POST | `/auth/register` | anon | Redeem invitation and create account |
+| POST | `/auth/register` | anon | Create account from a validated invitation; redeem on success |
 | POST | `/auth/refresh` | anon | Rotate refresh token |
 | POST | `/auth/logout` | B | Revoke current refresh token |
 | POST | `/auth/forgot-password` | anon | Request reset email |
 | POST | `/auth/reset-password` | anon | Complete reset |
 | POST | `/auth/change-password` | B | Change while signed in |
 | GET | `/auth/me` | B | Current user, role, status |
-| GET | `/invitations/validate` | anon | Validate code/link |
-| POST | `/invitations` | A | Create invitation |
+| GET | `/invitations/validate` | anon | Validate emailed code and issue a short-lived registration token |
+| POST | `/invitations` | A | Create an email-bound invitation code and send it by email |
 | GET | `/invitations` | A | List invitations |
 | POST | `/invitations/{id}/resend` | A | Resend email |
 | DELETE | `/invitations/{id}` | A | Revoke |

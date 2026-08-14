@@ -27,14 +27,14 @@ Content-Type: application/json
 @accessToken = {{login.response.body.accessToken}}
 @refreshToken = {{login.response.body.refreshToken}}
 
-### the caller's identity, from the token — 401 without the header
-GET {{host}}/api/v1/me
+### current user — for restoring a session on app start
+GET {{host}}/api/v1/auth/me
 Authorization: Bearer {{accessToken}}
 
 ### no token at all — must be 401
-GET {{host}}/api/v1/me
+GET {{host}}/api/v1/auth/me
 
-### wrong password — must be 401, with the SAME body as the unknown address below
+### wrong password — 401, with the SAME body as the unknown address below
 POST {{host}}/api/v1/auth/login
 Content-Type: application/json
 
@@ -45,6 +45,21 @@ POST {{host}}/api/v1/auth/login
 Content-Type: application/json
 
 { "email": "stranger@nowhere.com", "password": "definitely-not-the-password" }
+
+### validation failure — 400 VALIDATION_FAILED with per-field messages
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{ "email": "not-an-email", "password": "" }
+
+### ---------------------------------------------------- Google sign-in
+# Needs a real ID token from the Flutter app's native Google sign-in, and
+# Google:ClientId values in appsettings.json. An unknown Google account
+# returns 403 INVITATION_REQUIRED — it never creates an account (BR-01).
+POST {{host}}/api/v1/auth/google
+Content-Type: application/json
+
+{ "idToken": "PASTE_A_GOOGLE_ID_TOKEN_FROM_THE_APP" }
 
 ### ------------------------------------------------------------- refresh
 # @name refresh
@@ -69,14 +84,24 @@ Content-Type: application/json
 { "refreshToken": "{{rotatedToken}}" }
 
 ### -------------------------------------------------------------- logout
+# Now requires a bearer token as well as the refresh token (architecture 14.1).
+POST {{host}}/api/v1/auth/logout
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "refreshToken": "{{rotatedToken}}" }
+
+### without the bearer token — must be 401
 POST {{host}}/api/v1/auth/logout
 Content-Type: application/json
 
 { "refreshToken": "{{rotatedToken}}" }
 
 ### ------------------------------------------------------ password reset
-# Always 200, whether or not the address exists. The link is printed to the
-# API console by the development email stub — copy the token from there.
+# Always 200, whether or not the address exists. The deep link is printed to the
+# API console by the development email stub:
+#   beyondmovement://reset-password?token=<url-encoded token>
+# Copy the token from there and URL-decode it (%3D is "=").
 POST {{host}}/api/v1/auth/forgot-password
 Content-Type: application/json
 
@@ -88,11 +113,11 @@ Content-Type: application/json
 
 { "email": "stranger@nowhere.com" }
 
-### paste the token from the API console
+### paste the decoded token from the API console
 POST {{host}}/api/v1/auth/reset-password
 Content-Type: application/json
 
-{ "token": "PASTE_TOKEN_FROM_THE_API_CONSOLE", "newPassword": "NewAdmin#Dev2026" }
+{ "token": "PASTE_TOKEN_FROM_THE_API_CONSOLE", "newPassword": "Replacement#Pass2026" }
 
 ### rejected: shorter than 8 characters
 POST {{host}}/api/v1/auth/reset-password
@@ -105,6 +130,14 @@ POST {{host}}/api/v1/auth/reset-password
 Content-Type: application/json
 
 { "token": "PASTE_TOKEN_FROM_THE_API_CONSOLE", "newPassword": "password123" }
+
+### ----------------------------------------------------- change password
+# Revokes every refresh token, including this device's.
+POST {{host}}/api/v1/auth/change-password
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "currentPassword": "{{password}}", "newPassword": "Replacement#Pass2026" }
 
 ### --------------------------------------------------------- the contract
 # Save this response as contract/openapi.yaml after converting it to YAML.
