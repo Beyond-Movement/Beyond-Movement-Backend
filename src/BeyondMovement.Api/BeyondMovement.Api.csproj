@@ -4,6 +4,7 @@
     <ProjectReference Include="..\BeyondMovement.SharedKernel\BeyondMovement.SharedKernel.csproj" />
     <ProjectReference Include="..\BeyondMovement.Infrastructure\BeyondMovement.Infrastructure.csproj" />
     <ProjectReference Include="..\BeyondMovement.Modules.Identity\BeyondMovement.Modules.Identity.csproj" />
+    <ProjectReference Include="..\BeyondMovement.Modules.Athletes\BeyondMovement.Modules.Athletes.csproj" />
   </ItemGroup>
 
   <ItemGroup>

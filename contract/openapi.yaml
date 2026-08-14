@@ -16,6 +16,87 @@ paths:
       responses:
         '200':
           description: OK
+  /api/v1/auth/register:
+    post:
+      tags:
+      - Authentication
+      summary: Create an account from a validated invitation, and redeem it.
+      description: 'Post the registrationToken from /invitations/validate together with EITHER a password
+        (plus fullName) OR a googleIdToken â€” exactly one, never both. With Google, the account''s verified
+        email must match the invited address or the request is refused with GOOGLE_EMAIL_MISMATCH, and
+        no name or password is needed. termsAccepted must be true. Returns the same token pair as login,
+        so the app is signed in immediately, but profileCompleted is false: route to Complete Profile,
+        not Home. The invitation is redeemed only on success, and re-posting the same token afterwards
+        returns INVITATION_USED.'
+      operationId: Register
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+  /api/v1/athletes/me/profile:
+    post:
+      tags:
+      - Athletes
+      summary: Fill in the athlete's own profile after registration.
+      description: Athlete-only, and always scoped to the caller's own profile â€” the user id comes from
+        the token, never the body. Sets profileCompleted to true, after which /auth/me routes the app
+        to Home instead of Complete Profile. Safe to call again to edit the details. Profile photo is
+        not accepted yet; it needs file storage, which arrives in phase 13.
+      operationId: CompleteAthleteProfile
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompleteProfileRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AthleteProfileResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
   /api/v1/auth/login:
     post:
       tags:
@@ -296,6 +377,204 @@ paths:
                 $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
+  /api/v1/invitations/validate:
+    get:
+      tags:
+      - Invitations
+      summary: Check an emailed invitation code and start account creation.
+      description: Does NOT consume the invitation â€” it is redeemed only when the account is created,
+        so a user may validate, abandon Create Account, and come back. Returns the invited email (show
+        it read-only on Create Account; it is already verified, because only that inbox received the code)
+        and a short-lived registrationToken to post to /auth/register. Failures distinguish INVITATION_INVALID,
+        INVITATION_EXPIRED, INVITATION_USED and INVITATION_REVOKED so the error screen can say something
+        useful. Rate-limited per IP; exceeding it returns 429 TOO_MANY_REQUESTS.
+      operationId: ValidateInvitation
+      parameters:
+      - name: code
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateInvitationResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '429':
+          description: Too Many Requests
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+  /api/v1/invitations:
+    post:
+      tags:
+      - Invitations
+      summary: Invite an athlete by email address.
+      description: The backend generates the code and emails it directly to the address â€” the response
+        never contains it, so the Admin cannot pass it on by another route. Re-inviting an address that
+        already has a pending invitation replaces the old code rather than creating a second one. Returns
+        409 EMAIL_ALREADY_REGISTERED if an account exists.
+      operationId: CreateInvitation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInvitationRequest'
+        required: true
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+    get:
+      tags:
+      - Invitations
+      summary: List invitations, newest first, optionally filtered by status.
+      operationId: ListInvitations
+      parameters:
+      - name: status
+        in: query
+        schema:
+          $ref: '#/components/schemas/InvitationStatus'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InvitationResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/invitations/{id}/resend:
+    post:
+      tags:
+      - Invitations
+      summary: Issue a fresh code and email it again.
+      description: The previous code stops working immediately, so only one code is ever live.
+      operationId: ResendInvitation
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/invitations/{id}:
+    delete:
+      tags:
+      - Invitations
+      summary: Cancel a pending invitation.
+      description: An already-redeemed invitation cannot be revoked â€” deleting the account is a separate
+        action.
+      operationId: RevokeInvitation
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '204':
+          description: No Content
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
 components:
   schemas:
     ApiProblemDetails:
@@ -331,6 +610,16 @@ components:
           - INVALID_GOOGLE_TOKEN
           - INVITATION_REQUIRED
           - PASSWORD_NOT_SET
+          - INVITATION_INVALID
+          - INVITATION_EXPIRED
+          - INVITATION_USED
+          - INVITATION_REVOKED
+          - REGISTRATION_TOKEN_INVALID
+          - GOOGLE_EMAIL_MISMATCH
+          - TERMS_NOT_ACCEPTED
+          - EMAIL_ALREADY_REGISTERED
+          - PROFILE_ALREADY_COMPLETED
+          - TOO_MANY_REQUESTS
           type: string
         correlationId:
           type: string
@@ -347,6 +636,39 @@ components:
             type: array
             items:
               type: string
+    AthleteProfileResponse:
+      required:
+      - userId
+      - fullName
+      - email
+      - dateOfBirth
+      - gender
+      - sport
+      - profileCompleted
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        fullName:
+          type: string
+        email:
+          type: string
+        dateOfBirth:
+          type:
+          - 'null'
+          - string
+          format: date
+        gender:
+          type:
+          - 'null'
+          - string
+        sport:
+          type:
+          - 'null'
+          - string
+        profileCompleted:
+          type: boolean
     AuthResponse:
       required:
       - accessToken
@@ -377,6 +699,33 @@ components:
         currentPassword:
           type: string
         newPassword:
+          type: string
+    CompleteProfileRequest:
+      required:
+      - fullName
+      type: object
+      properties:
+        fullName:
+          type: string
+        dateOfBirth:
+          type:
+          - 'null'
+          - string
+          format: date
+        gender:
+          type:
+          - 'null'
+          - string
+        sport:
+          type:
+          - 'null'
+          - string
+    CreateInvitationRequest:
+      required:
+      - email
+      type: object
+      properties:
+        email:
           type: string
     CurrentUserResponse:
       required:
@@ -426,6 +775,43 @@ components:
           type:
           - 'null'
           - string
+    InvitationResponse:
+      required:
+      - id
+      - email
+      - status
+      - expiresAtUtc
+      - createdAtUtc
+      - redeemedAtUtc
+      - sendCount
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        status:
+          $ref: '#/components/schemas/InvitationStatus'
+        expiresAtUtc:
+          type: string
+          format: date-time
+        createdAtUtc:
+          type: string
+          format: date-time
+        redeemedAtUtc:
+          type:
+          - 'null'
+          - string
+          format: date-time
+        sendCount:
+          type: integer
+          format: int32
+    InvitationStatus:
+      enum:
+      - Pending
+      - Redeemed
+      - Revoked
     LoginRequest:
       required:
       - email
@@ -455,6 +841,28 @@ components:
         refreshToken:
           type: string
         deviceId:
+          type:
+          - 'null'
+          - string
+    RegisterRequest:
+      required:
+      - registrationToken
+      - termsAccepted
+      type: object
+      properties:
+        registrationToken:
+          type: string
+        termsAccepted:
+          type: boolean
+        password:
+          type:
+          - 'null'
+          - string
+        googleIdToken:
+          type:
+          - 'null'
+          - string
+        fullName:
           type:
           - 'null'
           - string
@@ -497,6 +905,24 @@ components:
           type: string
         email:
           type: string
+    ValidateInvitationResponse:
+      required:
+      - email
+      - expiresAtUtc
+      - registrationToken
+      - registrationTokenExpiresInSeconds
+      type: object
+      properties:
+        email:
+          type: string
+        expiresAtUtc:
+          type: string
+          format: date-time
+        registrationToken:
+          type: string
+        registrationTokenExpiresInSeconds:
+          type: integer
+          format: int32
   securitySchemes:
     bearerAuth:
       type: http
@@ -506,3 +932,5 @@ components:
 tags:
 - name: BeyondMovement.Api
 - name: Authentication
+- name: Athletes
+- name: Invitations

@@ -22,12 +22,35 @@ public sealed class StubGoogleTokenValidator : IGoogleTokenValidator
         Task.FromResult(NextIdentity);
 }
 
+public sealed record SentEmail(string To, string Subject, string Body);
+
+/// <summary>
+/// Stands in for the athlete's inbox. Invitation codes are never returned by the API — only
+/// emailed — so tests read them from here, exactly as the real recipient would.
+/// </summary>
+public sealed class TestEmailOutbox : IEmailSender
+{
+    private readonly List<SentEmail> _messages = [];
+    private readonly Lock _gate = new();
+
+    public IReadOnlyList<SentEmail> Messages
+    {
+        get { lock (_gate) return [.. _messages]; }
+    }
+
+    public Task SendAsync(string toEmail, string subject, string body, CancellationToken ct = default)
+    {
+        lock (_gate) _messages.Add(new SentEmail(toEmail, subject, body));
+        return Task.CompletedTask;
+    }
+}
+
 /// <summary>
 /// Starts the real application against a throwaway PostgreSQL container, so these tests
 /// exercise the same EF Core provider, the same migrations, and the same SQL as production.
 /// Secrets are supplied in memory — user secrets do not exist in CI.
 /// </summary>
-public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
+public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     public const string AdminEmail = "admin@beyondmovement.test";
     public const string AdminPassword = "Integration#Test2026";
@@ -58,7 +81,11 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
                 ["Seed:AdminPassword"] = AdminPassword,
                 ["App:PasswordResetUrlTemplate"] = "beyondmovement://reset-password?token={token}",
                 ["App:MinimumSupportedAppVersion"] = "1.0.0",
-                ["Google:ClientId:Web"] = "test-web-client-id.apps.googleusercontent.com"
+                ["Google:ClientId:Web"] = "test-web-client-id.apps.googleusercontent.com",
+
+                // Every test shares one source address, so the production limit would have
+                // the suite throttling itself. RateLimitTests asserts the limit separately.
+                ["RateLimits:InvitationValidationPerMinute"] = "10000"
             });
         });
 
@@ -66,6 +93,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         {
             services.RemoveAll<IGoogleTokenValidator>();
             services.AddSingleton<IGoogleTokenValidator>(GoogleValidator);
+
+            services.RemoveAll<IEmailSender>();
+            services.AddSingleton<TestEmailOutbox>();
+            services.AddSingleton<IEmailSender>(sp => sp.GetRequiredService<TestEmailOutbox>());
         });
     }
 

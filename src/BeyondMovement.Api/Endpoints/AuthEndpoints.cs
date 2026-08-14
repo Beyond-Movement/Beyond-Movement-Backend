@@ -1,4 +1,3 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using BeyondMovement.Modules.Identity.Contracts;
 using BeyondMovement.Modules.Identity.Features.ChangePassword;
@@ -253,7 +252,4 @@ public static class AuthEndpoints
         .Produces<CurrentUserResponse>()
         .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
         .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson);
-
-    private static bool TryGetUserId(this ClaimsPrincipal principal, out Guid userId) =>
-        Guid.TryParse(principal.FindFirstValue(JwtRegisteredClaimNames.Sub), out userId);
 }

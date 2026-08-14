@@ -51,6 +51,40 @@ public sealed class User
         return user;
     }
 
+    /// <summary>
+    /// Created by redeeming an invitation — the only way an athlete enters the platform (BR-01).
+    /// Either a password hash or a Google subject must be supplied; the caller decides which,
+    /// because Create Account offers both.
+    /// </summary>
+    public static User CreateAthlete(
+        string email, string? fullName, string? passwordHash, string? googleSubjectId,
+        Guid coachId, DateTime nowUtc)
+    {
+        if (passwordHash is null && googleSubjectId is null)
+            throw new ArgumentException("An athlete needs either a password or a Google account.");
+
+        return new User
+        {
+            Role = UserRole.Athlete,
+            Email = email.ToLowerInvariant(),
+            // May be blank when registering with Google; Complete Profile requires it.
+            FullName = fullName ?? string.Empty,
+            PasswordHash = passwordHash,
+            GoogleSubjectId = googleSubjectId,
+            Status = UserStatus.Active,
+            CoachId = coachId,
+            CreatedAtUtc = nowUtc,
+            UpdatedAtUtc = nowUtc
+            // ProfileCompletedAtUtc stays null: Complete Profile has not happened yet.
+        };
+    }
+
+    public void SetFullName(string fullName, DateTime nowUtc)
+    {
+        FullName = fullName;
+        UpdatedAtUtc = nowUtc;
+    }
+
     public void MarkProfileCompleted(DateTime nowUtc)
     {
         ProfileCompletedAtUtc ??= nowUtc;

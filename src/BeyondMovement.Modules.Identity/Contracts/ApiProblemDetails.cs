@@ -62,9 +62,23 @@ public static class ApiErrorCodes
     public const string InvitationRequired = "INVITATION_REQUIRED";
     public const string PasswordNotSet = "PASSWORD_NOT_SET";
 
+    public const string InvitationInvalid = "INVITATION_INVALID";
+    public const string InvitationExpired = "INVITATION_EXPIRED";
+    public const string InvitationUsed = "INVITATION_USED";
+    public const string InvitationRevoked = "INVITATION_REVOKED";
+    public const string RegistrationTokenInvalid = "REGISTRATION_TOKEN_INVALID";
+    public const string GoogleEmailMismatch = "GOOGLE_EMAIL_MISMATCH";
+    public const string TermsNotAccepted = "TERMS_NOT_ACCEPTED";
+    public const string EmailAlreadyRegistered = "EMAIL_ALREADY_REGISTERED";
+    public const string ProfileAlreadyCompleted = "PROFILE_ALREADY_COMPLETED";
+    public const string TooManyRequests = "TOO_MANY_REQUESTS";
+
     public static readonly string[] All =
     [
         ValidationFailed, InvalidCredentials, AccountLocked, AccountPaused, InvalidToken,
-        InvalidRefreshToken, InvalidResetToken, InvalidGoogleToken, InvitationRequired, PasswordNotSet
+        InvalidRefreshToken, InvalidResetToken, InvalidGoogleToken, InvitationRequired, PasswordNotSet,
+        InvitationInvalid, InvitationExpired, InvitationUsed, InvitationRevoked,
+        RegistrationTokenInvalid, GoogleEmailMismatch, TermsNotAccepted, EmailAlreadyRegistered,
+        ProfileAlreadyCompleted, TooManyRequests
     ];
 }

@@ -7,6 +7,79 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ---
 
+## Phase 1.2 — Invitations, registration, profile completion
+
+**Additive only.** Nothing existing changed shape, so the Increment 3 work already underway
+is unaffected.
+
+### The invited-athlete journey
+
+```
+Admin: POST /invitations {email}          → code emailed to the athlete, never returned in the response
+Athlete: GET /invitations/validate?code=  → {email, expiresAtUtc, registrationToken}
+Athlete: POST /auth/register              → account created, invitation redeemed, tokens returned
+Athlete: POST /athletes/me/profile        → profileCompleted becomes true
+```
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/api/v1/invitations` | **Admin** | Invite an athlete by email |
+| `GET` | `/api/v1/invitations` | **Admin** | List invitations, newest first, `?status=` optional |
+| `POST` | `/api/v1/invitations/{id}/resend` | **Admin** | Issue a fresh code and email it again |
+| `DELETE` | `/api/v1/invitations/{id}` | **Admin** | Revoke a pending invitation |
+| `GET` | `/api/v1/invitations/validate` | anonymous | Check a code, get a registration token |
+| `POST` | `/api/v1/auth/register` | anonymous | Create the account and redeem the invitation |
+| `POST` | `/api/v1/athletes/me/profile` | **Athlete** | Complete or edit the athlete's own profile |
+
+### Behaviour the client must handle
+
+- **Validation does not consume the invitation.** The athlete can validate a code, leave Create
+  Account, and come back. The invitation is redeemed only when registration succeeds.
+- **The email is already verified.** Only the invited inbox received the code, so Create Account
+  shows `email` from the validate response as **read-only**. It cannot be substituted.
+- **`registrationToken` is short-lived — 30 minutes** (`registrationTokenExpiresInSeconds`). If
+  the athlete takes longer, registration returns `REGISTRATION_TOKEN_INVALID` and they must
+  enter the code again. The code itself is not posted to `/auth/register`.
+- **Register takes exactly one credential:** `password` (plus `fullName`) **or** `googleIdToken`.
+  Both, or neither, is a validation error.
+- **Google registration must match the invited address.** A verified Google email different from
+  the invitation returns `GOOGLE_EMAIL_MISMATCH`. No password or name is required on that path —
+  Google's display name is used as an editable prefill.
+- **`termsAccepted` must be true**, or `TERMS_NOT_ACCEPTED`.
+- **Register returns the same token pair as login**, so the athlete is signed in immediately —
+  but `profileCompleted` is false. Route to **Complete Profile**, not Home.
+- **Resending replaces the code.** The previously emailed code stops working at once.
+- **Validate is rate-limited per IP** (10/minute by default). Exceeding it returns
+  `429 TOO_MANY_REQUESTS` with `retryAfterSeconds` and a `Retry-After` header.
+
+### Error codes added
+
+| `errorCode` | Status | Meaning |
+|---|---|---|
+| `INVITATION_INVALID` | 400 | No such code |
+| `INVITATION_EXPIRED` | 400 | Past its expiry (14 days by default) |
+| `INVITATION_USED` | 400 | Already redeemed |
+| `INVITATION_REVOKED` | 400 | Cancelled by the coach |
+| `REGISTRATION_TOKEN_INVALID` | 400 | Registration session expired — re-enter the code |
+| `GOOGLE_EMAIL_MISMATCH` | 400 | Google account's email is not the invited address |
+| `TERMS_NOT_ACCEPTED` | 400 | `termsAccepted` was false |
+| `EMAIL_ALREADY_REGISTERED` | 409 | An account already exists for that address |
+| `PROFILE_ALREADY_COMPLETED` | 409 | Reserved; profile edits are currently allowed |
+| `TOO_MANY_REQUESTS` | 429 | Rate limit hit |
+
+Four codes rather than one for invitations, so the Invitation Error screen can show the right
+message and the right next action for each case.
+
+### Known gaps
+
+- **Profile photo is not accepted yet.** `POST /athletes/me/profile` takes `fullName`,
+  `dateOfBirth`, `gender` and `sport`. Photo upload needs file storage, which is phase 13.
+- **`gender` and `sport` are free strings.** The UI shows a dropdown and a searchable field, but
+  no allowed value list exists in any source document. Constraining them later to enums **is a
+  contract change** — agree the lists with the client before the mobile screens harden.
+
+---
+
 ## Phase 1.1 — Contract hardening, Google sign-in, change password
 
 **Breaking.** Read this before regenerating the client.

@@ -47,6 +47,44 @@ public static class IdentityErrors
         new(ApiErrorCodes.PasswordNotSet,
             "This account has no password yet. Use Forgot Password to set one.", Status.BadRequest);
 
+    // --- invitations ------------------------------------------------------
+    // Four distinct codes rather than one: the Invitation Error screen shows a different
+    // message and a different next action for each (UI/UX section on Enter Invitation Code).
+
+    public static readonly Error InvitationInvalid =
+        new(ApiErrorCodes.InvitationInvalid, "That invitation code is not valid.", Status.BadRequest);
+
+    public static readonly Error InvitationExpired =
+        new(ApiErrorCodes.InvitationExpired, "That invitation has expired. Ask your coach to send a new one.", Status.BadRequest);
+
+    public static readonly Error InvitationUsed =
+        new(ApiErrorCodes.InvitationUsed, "That invitation has already been used.", Status.BadRequest);
+
+    public static readonly Error InvitationRevoked =
+        new(ApiErrorCodes.InvitationRevoked, "That invitation was cancelled by your coach.", Status.BadRequest);
+
+    public static readonly Error RegistrationTokenInvalid =
+        new(ApiErrorCodes.RegistrationTokenInvalid,
+            "This registration session has expired. Enter your invitation code again.", Status.BadRequest);
+
+    /// <summary>
+    /// Enforces "each invitation can be used only for its intended athlete": a Google account
+    /// with a different address cannot redeem someone else's invitation.
+    /// </summary>
+    public static readonly Error GoogleEmailMismatch =
+        new(ApiErrorCodes.GoogleEmailMismatch,
+            "Your Google account's email does not match the invited address.", Status.BadRequest);
+
+    public static readonly Error TermsNotAccepted =
+        new(ApiErrorCodes.TermsNotAccepted,
+            "The Terms of Service and Privacy Policy must be accepted.", Status.BadRequest);
+
+    public static readonly Error EmailAlreadyRegistered =
+        new(ApiErrorCodes.EmailAlreadyRegistered, "An account already exists for this address.", Status.Conflict);
+
+    public static readonly Error ProfileAlreadyCompleted =
+        new(ApiErrorCodes.ProfileAlreadyCompleted, "This profile has already been completed.", Status.Conflict);
+
     /// <summary>Lockout with the remaining time, so the app can show a real countdown.</summary>
     public static Error LockedFor(TimeSpan remaining) =>
         AccountLocked with { RetryAfterSeconds = Math.Max(1, (int)Math.Ceiling(remaining.TotalSeconds)) };
@@ -56,6 +94,7 @@ public static class IdentityErrors
         public const int BadRequest = 400;
         public const int Unauthorized = 401;
         public const int Forbidden = 403;
+        public const int Conflict = 409;
         public const int Locked = 423;
     }
 }

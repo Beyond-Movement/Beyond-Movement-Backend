@@ -1,7 +1,12 @@
 using BeyondMovement.Api.Authentication;
 using BeyondMovement.Api.Endpoints;
+using BeyondMovement.Api;
 using BeyondMovement.Api.Middleware;
 using BeyondMovement.Api.OpenApi;
+using BeyondMovement.Modules.Athletes.Features;
+using BeyondMovement.Modules.Athletes.Persistence;
+using BeyondMovement.Modules.Identity.Features.Invitations;
+using BeyondMovement.Modules.Identity.Features.Register;
 using BeyondMovement.Api.Seeding;
 using BeyondMovement.Infrastructure;
 using BeyondMovement.Infrastructure.Auditing;
@@ -71,8 +76,20 @@ builder.Services.AddScoped<ForgotPasswordHandler>();
 builder.Services.AddScoped<ResetPasswordHandler>();
 builder.Services.AddScoped<ChangePasswordHandler>();
 builder.Services.AddScoped<CurrentUserHandler>();
+builder.Services.AddScoped<CreateInvitationHandler>();
+builder.Services.AddScoped<ValidateInvitationHandler>();
+builder.Services.AddScoped<ManageInvitationsHandler>();
+builder.Services.AddScoped<RegisterHandler>();
+builder.Services.AddSingleton<IRegistrationTokenService, RegistrationTokenService>();
+
+// --- athletes module -----------------------------------------------------
+builder.Services.AddScoped<IAthletesDbContext>(sp => sp.GetRequiredService<AppDbContext>());
+builder.Services.AddScoped<CreateProfileHandler>();
+builder.Services.AddScoped<CompleteProfileHandler>();
 
 builder.Services.AddValidatorsFromAssemblyContaining<LoginValidator>();
+
+builder.Services.AddApiRateLimiting();
 
 // --- authentication ------------------------------------------------------
 // Bearer options are built from JwtOptions by ConfigureJwtBearerOptions, so signing and
@@ -118,6 +135,8 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference().AllowAnonymous();   // local UI at /scalar/v1
 }
 
+app.UseRateLimiter();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -129,6 +148,8 @@ app.MapHealthChecks("/health").AllowAnonymous();
 app.MapGet("/api/v1/ping", () => Results.Ok(new { message = "pong" })).AllowAnonymous();
 
 app.MapAuthEndpoints();
+app.MapInvitationEndpoints();
+app.MapRegistrationEndpoints();
 
 if (app.Environment.IsDevelopment())
 {

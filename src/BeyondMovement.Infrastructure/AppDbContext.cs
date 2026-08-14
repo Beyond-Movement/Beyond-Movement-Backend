@@ -1,4 +1,6 @@
 using BeyondMovement.Infrastructure.Auditing;
+using BeyondMovement.Modules.Athletes.Domain;
+using BeyondMovement.Modules.Athletes.Persistence;
 using BeyondMovement.Modules.Identity.Domain;
 using BeyondMovement.Modules.Identity.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -6,12 +8,16 @@ using Microsoft.EntityFrameworkCore;
 namespace BeyondMovement.Infrastructure;
 
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
-    : DbContext(options), IIdentityDbContext
+    : DbContext(options), IIdentityDbContext, IAthletesDbContext
 {
     // Identity module
     public DbSet<User> Users => Set<User>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
+    public DbSet<Invitation> Invitations => Set<Invitation>();
+
+    // Athletes module
+    public DbSet<AthleteProfile> AthleteProfiles => Set<AthleteProfile>();
 
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
@@ -24,5 +30,6 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
 
         // ...and one call per module assembly. Add a line here as each module arrives.
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(User).Assembly);
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(AthleteProfile).Assembly);
     }
 }
