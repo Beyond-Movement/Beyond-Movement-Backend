@@ -30,9 +30,15 @@ public sealed class SmtpEmailSender(
         if (!string.IsNullOrWhiteSpace(smtp.Username))
             client.Credentials = new NetworkCredential(smtp.Username, smtp.Password);
 
+        // A blank FromName sends as the bare address. Worth having: a brand display name on a
+        // free-provider address is a phishing shape, and some filters score it accordingly.
+        var from = string.IsNullOrWhiteSpace(_options.FromName)
+            ? new MailAddress(_options.FromAddress)
+            : new MailAddress(_options.FromAddress, _options.FromName);
+
         using var mail = new MailMessage
         {
-            From = new MailAddress(_options.FromAddress, _options.FromName),
+            From = from,
             Subject = message.Subject,
             // The plain-text part is the body; the HTML rides along as an alternate view, so a
             // client that refuses HTML still shows the invitation code.

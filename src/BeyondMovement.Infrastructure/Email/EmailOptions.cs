@@ -11,7 +11,16 @@ public sealed class EmailOptions
     /// </summary>
     public string FromAddress { get; set; } = "";
 
-    public string FromName { get; set; } = "Beyond Movement";
+    /// <summary>
+    /// The display name recipients see. Empty sends as the bare address.
+    /// <para>
+    /// Leave it empty while sending from a free provider such as Gmail. A brand display name
+    /// over an @gmail.com address is the shape of phishing, and Gmail files it as spam — this
+    /// was measured, not guessed: identical mail landed in spam with the name and in the inbox
+    /// without it. Set the name once sending from a domain with DKIM, where it helps.
+    /// </para>
+    /// </summary>
+    public string FromName { get; set; } = "";
 
     /// <summary>
     /// Where replies go. Defaults to the from-address. Worth setting to a monitored mailbox:
