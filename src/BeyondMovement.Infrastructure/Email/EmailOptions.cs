@@ -13,6 +13,12 @@ public sealed class EmailOptions
 
     public string FromName { get; set; } = "Beyond Movement";
 
+    /// <summary>
+    /// Where replies go. Defaults to the from-address. Worth setting to a monitored mailbox:
+    /// mail that invites no reply and accepts none scores worse with spam filters.
+    /// </summary>
+    public string? ReplyToAddress { get; set; }
+
     public PostmarkOptions Postmark { get; set; } = new();
 
     public SmtpOptions Smtp { get; set; } = new();

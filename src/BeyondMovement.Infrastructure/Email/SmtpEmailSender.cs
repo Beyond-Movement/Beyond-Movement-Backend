@@ -41,6 +41,11 @@ public sealed class SmtpEmailSender(
         };
 
         mail.To.Add(message.To);
+
+        // A reachable Reply-To is one of the few legitimacy signals available without a domain
+        // of our own. Mail from a no-reply address that accepts no reply scores worse.
+        mail.ReplyToList.Add(new MailAddress(_options.ReplyToAddress ?? _options.FromAddress));
+
         mail.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(
             message.HtmlBody, null, "text/html"));
 

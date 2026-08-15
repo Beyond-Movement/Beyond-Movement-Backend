@@ -19,7 +19,8 @@
       "Bash(sed -i 's/^            userId = await AthleteApiFactory.AddAthleteAsync\\(db, scope.ServiceProvider, email, name, \"Rowing\", null\\);$/            userId = await AthleteApiFactory.AddAthleteAsync\\(\\\\n                db, scope.ServiceProvider, email, name, \"Rowing\", dateOfBirth: null\\);/' tests/BeyondMovement.IntegrationTests/AthleteManagementTests.cs)",
       "Bash(python -)",
       "Bash(grep -E \"Assert|//\")",
-      "Bash(curl -s -o /dev/null http://localhost:8025)"
+      "Bash(curl -s -o /dev/null http://localhost:8025)",
+      "Bash(git commit -q -m ' *)"
     ]
   }
 }
