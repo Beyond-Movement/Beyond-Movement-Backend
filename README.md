@@ -215,12 +215,25 @@ Local development is plain HTTP. Android blocks that by default, so debug builds
 `android:usesCleartextTraffic="true"` (or a network security config limited to the dev
 host) in the **debug** manifest only — never in release.
 
-### Codes arrive in the terminal, not an inbox
+### Reading the emails
 
-Until Postmark is configured (below), invitation codes and password-reset links are printed
-to the **API console** rather than sent. Watch that window after calling
-`POST /api/v1/invitations` or `POST /api/v1/auth/forgot-password`. The app logs a warning at
-startup when it is in this mode, so there is no doubt about which is in play.
+`docker compose up -d` starts **Mailpit**, a local mail server. Real email is sent to it over
+SMTP and delivered nowhere else, so invitation codes and reset links can be opened and clicked
+with no provider account, no domain, and no chance of reaching a real person.
+
+**Open <http://localhost:8025>** and the invitation appears there, logo and all, the moment
+`POST /api/v1/invitations` returns.
+
+No configuration is needed — `appsettings.Development.json` already points at it. The API
+prints which transport it chose on startup:
+
+```
+Email: sending over SMTP to localhost:1025. With the default development setup that is
+Mailpit — open http://localhost:8025 to read it.
+```
+
+If Mailpit is not running the API falls back to printing emails to its own console, and says
+so. Nothing breaks either way.
 
 ### Google sign-in
 
@@ -249,8 +262,11 @@ reading handler code. Every message carries an HTML body and a plain-text body �
 that refuse HTML must still show the code, and a message with no text part scores worse
 with spam filters.
 
-**With nothing configured, the app prints emails to the console instead of sending them.**
-That is deliberate: a fresh clone runs with no email account. To send for real:
+The API picks a transport at startup, in this order: **Postmark**, then **SMTP** (Mailpit
+locally), then the **console**. Development needs none of the steps below — Mailpit already
+covers it. Postmark is for staging and production, where mail must reach a real person.
+
+To send for real:
 
 **1. Create a Postmark account** and verify a sending domain — add the DKIM and Return-Path
 DNS records Postmark gives you. Unverified domains are rejected, and mail that skips SPF and

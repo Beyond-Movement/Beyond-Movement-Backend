@@ -87,11 +87,23 @@ builder.Services.Configure<EmailBrandingOptions>(
 
 var emailOptions = builder.Configuration.GetSection(EmailOptions.SectionName).Get<EmailOptions>() ?? new();
 
-if (emailOptions.IsConfigured)
+// Postmark first, then a local SMTP catcher, then the console. Each step down is a step
+// further from a real inbox, and the app says at startup which one it landed on.
+if (emailOptions.PostmarkConfigured)
 {
     // Typed client: pooled connections and a sane timeout, rather than a new socket per email.
     builder.Services.AddHttpClient<IEmailSender, PostmarkEmailSender>(client =>
         client.Timeout = TimeSpan.FromSeconds(15));
+
+    Console.WriteLine("Email: sending through Postmark.");
+}
+else if (emailOptions.SmtpConfigured)
+{
+    builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
+
+    Console.WriteLine(
+        $"Email: sending over SMTP to {emailOptions.Smtp.Host}:{emailOptions.Smtp.Port}. " +
+        "With the default development setup that is Mailpit — open http://localhost:8025 to read it.");
 }
 else
 {
@@ -100,8 +112,9 @@ else
     builder.Services.AddScoped<IEmailSender, ConsoleEmailSender>();
 
     Console.WriteLine(
-        "WARNING  Email:Postmark:ServerToken and Email:FromAddress are not configured. " +
-        "Invitation codes and password-reset links will be printed to this console instead of sent.");
+        "WARNING  No email transport configured. Invitation codes and password-reset links " +
+        "will be printed to this console instead of sent. Run 'docker compose up -d mailpit' " +
+        "to receive them in a real inbox at http://localhost:8025.");
 }
 
 builder.Services.AddScoped<LoginHandler>();

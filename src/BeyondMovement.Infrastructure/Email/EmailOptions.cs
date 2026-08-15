@@ -15,12 +15,29 @@ public sealed class EmailOptions
 
     public PostmarkOptions Postmark { get; set; } = new();
 
-    /// <summary>
-    /// True once Postmark can actually be used. When false the application falls back to the
-    /// console stub rather than failing at startup, so a fresh clone runs with no account.
-    /// </summary>
-    public bool IsConfigured =>
+    public SmtpOptions Smtp { get; set; } = new();
+
+    /// <summary>Postmark is usable: a token and a from-address are both present.</summary>
+    public bool PostmarkConfigured =>
         !string.IsNullOrWhiteSpace(Postmark.ServerToken) && !string.IsNullOrWhiteSpace(FromAddress);
+
+    /// <summary>
+    /// SMTP is usable. Intended for a local mail catcher during development; production uses
+    /// Postmark, which wins when both are configured.
+    /// </summary>
+    public bool SmtpConfigured =>
+        !string.IsNullOrWhiteSpace(Smtp.Host) && !string.IsNullOrWhiteSpace(FromAddress);
+}
+
+public sealed class SmtpOptions
+{
+    public string Host { get; set; } = "";
+    public int Port { get; set; } = 1025;
+    public bool UseSsl { get; set; }
+
+    /// <summary>Left empty for a local catcher, which accepts anonymous mail.</summary>
+    public string? Username { get; set; }
+    public string? Password { get; set; }
 }
 
 public sealed class PostmarkOptions

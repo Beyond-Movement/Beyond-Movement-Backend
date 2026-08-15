@@ -31,5 +31,18 @@ services:
     ports:
       - "6379:6379"
 
+  # Local mail server. Accepts everything the API sends and delivers nothing to the
+  # outside world, so invitation and reset emails can be opened and clicked during
+  # development with no Postmark account and no verified domain.
+  # Architecture section 16.1 names MailHog for this role; Mailpit is its maintained
+  # successor and speaks the same SMTP.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: mc-mailpit
+    restart: unless-stopped
+    ports:
+      - "8025:8025"   # web inbox — http://localhost:8025
+      - "1025:1025"   # SMTP, where the API sends
+
 volumes:
   mc-pgdata:
