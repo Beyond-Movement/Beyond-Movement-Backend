@@ -101,9 +101,15 @@ else if (emailOptions.SmtpConfigured)
 {
     builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
 
-    Console.WriteLine(
-        $"Email: sending over SMTP to {emailOptions.Smtp.Host}:{emailOptions.Smtp.Port}. " +
-        "With the default development setup that is Mailpit — open http://localhost:8025 to read it.");
+    // Say plainly whether this reaches real people. Mail catchers run on the local machine;
+    // anything else is a real server and a real inbox.
+    var isLocalCatcher = emailOptions.Smtp.Host is "localhost" or "127.0.0.1" or "mailpit";
+
+    Console.WriteLine(isLocalCatcher
+        ? $"Email: sending to the local mail catcher at {emailOptions.Smtp.Host}:{emailOptions.Smtp.Port}. " +
+          "Nothing leaves this machine - read it at http://localhost:8025"
+        : $"Email: sending REAL mail via {emailOptions.Smtp.Host}:{emailOptions.Smtp.Port} " +
+          $"as {emailOptions.FromAddress}. Messages will reach real inboxes.");
 }
 else
 {
