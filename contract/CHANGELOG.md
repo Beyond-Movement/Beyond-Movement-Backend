@@ -7,6 +7,103 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ---
 
+## Phase 2 — Athlete management (Admin)
+
+**One breaking change**, then additions.
+
+### Breaking
+
+`UserSummary` gains **`athleteListSort`** (nullable). It appears inside `AuthResponse` on every
+authentication response, and on `GET /auth/me`. Null for athletes, and null for a coach who has
+not chosen a sort.
+
+### Added
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/api/v1/athletes` | **Admin** | Athlete list — search, filter, sort, page |
+| `GET` | `/api/v1/athletes/{id}` | **Admin** | One athlete, read-only |
+| `POST` | `/api/v1/athletes/{id}/pause` | **Admin** | Suspend access |
+| `POST` | `/api/v1/athletes/{id}/reactivate` | **Admin** | Restore access |
+| `PUT` | `/api/v1/auth/me/preferences` | bearer | Save the athlete-list sort |
+
+### The list
+
+Query parameters, all optional, each with a documented default in the contract:
+
+| Parameter | Values | Default |
+|---|---|---|
+| `search` | free text — matches **full name or sport** | none |
+| `status` | `All` \| `Active` \| `Paused` | `All` |
+| `sort` | `NameAsc` \| `NameDesc` \| `Sport` \| `NewestFirst` \| `OldestFirst` | `NameAsc` |
+| `page` | 1-based | `1` |
+| `pageSize` | 1–100 | `20` |
+
+- **Search is trimmed, case-insensitive, and matches any part of the value.** `%` and `_` are
+  matched literally, so a search for `%` finds nothing rather than everything.
+- **`page` and `pageSize` are clamped, not rejected.** `pageSize=5000` returns 100;
+  `page=0` returns page 1. No 400 for out-of-range paging.
+- **`sort=Sport` places athletes with no sport last**, and every sort breaks ties on id, so a row
+  cannot swap pages between requests and appear twice or vanish.
+- **Paused athletes always appear.** Pausing hides an athlete from themselves, never from
+  their coach — filter with `status` to exclude them.
+
+Response is `PagedResultOfAthleteListItem`: `items`, `page`, `pageSize`, `totalCount`,
+`totalPages`, `hasNextPage`, `hasPreviousPage`.
+
+### `status` is account status, not package status
+
+`Active`/`Paused` here means **whether the athlete can sign in**. It is *not* the
+Active/Inactive filter in the product specification, which means "has an active package" and is
+derived from package data. That arrives in phase 4 as a **separate** parameter. Merging them
+would make a paused athlete and an athlete between packages indistinguishable.
+
+Sessions remaining and "no active package" are likewise phase 4 and absent from `AthleteListItem`.
+
+### Pause and reactivate
+
+- **Pause** sets status to `Paused` and **revokes every refresh token** the athlete holds. Their
+  current access token stays cryptographically valid for its remaining minutes, but each request
+  re-checks status, so the next call returns `403 ACCOUNT_PAUSED`. Login returns the same.
+- **Reactivate** sets status back to `Active` and **issues no tokens** — the athlete signs in
+  again. Tokens revoked at pause stay revoked.
+- **Both are idempotent.** Pausing an already-paused athlete succeeds and changes nothing, so a
+  retry after a dropped connection is safe.
+- Both return `AthleteStatusResponse` (`id`, `status`), so a list row can update without a refetch.
+
+### Not found, not forbidden
+
+An unknown id, **another coach's athlete**, a deleted athlete, and the Admin's own id all return
+`404 ATHLETE_NOT_FOUND`. A 403 would confirm the record exists.
+
+### Sort preference
+
+Stored server-side in `Users.UiPreferences`, so it survives a restart and follows the coach to
+another device. `PUT /api/v1/auth/me/preferences` with `{"athleteListSort":"NewestFirst"}` saves
+it; the value comes back on **every authentication response and on `/auth/me`**, so the app never
+needs an extra call to apply it.
+
+An unrecognised enum value now returns **`400 VALIDATION_FAILED`**. It previously returned 500 —
+a malformed body is the caller's fault, and that applies to every endpoint, not only this one.
+
+### Error codes added
+
+| `errorCode` | Status | Meaning |
+|---|---|---|
+| `ATHLETE_NOT_FOUND` | 404 | Unknown, foreign, or deleted athlete |
+
+### Known gaps
+
+- **`phone` is always null.** The field is in `AthleteDetail` as the specification requires, but
+  no screen collects a phone number yet — Complete Profile does not ask for one.
+- **Device tokens are not revoked on pause.** Only refresh tokens are. The `DeviceTokens` table
+  arrives with notifications in phase 10; until then there is nothing to revoke.
+- **Profile photo** is absent pending file storage (phase 13).
+- **No edit endpoint.** See the note below — this is a deliberate deviation from the product
+  specification and needs the client's confirmation.
+
+---
+
 ## Phase 1.3 — `profileCompleted` on every authentication response
 
 **Additive.** One new field; nothing was renamed or removed.

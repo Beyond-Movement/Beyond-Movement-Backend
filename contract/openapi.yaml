@@ -98,6 +98,42 @@ paths:
                 $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
+  /api/v1/auth/me/preferences:
+    put:
+      tags:
+      - Authentication
+      summary: Save the signed-in user's UI preferences.
+      description: Stored server-side rather than on the device, so the chosen athlete-list sort survives
+        a restart and follows the coach to another device. The saved value also comes back on every authentication
+        response and from /auth/me, so the app can apply it at startup without an extra call.
+      operationId: UpdatePreferences
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePreferencesRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreferencesResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
   /api/v1/auth/login:
     post:
       tags:
@@ -577,6 +613,200 @@ paths:
                 $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
+  /api/v1/athletes:
+    get:
+      tags:
+      - Athletes
+      summary: The coach's athletes, searchable, filterable and sorted.
+      description: 'search matches full name or sport, case-insensitively, on any part of the value, and
+        is trimmed before use. status filters by ACCOUNT status - whether the athlete can sign in - and
+        is not the same as having an active package, which arrives in phase 4 as a separate parameter.
+        sort accepts NameAsc, NameDesc, Sport, NewestFirst and OldestFirst; Sport places athletes with
+        no sport last. page starts at 1 and pageSize is capped at 100 - values outside the range are clamped
+        rather than rejected. Paused athletes are always included: pausing hides an athlete from themselves,
+        never from their coach.'
+      operationId: ListAthletes
+      parameters:
+      - name: search
+        in: query
+        schema:
+          type: string
+      - name: status
+        in: query
+        schema:
+          default: All
+          $ref: '#/components/schemas/AthleteStatusFilter'
+      - name: sort
+        in: query
+        schema:
+          default: NameAsc
+          $ref: '#/components/schemas/AthleteListSort'
+      - name: page
+        in: query
+        schema:
+          type: integer
+          format: int32
+          default: 1
+      - name: pageSize
+        in: query
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedResultOfAthleteListItem'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/athletes/{id}:
+    get:
+      tags:
+      - Athletes
+      summary: One athlete, read-only.
+      description: Read-only in phase 2 - there is no endpoint to change an athlete's personal details.
+        phone is always null for now, because no screen collects one yet. Profile photo is deferred until
+        file storage exists. An unknown id, another coach's athlete and a deleted athlete all return 404
+        ATHLETE_NOT_FOUND.
+      operationId: GetAthlete
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AthleteDetail'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/athletes/{id}/pause:
+    post:
+      tags:
+      - Athletes
+      summary: Suspend an athlete's access.
+      description: Sets account status to Paused and revokes every refresh token the athlete holds, so
+        the session cannot be renewed. Their current access token stays valid for its remaining minutes,
+        but each request re-checks status, so the next call returns 403 ACCOUNT_PAUSED - login does the
+        same. The athlete stays visible to the coach and their data is untouched. Pausing an already-paused
+        athlete succeeds and changes nothing, so a retry is safe. Push device tokens are NOT yet revoked;
+        that table arrives with notifications in phase 10.
+      operationId: PauseAthlete
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AthleteStatusResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/athletes/{id}/reactivate:
+    post:
+      tags:
+      - Athletes
+      summary: Restore a paused athlete's access.
+      description: Sets account status back to Active. Issues no tokens - the athlete signs in again themselves,
+        since the tokens revoked at pause are gone for good. Reactivating an already-active athlete succeeds
+        and changes nothing.
+      operationId: ReactivateAthlete
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AthleteStatusResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
 components:
   schemas:
     ApiProblemDetails:
@@ -622,6 +852,7 @@ components:
           - EMAIL_ALREADY_REGISTERED
           - PROFILE_ALREADY_COMPLETED
           - TOO_MANY_REQUESTS
+          - ATHLETE_NOT_FOUND
           type: string
         correlationId:
           type: string
@@ -638,6 +869,82 @@ components:
             type: array
             items:
               type: string
+    AthleteDetail:
+      required:
+      - id
+      - fullName
+      - email
+      - phone
+      - dateOfBirth
+      - gender
+      - sport
+      - status
+      - profileCompleted
+      - createdAtUtc
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        fullName:
+          type: string
+        email:
+          type: string
+        phone:
+          type:
+          - 'null'
+          - string
+        dateOfBirth:
+          type:
+          - 'null'
+          - string
+          format: date
+        gender:
+          type:
+          - 'null'
+          - string
+        sport:
+          type:
+          - 'null'
+          - string
+        status:
+          $ref: '#/components/schemas/UserStatus'
+        profileCompleted:
+          type: boolean
+        createdAtUtc:
+          type: string
+          format: date-time
+    AthleteListItem:
+      required:
+      - id
+      - fullName
+      - sport
+      - status
+      - createdAtUtc
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        fullName:
+          type: string
+        sport:
+          type:
+          - 'null'
+          - string
+        status:
+          $ref: '#/components/schemas/UserStatus'
+        createdAtUtc:
+          type: string
+          format: date-time
+    AthleteListSort:
+      enum:
+      - NameAsc
+      - NameDesc
+      - Sport
+      - NewestFirst
+      - OldestFirst
+      - null
     AthleteProfileResponse:
       required:
       - userId
@@ -671,6 +978,22 @@ components:
           - string
         profileCompleted:
           type: boolean
+    AthleteStatusFilter:
+      enum:
+      - All
+      - Active
+      - Paused
+    AthleteStatusResponse:
+      required:
+      - id
+      - status
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/UserStatus'
     AuthResponse:
       required:
       - accessToken
@@ -738,6 +1061,7 @@ components:
       - email
       - coachId
       - profileCompleted
+      - athleteListSort
       - minimumSupportedAppVersion
       type: object
       properties:
@@ -757,6 +1081,10 @@ components:
           format: uuid
         profileCompleted:
           type: boolean
+        athleteListSort:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AthleteListSort'
         minimumSupportedAppVersion:
           type: string
     ForgotPasswordRequest:
@@ -835,6 +1163,43 @@ components:
       properties:
         refreshToken:
           type: string
+    PagedResultOfAthleteListItem:
+      required:
+      - items
+      - page
+      - pageSize
+      - totalCount
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AthleteListItem'
+        page:
+          type: integer
+          format: int32
+        pageSize:
+          type: integer
+          format: int32
+        totalCount:
+          type: integer
+          format: int32
+        totalPages:
+          type: integer
+          format: int32
+        hasNextPage:
+          type: boolean
+        hasPreviousPage:
+          type: boolean
+    PreferencesResponse:
+      required:
+      - athleteListSort
+      type: object
+      properties:
+        athleteListSort:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AthleteListSort'
     RefreshRequest:
       required:
       - refreshToken
@@ -878,6 +1243,13 @@ components:
           type: string
         newPassword:
           type: string
+    UpdatePreferencesRequest:
+      required:
+      - athleteListSort
+      type: object
+      properties:
+        athleteListSort:
+          $ref: '#/components/schemas/AthleteListSort'
     UserRole:
       enum:
       - Admin
@@ -895,6 +1267,7 @@ components:
       - fullName
       - email
       - profileCompleted
+      - athleteListSort
       type: object
       properties:
         id:
@@ -910,6 +1283,10 @@ components:
           type: string
         profileCompleted:
           type: boolean
+        athleteListSort:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/AthleteListSort'
     ValidateInvitationResponse:
       required:
       - email

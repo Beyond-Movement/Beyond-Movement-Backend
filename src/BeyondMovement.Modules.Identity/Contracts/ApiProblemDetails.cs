@@ -72,6 +72,7 @@ public static class ApiErrorCodes
     public const string EmailAlreadyRegistered = "EMAIL_ALREADY_REGISTERED";
     public const string ProfileAlreadyCompleted = "PROFILE_ALREADY_COMPLETED";
     public const string TooManyRequests = "TOO_MANY_REQUESTS";
+    public const string AthleteNotFound = "ATHLETE_NOT_FOUND";
 
     public static readonly string[] All =
     [
@@ -79,6 +80,6 @@ public static class ApiErrorCodes
         InvalidRefreshToken, InvalidResetToken, InvalidGoogleToken, InvitationRequired, PasswordNotSet,
         InvitationInvalid, InvitationExpired, InvitationUsed, InvitationRevoked,
         RegistrationTokenInvalid, GoogleEmailMismatch, TermsNotAccepted, EmailAlreadyRegistered,
-        ProfileAlreadyCompleted, TooManyRequests
+        ProfileAlreadyCompleted, TooManyRequests, AthleteNotFound
     ];
 }

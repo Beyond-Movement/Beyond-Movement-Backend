@@ -85,6 +85,13 @@ public static class IdentityErrors
     public static readonly Error ProfileAlreadyCompleted =
         new(ApiErrorCodes.ProfileAlreadyCompleted, "This profile has already been completed.", Status.Conflict);
 
+    /// <summary>
+    /// Unknown athlete, another coach's athlete, or a deleted one — deliberately the same
+    /// answer for all three. A 403 would confirm the record exists (CLAUDE.md section 6).
+    /// </summary>
+    public static readonly Error AthleteNotFound =
+        new(ApiErrorCodes.AthleteNotFound, "No such athlete.", Status.NotFound);
+
     /// <summary>Lockout with the remaining time, so the app can show a real countdown.</summary>
     public static Error LockedFor(TimeSpan remaining) =>
         AccountLocked with { RetryAfterSeconds = Math.Max(1, (int)Math.Ceiling(remaining.TotalSeconds)) };
@@ -94,6 +101,7 @@ public static class IdentityErrors
         public const int BadRequest = 400;
         public const int Unauthorized = 401;
         public const int Forbidden = 403;
+        public const int NotFound = 404;
         public const int Conflict = 409;
         public const int Locked = 423;
     }

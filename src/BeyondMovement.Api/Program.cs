@@ -1,7 +1,9 @@
 using BeyondMovement.Api.Authentication;
 using BeyondMovement.Api.Endpoints;
 using BeyondMovement.Api;
+using BeyondMovement.Api.Athletes;
 using BeyondMovement.Api.Middleware;
+using BeyondMovement.Modules.Identity.Features.AccountStatus;
 using BeyondMovement.Api.OpenApi;
 using BeyondMovement.Modules.Athletes.Features;
 using BeyondMovement.Modules.Athletes.Persistence;
@@ -120,6 +122,8 @@ builder.Services.AddSingleton<IRegistrationTokenService, RegistrationTokenServic
 builder.Services.AddScoped<IAthletesDbContext>(sp => sp.GetRequiredService<AppDbContext>());
 builder.Services.AddScoped<CreateProfileHandler>();
 builder.Services.AddScoped<CompleteProfileHandler>();
+builder.Services.AddScoped<SetAccountStatusHandler>();
+builder.Services.AddScoped<AthleteDirectory>();
 
 builder.Services.AddValidatorsFromAssemblyContaining<LoginValidator>();
 
@@ -152,6 +156,7 @@ builder.Services.AddHealthChecks()
     .AddDbContextCheck<AppDbContext>();
 
 builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<JsonExceptionHandler>();
 
 var app = builder.Build();
 
@@ -189,6 +194,8 @@ app.MapGet("/api/v1/ping", () => Results.Ok(new { message = "pong" })).AllowAnon
 app.MapAuthEndpoints();
 app.MapInvitationEndpoints();
 app.MapRegistrationEndpoints();
+app.MapAthleteEndpoints();
+app.MapPreferenceEndpoints();
 
 if (app.Environment.IsDevelopment())
 {

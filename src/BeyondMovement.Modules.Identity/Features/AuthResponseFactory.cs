@@ -16,5 +16,6 @@ internal static class AuthResponseFactory
             rawRefreshToken,
             jwt.AccessTokenMinutes * 60,
             jwt.RefreshTokenDays * 24 * 60 * 60,
-            new UserSummary(user.Id, user.Role, user.Status, user.FullName, user.Email, user.ProfileCompleted));
+            new UserSummary(user.Id, user.Role, user.Status, user.FullName, user.Email,
+                user.ProfileCompleted, user.AthleteListSort));
 }

@@ -25,6 +25,7 @@ public sealed class CurrentUserHandler(IIdentityDbContext db)
                 u.Email,
                 u.CoachId,
                 u.ProfileCompletedAtUtc != null,
+                u.AthleteListSort,
                 minimumSupportedAppVersion))
             .FirstOrDefaultAsync(ct);
 

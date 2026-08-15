@@ -129,4 +129,19 @@ public sealed class User
 
     public void Pause(DateTime nowUtc)      { Status = UserStatus.Paused; UpdatedAtUtc = nowUtc; }
     public void Reactivate(DateTime nowUtc) { Status = UserStatus.Active; UpdatedAtUtc = nowUtc; }
+
+    /// <summary>
+    /// The athlete-list sort order, read out of the <c>UiPreferences</c> json document.
+    /// <para>
+    /// It belongs to the <em>coach</em> doing the sorting, never to the athlete being sorted —
+    /// a distinction that would otherwise surface only as preferences behaving oddly.
+    /// </para>
+    /// </summary>
+    public AthleteListSort? AthleteListSort => UiPreferencesDocument.Read(UiPreferences).AthleteListSort;
+
+    public void SetAthleteListSort(AthleteListSort sort, DateTime nowUtc)
+    {
+        UiPreferences = UiPreferencesDocument.Read(UiPreferences) with { AthleteListSort = sort };
+        UpdatedAtUtc = nowUtc;
+    }
 }

@@ -101,7 +101,14 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     // Implemented explicitly: xUnit's IAsyncLifetime returns Task, while the base
     // WebApplicationFactory.DisposeAsync returns ValueTask. Without this the two
     // signatures collide.
-    Task IAsyncLifetime.InitializeAsync() => _postgres.StartAsync();
+    Task IAsyncLifetime.InitializeAsync() => InitializeCoreAsync();
+
+    /// <summary>
+    /// Override to seed. Touching <see cref="WebApplicationFactory{TEntryPoint}.Services"/>
+    /// builds the host, which migrates the database and seeds the Admin, so a subclass must
+    /// call this first.
+    /// </summary>
+    protected virtual Task InitializeCoreAsync() => _postgres.StartAsync();
 
     async Task IAsyncLifetime.DisposeAsync()
     {

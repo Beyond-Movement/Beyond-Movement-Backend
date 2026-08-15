@@ -30,13 +30,19 @@ public sealed record ChangePasswordRequest(string CurrentPassword, string NewPas
 /// refresh or registration without a follow-up call. The Admin has no such step, so it is
 /// always true for them.
 /// </param>
+/// <param name="AthleteListSort">
+/// The coach's saved athlete-list order, hydrated at login so the choice survives a restart
+/// and follows them to another device (architecture section 6). Null for athletes, who have
+/// no such list, and null for a coach who has not chosen one.
+/// </param>
 public sealed record UserSummary(
     Guid Id,
     UserRole Role,
     UserStatus Status,
     string FullName,
     string Email,
-    bool ProfileCompleted);
+    bool ProfileCompleted,
+    AthleteListSort? AthleteListSort);
 
 public sealed record AuthResponse(
     string AccessToken,
@@ -63,4 +69,5 @@ public sealed record CurrentUserResponse(
     string Email,
     Guid CoachId,
     bool ProfileCompleted,
+    AthleteListSort? AthleteListSort,
     string MinimumSupportedAppVersion);
