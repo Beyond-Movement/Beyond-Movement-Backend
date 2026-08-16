@@ -289,6 +289,60 @@ In deployment these arrive as `Email__Postmark__ServerToken` and `Email__FromAdd
 send throws with Postmark's own reason attached — an unconfirmed sender signature is the
 usual first-time cause.
 
+### Sending real email from a local machine, via Gmail
+
+Only for a developer who needs mail to reach an actual inbox before the API is deployed —
+testing on a real phone, say. **Mailpit is the better tool for ordinary integration work:** it
+shows the message instantly at `http://localhost:8025`, lets you read raw headers, and cannot
+disturb a real person. Reach for this only when Mailpit genuinely will not do.
+
+It needs the shared mailbox's **Google app password** — a 16-character code from
+myaccount.google.com → Security → App passwords, not the account password, and only available
+once 2-Step Verification is on. Ask whoever owns the mailbox; never commit it, and never paste
+it into a chat window, because that burns it and it has to be rotated.
+
+Six keys, because the development defaults point at Mailpit and every one of them has to be
+overridden:
+
+```bash
+cd Beyond-Movement-Backend
+
+dotnet user-secrets set "Email:FromAddress"   "beyondmovementbyn@gmail.com" --project src/BeyondMovement.Api
+dotnet user-secrets set "Email:Smtp:Host"     "smtp.gmail.com"              --project src/BeyondMovement.Api
+dotnet user-secrets set "Email:Smtp:Port"     "587"                         --project src/BeyondMovement.Api
+dotnet user-secrets set "Email:Smtp:UseSsl"   "true"                        --project src/BeyondMovement.Api
+dotnet user-secrets set "Email:Smtp:Username" "beyondmovementbyn@gmail.com" --project src/BeyondMovement.Api
+dotnet user-secrets set "Email:Smtp:Password" "<the 16-character app password, no spaces>" --project src/BeyondMovement.Api
+```
+
+Strip the spaces Google shows in the app password — `abcd efgh ijkl mnop` is `abcdefghijklmnop`.
+
+Leave `Email:FromName` alone. It is empty on purpose: a brand display name over an `@gmail.com`
+address is the shape of phishing, and Gmail files it as spam. This was measured, not guessed.
+
+Restart, and the startup line tells you which transport won:
+
+```
+Email: sending REAL mail via smtp.gmail.com:587 as beyondmovementbyn@gmail.com.
+Messages will reach real inboxes.
+```
+
+If it still says *local mail catcher*, one of the six did not take — most often `Email:FromAddress`,
+without which SMTP is not considered configured at all.
+
+**Expect the invitation to land in spam.** Gmail's consumer SMTP sends from a shared domain with
+no SPF or DKIM of ours, so a recipient who has never corresponded with the address will find it
+filtered. Marking it *Not spam* fixes that inbox and only that inbox. A verified sending domain
+is the only real fix, and it comes with deployment.
+
+To go back to Mailpit, remove the overrides:
+
+```bash
+for key in Email:FromAddress Email:Smtp:Host Email:Smtp:Port Email:Smtp:UseSsl Email:Smtp:Username Email:Smtp:Password; do
+  dotnet user-secrets remove "$key" --project src/BeyondMovement.Api
+done
+```
+
 ### Putting the logo in the emails
 
 Save the logo as `src/BeyondMovement.Api/wwwroot/brand/logo.png` — the API serves that folder
