@@ -97,14 +97,14 @@ public class EmailTemplateTests
     {
         const string logo = "https://api.beyondmovement.com/brand/logo.png";
 
-        var message = EmailTemplates.Invitation("a@example.com", "CODE1-CODE2", Expiry, logoUrl: logo);
+        var message = EmailTemplates.Invitation("a@example.com", "CODE1-CODE2", Expiry, branding: new EmailBranding(LogoUrl: logo));
 
         Assert.Contains(logo, message.HtmlBody);
 
         // Explicit width and height stop Outlook reflowing the masthead before the image loads,
         // and alt text carries the brand when images are switched off.
-        Assert.Contains("width=\"132\"", message.HtmlBody);
-        Assert.Contains("height=\"132\"", message.HtmlBody);
+        Assert.Contains("width=\"104\"", message.HtmlBody);
+        Assert.Contains("height=\"104\"", message.HtmlBody);
         Assert.Contains("alt=\"Beyond Movement\"", message.HtmlBody);
     }
 
@@ -112,11 +112,56 @@ public class EmailTemplateTests
     public void The_plain_text_body_never_depends_on_the_logo()
     {
         var withLogo = EmailTemplates.Invitation("a@example.com", "CODE1-CODE2", Expiry,
-            logoUrl: "https://api.beyondmovement.com/brand/logo.png");
+            branding: new EmailBranding(LogoUrl: "https://api.beyondmovement.com/brand/logo.png"));
         var without = EmailTemplates.Invitation("a@example.com", "CODE1-CODE2", Expiry);
 
         // Whatever happens to the image, the code still has to reach the reader.
         Assert.Equal(without.TextBody, withLogo.TextBody);
         Assert.Contains("CODE1-CODE2", withLogo.TextBody);
+    }
+
+    [Fact]
+    public void The_invitation_carries_no_links_at_all()
+    {
+        var message = EmailTemplates.Invitation("a@example.com", "CODE1-CODE2", Expiry);
+
+        // The code is what the athlete needs. A link to a domain that does not resolve reads
+        // as broken, and any link at all raises the spam score of a message like this.
+        Assert.DoesNotContain("<a href", message.HtmlBody);
+        Assert.DoesNotContain("http", message.TextBody);
+    }
+
+    [Fact]
+    public void No_postal_address_is_invented_for_the_footer()
+    {
+        var message = EmailTemplates.Invitation("a@example.com", "CODE1-CODE2", Expiry);
+
+        // An address in a footer is a factual claim about a real organisation. Until the
+        // business supplies one, the footer carries none rather than a plausible fake.
+        Assert.DoesNotContain("Rue", message.HtmlBody);
+        Assert.DoesNotContain("France", message.HtmlBody);
+    }
+
+    [Fact]
+    public void A_configured_postal_address_appears_in_both_bodies()
+    {
+        const string address = "1 Example Street, Cairo, Egypt";
+
+        var message = EmailTemplates.Invitation("a@example.com", "CODE1-CODE2", Expiry,
+            branding: new EmailBranding(PostalAddress: address));
+
+        Assert.Contains(address, message.HtmlBody);
+        Assert.Contains(address, message.TextBody);
+    }
+
+    [Fact]
+    public void The_invitation_promises_nothing_the_product_does_not_do()
+    {
+        var message = EmailTemplates.Invitation("a@example.com", "CODE1-CODE2", Expiry);
+
+        // Feature claims belong in the product specification first. An email that advertises
+        // screens the app does not have is a promise the athlete arrives expecting.
+        foreach (var claim in new[] { "check-in", "routine", "Unsubscribe" })
+            Assert.DoesNotContain(claim, message.HtmlBody, StringComparison.OrdinalIgnoreCase);
     }
 }

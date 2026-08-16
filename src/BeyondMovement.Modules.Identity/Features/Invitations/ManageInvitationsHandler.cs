@@ -60,7 +60,7 @@ public sealed class ManageInvitationsHandler(
 
         await email.SendAsync(
             EmailTemplates.Invitation(invitation.Email, rawCode, invitation.ExpiresAtUtc,
-                isResend: true, logoUrl: branding.Value.LogoUrl), ct);
+                isResend: true, branding: branding.Value.ToBranding()), ct);
 
         await audit.WriteAsync("InvitationResent", adminUserId, $"Invitation {invitation.Id} resent.", ct);
         logger.LogInformation("Invitation {InvitationId} resent (send #{SendCount})",

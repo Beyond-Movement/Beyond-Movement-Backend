@@ -52,7 +52,7 @@ public sealed class CreateInvitationHandler(
 
         await email.SendAsync(
             EmailTemplates.Invitation(address, rawCode, invitation.ExpiresAtUtc,
-                logoUrl: branding.Value.LogoUrl), ct);
+                branding: branding.Value.ToBranding()), ct);
 
         await audit.WriteAsync("InvitationSent", adminUserId, $"Invitation {invitation.Id} issued.", ct);
 

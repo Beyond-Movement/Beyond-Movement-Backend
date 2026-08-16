@@ -7,214 +7,300 @@ namespace BeyondMovement.Modules.Identity.Services;
 /// reviewed without reading handler code.
 /// <para>
 /// Email HTML is not web HTML. Layout is table-based with inline styles because Outlook
-/// ignores most of a stylesheet, the width is capped at 600px, and there are no external
-/// images — remote images are blocked by default in most clients, so anything that matters
-/// is text.
-/// </para>
-/// <para>
-/// The brand mark is set as type rather than an image for the same reason. Swap in a real
-/// logo only once it can be hosted on a stable HTTPS URL.
+/// renders through Word and ignores most of a stylesheet; widths are fixed and repeated as
+/// attributes; <c>mso-line-height-rule</c> appears wherever line height matters. The only
+/// stylesheet is a small media query, which clients that ignore it simply fall back from.
 /// </para>
 /// </summary>
 public static class EmailTemplates
 {
-    // Taken from the Beyond Movement logo: a royal-blue wordmark on a pale yellow disc.
-    private const string Brand = "#3A4BA8";
-    private const string BrandTint = "#F8F3B2";
-    private const string Ink = "#1A1A2E";
-    private const string Muted = "#6B7280";
-    private const string Line = "#E5E7EB";
-    private const string Canvas = "#F4F4F7";
+    // Read off the logo: royal blue wordmark on a pale yellow disc.
+    private const string Brand = "#3b4cb8";
+    private const string BrandTint = "#f7f2ad";
+    private const string Ink = "#201e1d";
+    private const string Body = "#4a4745";
+    private const string Muted = "#6b6764";
+    private const string Rule = "#cfcdc9";
+    private const string Surface = "#f3f2f2";
+    private const string Canvas = "#e8e7e4";
+    private const string FooterInk = "#dcdff6";
 
-    /// <param name="logoUrl">
-    /// Absolute HTTPS address of the logo. When empty the masthead falls back to the wordmark
-    /// set as type. A data: URI will not do — Gmail strips them, so the logo would vanish for
-    /// most recipients while looking fine in testing.
-    /// </param>
+    private const int LogoPixels = 104;
+
     public static EmailMessage Invitation(
-        string to, string code, DateTime expiresAtUtc, bool isResend = false, string? logoUrl = null)
+        string to,
+        string code,
+        DateTime expiresAtUtc,
+        bool isResend = false,
+        EmailBranding? branding = null)
     {
+        branding ??= EmailBranding.None;
+
         var subject = isResend
             ? "Your new Beyond Movement invitation code"
-            : "You have been invited to Beyond Movement";
+            : "You're invited to Beyond Movement";
 
         var opening = isResend
-            ? "Here is your new invitation code. Any code you received earlier no longer works."
-            : "Your coach has invited you to join Beyond Movement.";
+            ? "Here is your new code. Any code you received earlier no longer works."
+            : "Focus, pressure, recovery, confidence &mdash; the work that happens between sessions. Your seat is reserved with the code below.";
 
         var expiry = expiresAtUtc.ToString("d MMMM yyyy");
 
-        var body = $"""
-            <p style="margin:0 0 24px;font-size:16px;line-height:24px;color:{Ink};">{Encode(opening)}</p>
+        var preheader = isResend
+            ? "Your new Beyond Movement invitation code is inside."
+            : "Your coach has invited you to Beyond Movement. One code, one tap, and your mental training starts.";
 
-            <p style="margin:0 0 12px;font-size:14px;line-height:20px;color:{Muted};">Your invitation code</p>
-
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
+        var content = $$"""
               <tr>
-                <td style="background:{Canvas};border:1px solid {Line};border-radius:8px;padding:18px 28px;
-                           font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
-                           font-size:26px;letter-spacing:3px;font-weight:700;color:{Ink};">
-                  {Encode(code)}
+                <td class="px" style="padding:44px 40px 0 40px;">
+                  <h1 class="h1" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:38px;line-height:42px;mso-line-height-rule:exactly;letter-spacing:-1px;color:{{Ink}};font-weight:bold;">You're invited.</h1>
+                  <p style="margin:20px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;mso-line-height-rule:exactly;color:{{Body}};">{{opening}}</p>
                 </td>
               </tr>
-            </table>
 
-            <p style="margin:0 0 8px;font-size:16px;line-height:24px;color:{Ink};">
-              Open the Beyond Movement app, choose <strong>Enter invitation code</strong>, and type it in.
-            </p>
-            <p style="margin:0 0 24px;font-size:16px;line-height:24px;color:{Ink};">
-              This code works once and expires on <strong>{Encode(expiry)}</strong>.
-            </p>
+              <tr>
+                <td class="px" style="padding:32px 40px 0 40px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;">
+                    <tr>
+                      <td style="background-color:#ffffff;border:2px solid {{Brand}};padding:22px 24px;">
+                        <p style="margin:0 0 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;letter-spacing:3px;text-transform:uppercase;color:{{Brand}};font-weight:bold;">Invitation code</p>
+                        <p class="code" style="margin:0;font-family:'Courier New',Courier,monospace;font-size:32px;line-height:36px;mso-line-height-rule:exactly;letter-spacing:6px;color:{{Brand}};font-weight:bold;">{{Encode(code)}}</p>
+                      </td>
+                    </tr>
+                  </table>
+                  <p style="margin:12px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:{{Muted}};">Works once &middot; Expires <strong style="color:{{Ink}};">{{Encode(expiry)}}</strong></p>
+                </td>
+              </tr>
 
-            <p style="margin:0;font-size:14px;line-height:20px;color:{Muted};">
-              If you were not expecting this invitation, you can ignore this email — no account is
-              created until the code is used.
-            </p>
+              <tr>
+                <td class="px" style="padding:44px 40px 0 40px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;border-top:2px solid {{Ink}};">
+                    {{Step("01", "Open the Beyond Movement app on your phone.")}}
+                    {{Divider()}}
+                    {{Step("02", "Choose <strong>Enter invitation code</strong>.")}}
+                    {{Divider()}}
+                    {{Step("03", "Type the code above and finish setting up your profile.")}}
+                    <tr><td colspan="2" style="border-top:2px solid {{Ink}};font-size:0;line-height:0;">&nbsp;</td></tr>
+                  </table>
+                </td>
+              </tr>
+
+              <tr>
+                <td class="px" style="padding:36px 40px 40px 40px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;">
+                    <tr>
+                      <td style="background-color:{{Canvas}};padding:18px 20px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:{{Body}};">Not expecting this? Ignore the email &mdash; no account exists until the code is used.</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
             """;
 
         var text = $"""
-            {opening}
+            {(isResend
+                ? "Here is your new code. Any code you received earlier no longer works."
+                : "Your coach has invited you to join Beyond Movement.")}
 
             Your invitation code: {code}
 
-            Open the Beyond Movement app, choose "Enter invitation code", and type it in.
-            This code works once and expires on {expiry}.
+            Works once. Expires {expiry}.
 
-            If you were not expecting this invitation, you can ignore this email - no account is
-            created until the code is used.
+            1. Open the Beyond Movement app on your phone.
+            2. Choose "Enter invitation code".
+            3. Type the code above and finish setting up your profile.
+
+            Not expecting this? Ignore this email - no account exists until the code is used.
             """;
 
-        return new EmailMessage(to, subject, WrapHtml(body, logoUrl), WrapText(text));
+        return new EmailMessage(to, subject, Wrap(preheader, content, branding), WrapText(text, branding));
     }
 
-    public static EmailMessage PasswordReset(string to, string link, int lifetimeHours, string? logoUrl = null)
+    public static EmailMessage PasswordReset(
+        string to, string link, int lifetimeHours, EmailBranding? branding = null)
     {
-        const string subject = "Reset your Beyond Movement password";
+        branding ??= EmailBranding.None;
 
+        const string subject = "Reset your Beyond Movement password";
         var hours = lifetimeHours == 1 ? "1 hour" : $"{lifetimeHours} hours";
 
-        var body = $"""
-            <p style="margin:0 0 24px;font-size:16px;line-height:24px;color:{Ink};">
-              We received a request to reset your Beyond Movement password.
-            </p>
-
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
+        var content = $$"""
               <tr>
-                <td style="background:{Brand};border-radius:8px;">
-                  <a href="{Encode(link)}"
-                     style="display:inline-block;padding:14px 32px;font-size:16px;font-weight:600;
-                            color:#FFFFFF;text-decoration:none;">Set a new password</a>
+                <td class="px" style="padding:44px 40px 0 40px;">
+                  <h1 class="h1" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:38px;line-height:42px;mso-line-height-rule:exactly;letter-spacing:-1px;color:{{Ink}};font-weight:bold;">Reset your password.</h1>
+                  <p style="margin:20px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;mso-line-height-rule:exactly;color:{{Body}};">We received a request to set a new password on your Beyond Movement account.</p>
                 </td>
               </tr>
-            </table>
 
-            <p style="margin:0 0 24px;font-size:16px;line-height:24px;color:{Ink};">
-              This link can be used once and expires in <strong>{hours}</strong>.
-            </p>
+            {{ActionButton(link, "Set a new password")}}
 
-            <p style="margin:0 0 8px;font-size:14px;line-height:20px;color:{Muted};">
-              If the button does not open the app, copy this address into your phone's browser:
-            </p>
-            <p style="margin:0 0 24px;font-size:13px;line-height:20px;color:{Muted};word-break:break-all;">
-              {Encode(link)}
-            </p>
+              <tr>
+                <td class="px" style="padding:28px 40px 0 40px;">
+                  <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:{{Muted}};">Works once &middot; Expires in <strong style="color:{{Ink}};">{{hours}}</strong></p>
+                  <p style="margin:16px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:{{Muted}};">If the button does not open the app, copy this address into your phone's browser:</p>
+                  <p style="margin:6px 0 0 0;font-family:'Courier New',Courier,monospace;font-size:12px;line-height:20px;mso-line-height-rule:exactly;color:{{Muted}};word-break:break-all;">{{Encode(link)}}</p>
+                </td>
+              </tr>
 
-            <p style="margin:0;font-size:14px;line-height:20px;color:{Muted};">
-              <strong>If you did not request this, ignore this email.</strong> Your password will not
-              change, and nobody can use this link without access to this inbox.
-            </p>
+              <tr>
+                <td class="px" style="padding:36px 40px 40px 40px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;">
+                    <tr>
+                      <td style="background-color:{{Canvas}};padding:18px 20px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:{{Body}};"><strong style="color:{{Ink}};">If you did not request this, ignore this email.</strong> Your password will not change, and nobody can use the link without access to this inbox.</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
             """;
 
         var text = $"""
-            We received a request to reset your Beyond Movement password.
+            We received a request to set a new password on your Beyond Movement account.
 
-            Open this link on your phone to set a new one:
+            Open this link on your phone:
             {link}
 
-            The link can be used once and expires in {hours}.
+            Works once. Expires in {hours}.
 
             If you did not request this, ignore this email. Your password will not change, and
-            nobody can use this link without access to this inbox.
+            nobody can use the link without access to this inbox.
             """;
 
-        return new EmailMessage(to, subject, WrapHtml(body, logoUrl), WrapText(text));
+        return new EmailMessage(to, subject, Wrap("Set a new Beyond Movement password.", content, branding), WrapText(text, branding));
     }
+
+    // ---------------------------------------------------------------- pieces
 
     /// <summary>
     /// The masthead. An image when a hosted logo is configured, the wordmark set as type
-    /// otherwise — and the type version is also what shows when a recipient has images turned
-    /// off, which is the default in several clients.
+    /// otherwise &mdash; which is also what shows when a recipient blocks images, the default
+    /// in several clients.
     /// </summary>
     private static string Masthead(string? logoUrl) =>
         string.IsNullOrWhiteSpace(logoUrl)
             ? $"""
-               <div style="font-family:Helvetica,Arial,sans-serif;font-size:22px;font-weight:700;
-                           letter-spacing:1px;color:{Brand};">Beyond Movement</div>
-               <div style="font-family:Helvetica,Arial,sans-serif;font-size:10px;
-                           letter-spacing:3px;color:{Brand};opacity:0.75;margin-top:6px;">
-                 MENTAL PERFORMANCE
-               </div>
+                         <td valign="middle" style="font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:30px;mso-line-height-rule:exactly;letter-spacing:1px;color:{BrandTint};font-weight:bold;">Beyond Movement</td>
                """
             : $"""
-               <img src="{Encode(logoUrl)}" alt="Beyond Movement" width="132" height="132"
-                    style="display:block;border:0;outline:none;text-decoration:none;
-                           width:132px;height:132px;max-width:132px;">
+                         <td width="{LogoPixels}" valign="middle" style="width:{LogoPixels}px;padding:0 20px 0 0;">
+                           <img src="{Encode(logoUrl)}" width="{LogoPixels}" height="{LogoPixels}" alt="Beyond Movement" style="display:block;border:0;outline:none;text-decoration:none;width:{LogoPixels}px;height:{LogoPixels}px;">
+                         </td>
+                         <td valign="middle" style="font-family:Arial,Helvetica,sans-serif;font-size:20px;line-height:20px;mso-line-height-rule:exactly;letter-spacing:3px;text-transform:uppercase;color:{BrandTint};font-weight:bold;">Mental performance<br>coaching</td>
                """;
 
-    /// <summary>Shared HTML frame: masthead, content well, footer.</summary>
-    private static string WrapHtml(string content, string? logoUrl = null) =>
+    /// <summary>
+    /// Used only by the password reset, where the link is the entire purpose of the message.
+    /// The invitation deliberately has no button: the code is what the athlete needs, and a
+    /// button pointing at a domain that does not resolve reads as broken, or as phishing.
+    /// </summary>
+    private static string ActionButton(string url, string label) =>
         $"""
-           <!DOCTYPE html>
-           <html lang="en">
-           <head>
-             <meta charset="utf-8">
-             <meta name="viewport" content="width=device-width,initial-scale=1">
-             <title>Beyond Movement</title>
-           </head>
-           <body style="margin:0;padding:0;background:{Canvas};">
-             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-                    style="background:{Canvas};padding:32px 16px;">
-               <tr>
-                 <td align="center">
-                   <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"
-                          style="max-width:600px;width:100%;background:#FFFFFF;border-radius:12px;
-                                 border:1px solid {Line};">
-                     <tr>
-                       <td style="padding:28px 40px;background:{BrandTint};border-radius:12px 12px 0 0;
-                                  border-bottom:1px solid {Line};" align="center">
-           {Masthead(logoUrl)}
-                       </td>
-                     </tr>
-                     <tr>
-                       <td style="padding:32px 40px;font-family:Helvetica,Arial,sans-serif;">
-           {content}
-                       </td>
-                     </tr>
-                     <tr>
-                       <td style="padding:20px 40px 28px;border-top:1px solid {Line};
-                                  font-family:Helvetica,Arial,sans-serif;font-size:12px;
-                                  line-height:18px;color:{Muted};">
-                         Sent by Beyond Movement. Please do not reply to this message.
-                       </td>
-                     </tr>
-                   </table>
-                 </td>
-               </tr>
-             </table>
-           </body>
-           </html>
-           """;
+                 <tr>
+                   <td class="px" style="padding:28px 40px 0 40px;">
+                     <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                       <tr>
+                         <td bgcolor="{Brand}" style="background-color:{Brand};padding:16px 28px;">
+                           <a href="{Encode(url)}" style="display:block;white-space:nowrap;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;mso-line-height-rule:exactly;letter-spacing:1px;text-transform:uppercase;font-weight:bold;color:{BrandTint};text-decoration:none;">{label} &rarr;</a>
+                         </td>
+                       </tr>
+                     </table>
+                   </td>
+                 </tr>
+               """;
 
-    /// <summary>Shared plain-text frame, for clients that refuse HTML.</summary>
-    private static string WrapText(string content) =>
+    private static string Step(string number, string text) =>
         $"""
-         BEYOND MOVEMENT - Mental Performance
-
-         {content}
-
-         --
-         Sent by Beyond Movement. Please do not reply to this message.
+             <tr>
+               <td width="44" valign="top" style="width:44px;padding:18px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:{Brand};font-weight:bold;">{number}</td>
+               <td valign="top" style="padding:18px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:22px;mso-line-height-rule:exactly;color:{Ink};">{text}</td>
+             </tr>
          """;
+
+    private static string Divider() =>
+        $"""<tr><td colspan="2" style="border-top:1px solid {Rule};font-size:0;line-height:0;">&nbsp;</td></tr>""";
+
+    private static string Footer(EmailBranding branding)
+    {
+        var address = string.IsNullOrWhiteSpace(branding.PostalAddress)
+            ? string.Empty
+            : $"<br>{Encode(branding.PostalAddress)}";
+
+        return $"""
+                  <tr>
+                    <td class="px" style="background-color:{Brand};padding:28px 40px;">
+                      <p style="margin:0 0 6px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;mso-line-height-rule:exactly;letter-spacing:2px;text-transform:uppercase;color:{BrandTint};font-weight:bold;">Beyond Movement</p>
+                      <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;mso-line-height-rule:exactly;color:{FooterInk};">Sent by Beyond Movement. Please do not reply to this message.{address}</p>
+                    </td>
+                  </tr>
+                """;
+    }
+
+    /// <summary>The shared frame: preheader, masthead, content, footer.</summary>
+    private static string Wrap(string preheader, string content, EmailBranding branding) =>
+        $$"""
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <meta name="color-scheme" content="light dark">
+          <meta name="supported-color-schemes" content="light dark">
+          <title>Beyond Movement</title>
+          <!--[if mso]>
+          <style>body,table,td,a{font-family:Arial,Helvetica,sans-serif !important;}</style>
+          <![endif]-->
+          <style>
+            @media only screen and (max-width:620px){
+              .px{padding-left:24px !important;padding-right:24px !important;}
+              .h1{font-size:30px !important;line-height:34px !important;}
+              .code{font-size:26px !important;letter-spacing:4px !important;}
+            }
+          </style>
+          </head>
+          <body style="margin:0;padding:0;background-color:{{Canvas}};">
+          <span style="display:none;font-size:1px;color:{{Canvas}};line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">{{Encode(preheader)}}</span>
+
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:{{Canvas}};">
+          <tr><td align="center" style="padding:32px 12px;">
+
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;max-width:600px;background-color:{{Surface}};">
+
+            <tr>
+              <td class="px" style="background-color:{{Brand}};padding:36px 40px 32px 40px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;">
+                  <tr>
+          {{Masthead(branding.LogoUrl)}}
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+          {{content}}
+
+          {{Footer(branding)}}
+
+          </table>
+
+          </td></tr>
+          </table>
+
+          </body>
+          </html>
+          """;
+
+    private static string WrapText(string content, EmailBranding branding)
+    {
+        var address = string.IsNullOrWhiteSpace(branding.PostalAddress)
+            ? string.Empty
+            : $"\n{branding.PostalAddress}";
+
+        return $"""
+            BEYOND MOVEMENT - Mental performance coaching
+
+            {content}
+
+            --
+            Sent by Beyond Movement. Please do not reply to this message.{address}
+            """;
+    }
 
     // Codes and links are generated server-side, but encoding is not conditional on trust.
     private static string Encode(string value) => WebUtility.HtmlEncode(value);

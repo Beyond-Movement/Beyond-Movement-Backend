@@ -43,7 +43,7 @@ public sealed class ForgotPasswordHandler(
 
         await email.SendAsync(
             EmailTemplates.PasswordReset(user.Email, link, PasswordResetToken.LifetimeHours,
-                logoUrl: branding.Value.LogoUrl), ct);
+                branding: branding.Value.ToBranding()), ct);
 
         // Note the user id, never the address or the token itself (CLAUDE.md section 7).
         logger.LogInformation("Password reset token issued for user {UserId}", user.Id);
