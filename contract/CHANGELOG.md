@@ -9,7 +9,8 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ## Phase 3 — Onboarding alignment
 
-All six points from the mobile review, applied. **Four breaking changes.**
+All six points from the mobile review, plus the removal of `termsAccepted`. **Five breaking
+changes.**
 
 ### Breaking · `POST /auth/register` no longer takes `fullName`
 
@@ -81,6 +82,27 @@ countdown UI should render minutes, not seconds.
 > code out of an email, but the window is per IP, so everyone behind one office or campus NAT
 > shares the budget. If that turns out to bite, the limit is configurable per environment via
 > `RateLimits:InvitationValidationPerHour` — no code change.
+
+### Breaking · `termsAccepted` removed from `POST /auth/register`
+
+The field is gone from `RegisterRequest`, and **`TERMS_NOT_ACCEPTED` is removed from the
+error-code enum**. Sending `termsAccepted` is now ignored rather than validated. Registration
+can no longer fail for this reason.
+
+**This supersedes the phase 1.2 rule** that `termsAccepted` must be true, and it also
+supersedes `software-architecture.md` §891 ("Both methods require acceptance of the Terms of
+Service and Privacy Policy"), its registration sequence diagram in §876, and
+`ui-ux-design-decisions.md` §809. Those documents now describe a requirement the API does not
+enforce, and should be amended so the spec and the contract agree.
+
+**Decided by the client:** the app will ship with no Terms of Service and no Privacy Policy, so
+there is nothing to accept and no consent to record.
+
+> **Open, and not a backend concern:** the Apple App Store and Google Play both require a
+> privacy policy URL at submission for any app that collects personal data. This one collects
+> email, full name, date of birth and gender. Nothing in the API blocks release; the requirement
+> lands at store submission and is noted here only so it is not a surprise then.
+> `product-specification.md` §978 and §1093 also still assume a policy exists before launch.
 
 ### Search now matches email as well
 
@@ -283,6 +305,8 @@ Athlete: POST /athletes/me/profile        → profileCompleted becomes true
   the invitation returns `GOOGLE_EMAIL_MISMATCH`. No password or name is required on that path —
   Google's display name is used as an editable prefill.
 - **`termsAccepted` must be true**, or `TERMS_NOT_ACCEPTED`.
+  *(Superseded by phase 3: the field and the error code are both removed. The app ships with
+  no Terms of Service and no Privacy Policy, so there is nothing to accept.)*
 - **Register returns the same token pair as login**, so the athlete is signed in immediately —
   but `profileCompleted` is false. Route to **Complete Profile**, not Home.
 - **Resending replaces the code.** The previously emailed code stops working at once.
@@ -301,7 +325,7 @@ Athlete: POST /athletes/me/profile        → profileCompleted becomes true
 | `INVITATION_REVOKED` | 400 | Cancelled by the coach |
 | `REGISTRATION_TOKEN_INVALID` | 400 | Registration session expired — re-enter the code |
 | `GOOGLE_EMAIL_MISMATCH` | 400 | Google account's email is not the invited address |
-| `TERMS_NOT_ACCEPTED` | 400 | `termsAccepted` was false |
+| `TERMS_NOT_ACCEPTED` | 400 | `termsAccepted` was false — **removed in phase 3** |
 | `EMAIL_ALREADY_REGISTERED` | 409 | An account already exists for that address |
 | `PROFILE_ALREADY_COMPLETED` | 409 | Reserved; profile edits are currently allowed |
 | `TOO_MANY_REQUESTS` | 429 | Rate limit hit |

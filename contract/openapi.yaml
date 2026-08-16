@@ -24,11 +24,10 @@ paths:
       description: 'Establishes authentication and nothing else — it does not collect a name. Post the
         registrationToken from /invitations/validate together with EITHER a password OR a googleIdToken
         — exactly one, never both. With Google, the account''s verified email must match the invited address
-        or the request is refused with GOOGLE_EMAIL_MISMATCH. termsAccepted must be true. Returns the
-        same token pair as login, so the app is signed in immediately, but user.profileCompleted is false
-        and user.fullName is null (or Google''s display name, as a prefill): route to Complete Profile,
-        not Home. The invitation is redeemed only on success, and re-posting the same token afterwards
-        returns INVITATION_USED.'
+        or the request is refused with GOOGLE_EMAIL_MISMATCH. Returns the same token pair as login, so
+        the app is signed in immediately, but user.profileCompleted is false and user.fullName is null
+        (or Google''s display name, as a prefill): route to Complete Profile, not Home. The invitation
+        is redeemed only on success, and re-posting the same token afterwards returns INVITATION_USED.'
       operationId: Register
       requestBody:
         content:
@@ -855,7 +854,6 @@ components:
           - INVITATION_REVOKED
           - REGISTRATION_TOKEN_INVALID
           - GOOGLE_EMAIL_MISMATCH
-          - TERMS_NOT_ACCEPTED
           - EMAIL_ALREADY_REGISTERED
           - PROFILE_ALREADY_COMPLETED
           - TOO_MANY_REQUESTS
@@ -1229,13 +1227,10 @@ components:
     RegisterRequest:
       required:
       - registrationToken
-      - termsAccepted
       type: object
       properties:
         registrationToken:
           type: string
-        termsAccepted:
-          type: boolean
         password:
           type:
           - 'null'

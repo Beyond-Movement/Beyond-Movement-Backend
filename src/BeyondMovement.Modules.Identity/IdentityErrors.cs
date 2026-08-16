@@ -75,10 +75,6 @@ public static class IdentityErrors
         new(ApiErrorCodes.GoogleEmailMismatch,
             "Your Google account's email does not match the invited address.", Status.BadRequest);
 
-    public static readonly Error TermsNotAccepted =
-        new(ApiErrorCodes.TermsNotAccepted,
-            "The Terms of Service and Privacy Policy must be accepted.", Status.BadRequest);
-
     public static readonly Error EmailAlreadyRegistered =
         new(ApiErrorCodes.EmailAlreadyRegistered, "An account already exists for this address.", Status.Conflict);
 

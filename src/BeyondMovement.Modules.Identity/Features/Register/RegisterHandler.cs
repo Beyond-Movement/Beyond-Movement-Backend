@@ -40,9 +40,6 @@ public sealed class RegisterHandler(
     {
         var now = clock.UtcNow;
 
-        if (!request.TermsAccepted)
-            return Result<RegistrationResult>.Failure(IdentityErrors.TermsNotAccepted);
-
         var ticket = registrationTokens.Validate(request.RegistrationToken);
 
         if (ticket is null)

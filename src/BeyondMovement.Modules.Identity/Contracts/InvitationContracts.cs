@@ -36,7 +36,6 @@ public sealed record ValidateInvitationResponse(
 /// </summary>
 public sealed record RegisterRequest(
     string RegistrationToken,
-    bool TermsAccepted,
     string? Password = null,
     string? GoogleIdToken = null);
 

@@ -64,7 +64,7 @@ public static class RegistrationEndpoints
             "registrationToken from /invitations/validate together with EITHER a password OR a " +
             "googleIdToken — exactly one, never both. With Google, the account's verified email " +
             "must match the invited address or the request is refused with GOOGLE_EMAIL_MISMATCH. " +
-            "termsAccepted must be true. Returns the same token pair as login, so the app is " +
+            "Returns the same token pair as login, so the app is " +
             "signed in immediately, but user.profileCompleted is false and user.fullName is null " +
             "(or Google's display name, as a prefill): route to Complete Profile, not Home. The " +
             "invitation is redeemed only on success, and re-posting the same token afterwards " +

@@ -115,7 +115,6 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
         var registerResponse = await client.PostAsJsonAsync("/api/v1/auth/register", new
         {
             registrationToken = validated.RegistrationToken,
-            termsAccepted = true,
             password = "Athlete#Strong2026"
         });
 
@@ -170,7 +169,6 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
         var registered = await client.PostAsJsonAsync("/api/v1/auth/register", new
         {
             registrationToken = validated.RegistrationToken,
-            termsAccepted = true,
             password
         });
         await AssertSucceededAsync(registered);
@@ -224,7 +222,6 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
         var response = await client.PostAsJsonAsync("/api/v1/auth/register", new
         {
             registrationToken = validated.RegistrationToken,
-            termsAccepted = true,
             googleIdToken = "any"
         });
 
@@ -253,7 +250,6 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
         var response = await factory.CreateClient().PostAsJsonAsync("/api/v1/auth/register", new
         {
             registrationToken = validated.RegistrationToken,
-            termsAccepted = true,
             password = "Athlete#Strong2026"
         });
         await AssertSucceededAsync(response);
@@ -298,7 +294,6 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
         var payload = new
         {
             registrationToken = validated.RegistrationToken,
-            termsAccepted = true,
             password = "Athlete#Strong2026"
         };
 
@@ -328,7 +323,6 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
         var response = await factory.CreateClient().PostAsJsonAsync("/api/v1/auth/register", new
         {
             registrationToken = validated.RegistrationToken,
-            termsAccepted = true,
             googleIdToken = "any"
         });
 
@@ -336,24 +330,6 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("GOOGLE_EMAIL_MISMATCH", body.GetProperty("errorCode").GetString());
-    }
-
-    [Fact]
-    public async Task Registration_requires_accepting_the_terms()
-    {
-        var admin = await AdminClientAsync();
-        var (_, code) = await InviteAsync(admin, "athlete.terms@nowhere.test");
-        var validated = await ValidateAsync(code);
-
-        var response = await factory.CreateClient().PostAsJsonAsync("/api/v1/auth/register", new
-        {
-            registrationToken = validated.RegistrationToken,
-            termsAccepted = false,
-            password = "Athlete#Strong2026"
-        });
-
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("TERMS_NOT_ACCEPTED", body.GetProperty("errorCode").GetString());
     }
 
     [Fact]
@@ -366,7 +342,6 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
         var response = await factory.CreateClient().PostAsJsonAsync("/api/v1/auth/register", new
         {
             registrationToken = validated.RegistrationToken,
-            termsAccepted = true,
             password = "Athlete#Strong2026",
             googleIdToken = "any"
         });
@@ -460,7 +435,6 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
         var registered = await client.PostAsJsonAsync("/api/v1/auth/register", new
         {
             registrationToken = validated.RegistrationToken,
-            termsAccepted = true,
             password = "Athlete#Strong2026"
         });
 
@@ -510,7 +484,6 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
         var registered = await factory.CreateClient().PostAsJsonAsync("/api/v1/auth/register", new
         {
             registrationToken = validated.RegistrationToken,
-            termsAccepted = true,
             password = "Athlete#Strong2026",
             fullName = "Should Be Ignored"
         });
