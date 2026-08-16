@@ -16,7 +16,7 @@ namespace BeyondMovement.IntegrationTests;
 public sealed class AthleteApiFactory : ApiFactory
 {
     public const string AthletePassword = "Athlete#Strong2026";
-    public const int SeededAthletes = 4;
+    public const int SeededAthletes = 5;
 
     /// <summary>An athlete belonging to a different coach. Must be invisible to the seeded Admin.</summary>
     public static Guid ForeignAthleteId { get; private set; }
@@ -40,11 +40,16 @@ public sealed class AthleteApiFactory : ApiFactory
         await AddAthleteAsync(db, scope.ServiceProvider, "sam@nowhere.test", "Sam Reed",
             "Athletics", new DateOnly(2000, 6, 3), baseTime.AddDays(2), status: UserStatus.Paused);
 
-        // Registered but never finished Complete Profile, so no sport and no date of birth.
-        // Proves sport-sorting puts blanks last rather than first, and that the coach can still
-        // see an athlete who has not filled anything in.
+        // Registered through Google, which supplied a display name, then never finished
+        // Complete Profile: named, but with no sport and no date of birth. Proves sport-sorting
+        // puts blanks last rather than first.
         await AddAthleteAsync(db, scope.ServiceProvider, "robin@nowhere.test", "Robin Vale",
             sport: null, dateOfBirth: null, baseTime.AddDays(3));
+
+        // Registered with a password and abandoned before Complete Profile, so there is no name
+        // at all. Created mid-way through the run so it does not disturb the newest/oldest ends.
+        await AddAthleteAsync(db, scope.ServiceProvider, "nameless@nowhere.test", fullName: null,
+            sport: null, dateOfBirth: null, baseTime.AddHours(12));
 
         ForeignAthleteId = await AddAthleteAsync(db, scope.ServiceProvider,
             "foreign@nowhere.test", "Foreign Athlete", "Cycling", null, baseTime,
@@ -55,7 +60,7 @@ public sealed class AthleteApiFactory : ApiFactory
         AppDbContext db,
         IServiceProvider services,
         string email,
-        string fullName,
+        string? fullName,
         string? sport,
         DateOnly? dateOfBirth,
         DateTime? createdAtUtc = null,

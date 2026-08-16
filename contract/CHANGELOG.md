@@ -82,6 +82,21 @@ countdown UI should render minutes, not seconds.
 > shares the budget. If that turns out to bite, the limit is configurable per environment via
 > `RateLimits:InvitationValidationPerHour` — no code change.
 
+### Search now matches email as well
+
+`GET /athletes?search=` matches **full name, email or sport**. Email was added because an
+athlete who has registered but not completed their profile has no name, and would otherwise be
+unfindable in the coach's own list. This supersedes the phase 2 table, which says "full name or
+sport".
+
+### Decisions closed
+
+| Question | Decision |
+|---|---|
+| Should `sport` become an enum? | **No.** Required free text for v1 — the mobile UI already takes text entry. Revisit only if a fixed list is agreed with the client. |
+| Admin athlete-edit endpoint? | **Deferred.** Outside phase 3. Athletes still edit their own profile by re-posting `POST /athletes/me/profile`. |
+| Hide athletes with incomplete profiles from the coach's list? | **No, keep them visible** with `fullName: null`. Mobile shows the email instead. The coach invited them and needs to see they have not finished. |
+
 ### Note on the path
 
 The contract lives at **`contract/openapi.yaml`**, singular — not `contracts/`.
@@ -119,6 +134,10 @@ Query parameters, all optional, each with a documented default in the contract:
 | `sort` | `NameAsc` \| `NameDesc` \| `Sport` \| `NewestFirst` \| `OldestFirst` | `NameAsc` |
 | `page` | 1-based | `1` |
 | `pageSize` | 1–100 | `20` |
+
+> **Superseded by phase 3:** `search` also matches **email**, so an athlete who has not
+> completed their profile — and therefore has no name — is still findable. The table is left as
+> written, to keep the record of what phase 2 actually shipped.
 
 - **Search is trimmed, case-insensitive, and matches any part of the value.** `%` and `_` are
   matched literally, so a search for `%` finds nothing rather than everything.

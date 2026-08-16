@@ -46,8 +46,20 @@ public sealed class AthleteManagementTests(AthleteApiFactory factory) : IClassFi
         return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 
-    private static string[] Names(JsonElement page) =>
-        [.. page.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("fullName").GetString()!)];
+    /// <summary>
+    /// Null entries are real: an athlete who has not completed their profile has no name, and
+    /// the list still shows them. Keeping the null here rather than substituting a placeholder
+    /// is what lets the ordering assertions say where those rows belong.
+    /// </summary>
+    private static string?[] Names(JsonElement page) =>
+        [.. page.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("fullName").GetString())];
+
+    /// <summary>
+    /// Compares as a sequence, so a null name is an ordinary element rather than something the
+    /// assertion overloads refuse to take.
+    /// </summary>
+    private static void AssertNames(JsonElement page, params string?[] expected) =>
+        Assert.Equal<IEnumerable<string?>>(expected, Names(page));
 
     // ------------------------------------------------------------------ list
 
@@ -71,7 +83,7 @@ public sealed class AthleteManagementTests(AthleteApiFactory factory) : IClassFi
 
         var page = await ListAsync(admin, "?search=%20%20oRDaN%20%20");   // "  oRDaN  " inside "Jordan"
 
-        Assert.Equal(["Jordan Blake"], Names(page));
+        AssertNames(page, "Jordan Blake");
     }
 
     [Fact]
@@ -81,7 +93,33 @@ public sealed class AthleteManagementTests(AthleteApiFactory factory) : IClassFi
 
         var page = await ListAsync(admin, "?search=tennis");
 
-        Assert.Equal(["Alex Thompson"], Names(page));
+        AssertNames(page, "Alex Thompson");
+    }
+
+    [Fact]
+    public async Task Search_also_matches_the_email()
+    {
+        var admin = await AdminClientAsync();
+
+        var page = await ListAsync(admin, "?search=jordan@nowhere");
+
+        AssertNames(page, "Jordan Blake");
+    }
+
+    [Fact]
+    public async Task An_athlete_with_no_name_yet_is_still_listed_and_findable_by_email()
+    {
+        var admin = await AdminClientAsync();
+
+        // This athlete registered with a password and stopped, so there is no name to search
+        // for at all. Without the email fallback the coach could not find their own invitee.
+        var page = await ListAsync(admin, "?search=nameless@nowhere");
+        var items = page.GetProperty("items").EnumerateArray().ToList();
+
+        // A null name is the list's own signal that the athlete has not finished: the row
+        // carries no profileCompleted flag, so the app shows the email in its place.
+        var athlete = Assert.Single(items);
+        Assert.Equal(JsonValueKind.Null, athlete.GetProperty("fullName").ValueKind);
     }
 
     [Fact]
@@ -128,8 +166,9 @@ public sealed class AthleteManagementTests(AthleteApiFactory factory) : IClassFi
 
         var names = Names(await ListAsync(admin, "?sort=Sport"));
 
-        // Otherwise a blank sport would head the list and look like a bug to the coach.
-        Assert.Equal("Robin Vale", names[^1]);
+        // Otherwise a blank sport would head the list and look like a bug to the coach. Two
+        // athletes have no sport — one named, one not — and both belong at the end.
+        Assert.Equal<IEnumerable<string?>>(["Robin Vale", null], names[^2..]);
     }
 
     [Fact]
@@ -140,7 +179,7 @@ public sealed class AthleteManagementTests(AthleteApiFactory factory) : IClassFi
         var paused = await ListAsync(admin, "?status=Paused");
         var active = await ListAsync(admin, "?status=Active");
 
-        Assert.Equal(["Sam Reed"], Names(paused));
+        AssertNames(paused, "Sam Reed");
         Assert.DoesNotContain("Sam Reed", Names(active));
     }
 

@@ -56,14 +56,17 @@ public static class AthleteEndpoints
         .WithName("ListAthletes")
         .WithSummary("The coach's athletes, searchable, filterable and sorted.")
         .WithDescription(
-            "search matches full name or sport, case-insensitively, on any part of the value, " +
-            "and is trimmed before use. status filters by ACCOUNT status - whether the athlete " +
-            "can sign in - and is not the same as having an active package, which arrives in " +
-            "phase 4 as a separate parameter. sort accepts NameAsc, NameDesc, Sport, NewestFirst " +
-            "and OldestFirst; Sport places athletes with no sport last. page starts at 1 and " +
-            "pageSize is capped at 100 - values outside the range are clamped rather than " +
-            "rejected. Paused athletes are always included: pausing hides an athlete from " +
-            "themselves, never from their coach.")
+            "search matches full name, email or sport, case-insensitively, on any part of the " +
+            "value, and is trimmed before use. Email is included so an athlete who has not yet " +
+            "completed their profile, and so has no name, is still findable. status filters by " +
+            "ACCOUNT status - whether the athlete can sign in - and is not the same as having " +
+            "an active package, which arrives in phase 4 as a separate parameter. sort accepts " +
+            "NameAsc, NameDesc, Sport, NewestFirst and OldestFirst; Sport places athletes with " +
+            "no sport last, and both name orders place athletes with no name last. page starts " +
+            "at 1 and pageSize is capped at 100 - values outside the range are clamped rather " +
+            "than rejected. Paused athletes are always included: pausing hides an athlete from " +
+            "themselves, never from their coach. Athletes who have registered but not completed " +
+            "their profile are also always included, with fullName null.")
         .Produces<PagedResult<AthleteListItem>>()
         .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
         .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson);
