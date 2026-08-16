@@ -15,7 +15,10 @@ public sealed class AthleteProfileConfiguration : IEntityTypeConfiguration<Athle
         b.HasIndex(x => x.UserId).IsUnique();
 
         b.Property(x => x.Sport).HasMaxLength(100);
-        b.Property(x => x.Gender).HasMaxLength(40);
+
+        // Stored as its name, never its ordinal (CLAUDE.md section 7): the rows stay readable
+        // and reordering the enum cannot silently turn every Female row into a Male one.
+        b.Property(x => x.Gender).HasConversion<string>().HasMaxLength(40);
         b.Property(x => x.Notes).HasMaxLength(4000);
 
         // Serves the athlete list, which is always scoped to the coach and hides deleted rows.

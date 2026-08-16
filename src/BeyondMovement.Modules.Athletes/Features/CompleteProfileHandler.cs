@@ -11,7 +11,7 @@ namespace BeyondMovement.Modules.Athletes.Features;
 public sealed class CompleteProfileHandler(IAthletesDbContext db, IClock clock)
 {
     public async Task<Result> HandleAsync(
-        Guid userId, DateOnly? dateOfBirth, string? gender, string? sport, CancellationToken ct = default)
+        Guid userId, DateOnly dateOfBirth, Gender gender, string sport, CancellationToken ct = default)
     {
         var profile = await db.AthleteProfiles.FirstOrDefaultAsync(p => p.UserId == userId, ct);
 

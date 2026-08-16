@@ -1,4 +1,5 @@
 using BeyondMovement.Modules.Identity.Domain;
+using BeyondMovement.SharedKernel;
 
 namespace BeyondMovement.Api.Athletes;
 
@@ -18,25 +19,31 @@ namespace BeyondMovement.Api.Athletes;
 public enum AthleteStatusFilter { All, Active, Paused }
 
 /// <summary>One row of the athlete list.</summary>
+/// <param name="FullName">
+/// Null for an athlete who has been invited and has registered but has not finished Complete
+/// Profile. They are still the coach's athlete and still listed; the app shows the email until
+/// a name exists. Non-null whenever <c>profileCompleted</c> is true.
+/// </param>
 /// <param name="Status">Account status only. Sessions remaining and "no active package" arrive in phase 4.</param>
 public sealed record AthleteListItem(
     Guid Id,
-    string FullName,
+    string? FullName,
     string? Sport,
     UserStatus Status,
     DateTime CreatedAtUtc);
 
 /// <summary>The Admin's read-only view of one athlete.</summary>
+/// <param name="FullName">Null until the athlete completes their profile. See <see cref="AthleteListItem"/>.</param>
 /// <param name="Phone">
 /// Null for every athlete today — no screen collects a phone number yet. See the changelog.
 /// </param>
 public sealed record AthleteDetail(
     Guid Id,
-    string FullName,
+    string? FullName,
     string Email,
     string? Phone,
     DateOnly? DateOfBirth,
-    string? Gender,
+    Gender? Gender,
     string? Sport,
     UserStatus Status,
     bool ProfileCompleted,

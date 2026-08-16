@@ -21,7 +21,7 @@ public sealed class ThrottledApiFactory : ApiFactory
         builder.ConfigureAppConfiguration((_, config) =>
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["RateLimits:InvitationValidationPerMinute"] = Limit.ToString()
+                ["RateLimits:InvitationValidationPerHour"] = Limit.ToString()
             }));
     }
 }

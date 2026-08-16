@@ -83,7 +83,7 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
                 // Every test shares one source address, so the production limit would have
                 // the suite throttling itself. RateLimitTests asserts the limit separately.
-                ["RateLimits:InvitationValidationPerMinute"] = "10000"
+                ["RateLimits:InvitationValidationPerHour"] = "10000"
             });
         });
 

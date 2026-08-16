@@ -116,8 +116,7 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
         {
             registrationToken = validated.RegistrationToken,
             termsAccepted = true,
-            password = "Athlete#Strong2026",
-            fullName = "Alex Thompson"
+            password = "Athlete#Strong2026"
         });
 
         await AssertSucceededAsync(registerResponse);
@@ -172,8 +171,7 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
         {
             registrationToken = validated.RegistrationToken,
             termsAccepted = true,
-            password,
-            fullName = "Robin Vale"
+            password
         });
         await AssertSucceededAsync(registered);
 
@@ -256,8 +254,7 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
         {
             registrationToken = validated.RegistrationToken,
             termsAccepted = true,
-            password = "Athlete#Strong2026",
-            fullName = "Pat Rivers"
+            password = "Athlete#Strong2026"
         });
         await AssertSucceededAsync(response);
 
@@ -302,8 +299,7 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
         {
             registrationToken = validated.RegistrationToken,
             termsAccepted = true,
-            password = "Athlete#Strong2026",
-            fullName = "Sam Reed"
+            password = "Athlete#Strong2026"
         };
 
         var first = await client.PostAsJsonAsync("/api/v1/auth/register", payload);
@@ -353,8 +349,7 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
         {
             registrationToken = validated.RegistrationToken,
             termsAccepted = false,
-            password = "Athlete#Strong2026",
-            fullName = "Terms Refuser"
+            password = "Athlete#Strong2026"
         });
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -373,8 +368,7 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
             registrationToken = validated.RegistrationToken,
             termsAccepted = true,
             password = "Athlete#Strong2026",
-            googleIdToken = "any",
-            fullName = "Both Ways"
+            googleIdToken = "any"
         });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -448,5 +442,187 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Equal("EMAIL_ALREADY_REGISTERED", body.GetProperty("errorCode").GetString());
+    }
+
+    // ------------------------------------------------- the profile guarantees
+
+    /// <summary>
+    /// Registers a password athlete and returns a client already carrying their access token,
+    /// sitting at exactly the point the app reaches Complete Profile.
+    /// </summary>
+    private async Task<HttpClient> RegisteredAthleteAsync(string email)
+    {
+        var admin = await AdminClientAsync();
+        var (_, code) = await InviteAsync(admin, email);
+        var validated = await ValidateAsync(code);
+
+        var client = factory.CreateClient();
+        var registered = await client.PostAsJsonAsync("/api/v1/auth/register", new
+        {
+            registrationToken = validated.RegistrationToken,
+            termsAccepted = true,
+            password = "Athlete#Strong2026"
+        });
+
+        await AssertSucceededAsync(registered);
+
+        var body = await registered.Content.ReadFromJsonAsync<JsonElement>();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", body.GetProperty("accessToken").GetString());
+
+        return client;
+    }
+
+    [Fact]
+    public async Task Registering_with_a_password_leaves_the_name_null_until_the_profile_is_completed()
+    {
+        var client = await RegisteredAthleteAsync("athlete.nameless@nowhere.test");
+
+        // Registration establishes authentication only, so there is no name to report yet.
+        var before = await client.GetFromJsonAsync<JsonElement>("/api/v1/auth/me");
+        Assert.False(before.GetProperty("profileCompleted").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, before.GetProperty("fullName").ValueKind);
+
+        var completed = await client.PostAsJsonAsync("/api/v1/athletes/me/profile", new
+        {
+            fullName = "Nameless Athlete",
+            dateOfBirth = "1998-03-02",
+            gender = "Female",
+            sport = "Rowing"
+        });
+        await AssertSucceededAsync(completed);
+
+        // ...and the moment it says completed, the name is a promise the app can rely on.
+        var after = await client.GetFromJsonAsync<JsonElement>("/api/v1/auth/me");
+        Assert.True(after.GetProperty("profileCompleted").GetBoolean());
+        Assert.Equal("Nameless Athlete", after.GetProperty("fullName").GetString());
+    }
+
+    [Fact]
+    public async Task A_name_sent_to_register_is_ignored_rather_than_quietly_stored()
+    {
+        var admin = await AdminClientAsync();
+        var (_, code) = await InviteAsync(admin, "athlete.ignored.name@nowhere.test");
+        var validated = await ValidateAsync(code);
+
+        // An older client may still send it. It must not become the athlete's name, or the two
+        // places a name can be set would disagree.
+        var registered = await factory.CreateClient().PostAsJsonAsync("/api/v1/auth/register", new
+        {
+            registrationToken = validated.RegistrationToken,
+            termsAccepted = true,
+            password = "Athlete#Strong2026",
+            fullName = "Should Be Ignored"
+        });
+
+        await AssertSucceededAsync(registered);
+
+        var body = await registered.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("user").GetProperty("fullName").ValueKind);
+    }
+
+    [Theory]
+    // Each row omits exactly one required field, so a failure names the field that stopped being enforced.
+    [InlineData(null, "1998-03-02", "Female", "Rowing")]
+    [InlineData("Partial Athlete", null, "Female", "Rowing")]
+    [InlineData("Partial Athlete", "1998-03-02", null, "Rowing")]
+    [InlineData("Partial Athlete", "1998-03-02", "Female", null)]
+    public async Task Completing_a_profile_without_every_field_is_refused(
+        string? fullName, string? dateOfBirth, string? gender, string? sport)
+    {
+        var client = await RegisteredAthleteAsync(
+            $"athlete.partial.{fullName is null}.{dateOfBirth is null}.{gender is null}@nowhere.test");
+
+        var response = await client.PostAsJsonAsync("/api/v1/athletes/me/profile",
+            new { fullName, dateOfBirth, gender, sport });
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("VALIDATION_FAILED", body.GetProperty("errorCode").GetString());
+
+        // And the athlete is still where they were, not half-way through.
+        var me = await client.GetFromJsonAsync<JsonElement>("/api/v1/auth/me");
+        Assert.False(me.GetProperty("profileCompleted").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData("Other")]
+    [InlineData("Nonbinary")]
+    [InlineData("F")]
+    [InlineData("")]
+    public async Task Only_Female_and_Male_are_accepted_as_a_gender(string gender)
+    {
+        var client = await RegisteredAthleteAsync($"athlete.gender.{gender.GetHashCode():X}@nowhere.test");
+
+        var response = await client.PostAsJsonAsync("/api/v1/athletes/me/profile", new
+        {
+            fullName = "Gender Athlete",
+            dateOfBirth = "1998-03-02",
+            gender,
+            sport = "Rowing"
+        });
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("VALIDATION_FAILED", body.GetProperty("errorCode").GetString());
+    }
+
+    [Fact]
+    public async Task Gender_is_read_case_insensitively_but_always_reported_canonically()
+    {
+        var client = await RegisteredAthleteAsync("athlete.gender.case@nowhere.test");
+
+        // Lenient in, strict out: a client sending "female" is understood, and every response
+        // still says "Female", so nothing downstream has to handle two spellings.
+        var response = await client.PostAsJsonAsync("/api/v1/athletes/me/profile", new
+        {
+            fullName = "Lowercase Athlete",
+            dateOfBirth = "1998-03-02",
+            gender = "female",
+            sport = "Rowing"
+        });
+
+        await AssertSucceededAsync(response);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal("Female", body.GetProperty("gender").GetString());
+    }
+
+    [Fact]
+    public async Task A_completed_profile_reports_its_gender_by_name()
+    {
+        var client = await RegisteredAthleteAsync("athlete.gender.name@nowhere.test");
+
+        var response = await client.PostAsJsonAsync("/api/v1/athletes/me/profile", new
+        {
+            fullName = "Gendered Athlete",
+            dateOfBirth = "1998-03-02",
+            gender = "Male",
+            sport = "Rowing"
+        });
+
+        await AssertSucceededAsync(response);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        // A number here would mean the enum leaked its ordinal into the contract.
+        Assert.Equal("Male", body.GetProperty("gender").GetString());
+    }
+
+    [Fact]
+    public async Task A_date_of_birth_in_the_future_is_refused()
+    {
+        var client = await RegisteredAthleteAsync("athlete.unborn@nowhere.test");
+
+        var response = await client.PostAsJsonAsync("/api/v1/athletes/me/profile", new
+        {
+            fullName = "Future Athlete",
+            dateOfBirth = "2999-01-01",
+            gender = "Female",
+            sport = "Rowing"
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 }

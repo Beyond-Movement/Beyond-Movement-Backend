@@ -1,3 +1,5 @@
+using BeyondMovement.SharedKernel;
+
 namespace BeyondMovement.Modules.Athletes.Domain;
 
 /// <summary>
@@ -11,7 +13,7 @@ public sealed class AthleteProfile
     public Guid CoachId { get; private set; }
 
     public string? Sport { get; private set; }
-    public string? Gender { get; private set; }
+    public Gender? Gender { get; private set; }
     public DateOnly? DateOfBirth { get; private set; }
     public string? Notes { get; private set; }
 
@@ -36,7 +38,11 @@ public sealed class AthleteProfile
         UpdatedAtUtc = nowUtc
     };
 
-    public void CompleteProfile(DateOnly? dateOfBirth, string? gender, string? sport, DateTime nowUtc)
+    /// <summary>
+    /// Every detail is required here even though the columns are nullable: the columns allow
+    /// the gap between registering and completing, this method closes it.
+    /// </summary>
+    public void CompleteProfile(DateOnly dateOfBirth, Gender gender, string sport, DateTime nowUtc)
     {
         DateOfBirth = dateOfBirth;
         Gender = gender;

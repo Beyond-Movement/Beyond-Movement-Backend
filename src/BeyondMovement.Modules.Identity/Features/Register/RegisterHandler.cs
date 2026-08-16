@@ -78,7 +78,9 @@ public sealed class RegisterHandler(
 
         var user = User.CreateAthlete(
             invitation.Email,
-            request.FullName ?? googleName,
+            // Google's display name is kept as a prefill for Complete Profile, where the
+            // athlete confirms it. The password path has no name to offer, and does not ask.
+            googleName,
             // A placeholder, replaced immediately below: PasswordHasher salts per call and
             // needs a User instance, so the real hash cannot be produced before this point.
             passwordHash: rawPassword is null ? null : "placeholder",

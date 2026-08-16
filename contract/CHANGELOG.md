@@ -7,6 +7,87 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ---
 
+## Phase 3 — Onboarding alignment
+
+All six points from the mobile review, applied. **Four breaking changes.**
+
+### Breaking · `POST /auth/register` no longer takes `fullName`
+
+Registration establishes authentication and nothing else. The field is gone from
+`RegisterRequest`. Sending it anyway is harmless — unknown properties are ignored — but it is
+not stored, so nothing is silently kept.
+
+On the Google path the account's display name is still kept as a **prefill**, so Complete
+Profile can show it pre-filled for the athlete to confirm. The password path has no name to
+offer and does not ask for one.
+
+### Breaking · `fullName` is nullable until the profile is completed
+
+Nullable in `UserSummary` (inside every `AuthResponse`), in `CurrentUserResponse`
+(`GET /auth/me`), and in `AthleteListItem` and `AthleteDetail` (the coach's list and detail).
+
+**The invariant, which the backend guarantees:**
+
+> whenever `profileCompleted` is `true`, `fullName` is non-null and non-blank.
+
+It is enforced in the domain, not by the endpoint: `User.MarkProfileCompleted` refuses to run
+without a name, so no future code path can produce a completed profile without one. Unit tests
+cover the guard directly. The app may treat the pair as an invariant and skip re-checking.
+
+The field is **always present** in the JSON, carrying `null` — never omitted.
+
+Two consequences for the coach's screens, both deliberate:
+
+- An athlete who has registered but not completed their profile **still appears** in
+  `GET /athletes` with `fullName: null`. Show the email until a name exists.
+- **Search now also matches the email**, so such an athlete is findable. Name-sorted lists put
+  unnamed athletes **last**, the same way `sort=Sport` puts athletes with no sport last.
+
+### Breaking · `POST /athletes/me/profile` requires all four fields
+
+`fullName`, `dateOfBirth`, `gender` and `sport` are all required in `CompleteProfileRequest` and
+enforced server-side. Anything missing is `400 VALIDATION_FAILED`, and the profile stays
+incomplete — there is no partial save.
+
+`dateOfBirth` must be in the past and within the last 120 years.
+
+### Breaking · `gender` is an enum
+
+`Gender`, with exactly two values: **`Female`** and **`Male`**. Anything else is
+`400 VALIDATION_FAILED`.
+
+Values are read **case-insensitively** (`"female"` is accepted) and always **written
+canonically** (`"Female"`), so responses never carry two spellings. Stored as the name, never an
+ordinal, so reordering the enum can never remap existing rows.
+
+It is nullable everywhere it is *read* — an athlete who has not completed their profile has no
+gender — and required in the request that sets it.
+
+### Confirmed · no photo field
+
+`CompleteProfileRequest` has no photo field and will not gain one before phase 13, which brings
+file storage. Initials as the fallback is right.
+
+### Confirmed · invitation validation is **10 per hour per IP**
+
+The architecture (section 12.5) is the source of truth and says per **hour**; the implementation
+had drifted to per minute. The implementation now matches the architecture.
+
+`429 TOO_MANY_REQUESTS` still carries `retryAfterSeconds` in the body and a `Retry-After`
+header, both in seconds. With an hour-long window those values are now up to `3600`, so a
+countdown UI should render minutes, not seconds.
+
+> **Worth a decision before launch.** Ten attempts an hour is generous for an athlete typing one
+> code out of an email, but the window is per IP, so everyone behind one office or campus NAT
+> shares the budget. If that turns out to bite, the limit is configurable per environment via
+> `RateLimits:InvitationValidationPerHour` — no code change.
+
+### Note on the path
+
+The contract lives at **`contract/openapi.yaml`**, singular — not `contracts/`.
+
+---
+
 ## Phase 2 — Athlete management (Admin)
 
 **One breaking change**, then additions.
@@ -178,6 +259,7 @@ Athlete: POST /athletes/me/profile        → profileCompleted becomes true
   enter the code again. The code itself is not posted to `/auth/register`.
 - **Register takes exactly one credential:** `password` (plus `fullName`) **or** `googleIdToken`.
   Both, or neither, is a validation error.
+  *(Superseded by phase 3: `fullName` was removed from register.)*
 - **Google registration must match the invited address.** A verified Google email different from
   the invitation returns `GOOGLE_EMAIL_MISMATCH`. No password or name is required on that path —
   Google's display name is used as an editable prefill.
@@ -187,6 +269,8 @@ Athlete: POST /athletes/me/profile        → profileCompleted becomes true
 - **Resending replaces the code.** The previously emailed code stops working at once.
 - **Validate is rate-limited per IP** (10/minute by default). Exceeding it returns
   `429 TOO_MANY_REQUESTS` with `retryAfterSeconds` and a `Retry-After` header.
+  *(Superseded by phase 3: the limit is 10 per **hour**, matching the architecture. This entry
+  was the drift.)*
 
 ### Error codes added
 
@@ -213,6 +297,8 @@ message and the right next action for each case.
 - **`gender` and `sport` are free strings.** The UI shows a dropdown and a searchable field, but
   no allowed value list exists in any source document. Constraining them later to enums **is a
   contract change** — agree the lists with the client before the mobile screens harden.
+  *(Closed in phase 3 for `gender`, now the `Female`/`Male` enum. `sport` is still free text:
+  required, but with no agreed list.)*
 
 ---
 

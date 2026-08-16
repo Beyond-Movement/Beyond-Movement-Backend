@@ -53,7 +53,8 @@ public static class InvitationEndpoints
             "that inbox received the code) and a short-lived registrationToken to post to " +
             "/auth/register. Failures distinguish INVITATION_INVALID, INVITATION_EXPIRED, " +
             "INVITATION_USED and INVITATION_REVOKED so the error screen can say something useful. " +
-            "Rate-limited per IP; exceeding it returns 429 TOO_MANY_REQUESTS.")
+            "Rate-limited to 10 attempts per hour per IP; exceeding it returns 429 TOO_MANY_REQUESTS " +
+            "with retryAfterSeconds in the body and a Retry-After header, both in seconds.")
         .Produces<ValidateInvitationResponse>()
         .Produces<ApiProblemDetails>(StatusCodes.Status400BadRequest, ProblemJson)
         .Produces<ApiProblemDetails>(StatusCodes.Status429TooManyRequests, ProblemJson);

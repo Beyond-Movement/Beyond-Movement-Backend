@@ -60,14 +60,15 @@ public static class RegistrationEndpoints
         .WithName("Register")
         .WithSummary("Create an account from a validated invitation, and redeem it.")
         .WithDescription(
-            "Post the registrationToken from /invitations/validate together with EITHER a password " +
-            "(plus fullName) OR a googleIdToken — exactly one, never both. With Google, the " +
-            "account's verified email must match the invited address or the request is refused " +
-            "with GOOGLE_EMAIL_MISMATCH, and no name or password is needed. termsAccepted must be " +
-            "true. Returns the same token pair as login, so the app is signed in immediately, but " +
-            "user.profileCompleted is false: route to Complete Profile, not Home. The invitation is " +
-            "redeemed only on success, and re-posting the same token afterwards returns " +
-            "INVITATION_USED.")
+            "Establishes authentication and nothing else — it does not collect a name. Post the " +
+            "registrationToken from /invitations/validate together with EITHER a password OR a " +
+            "googleIdToken — exactly one, never both. With Google, the account's verified email " +
+            "must match the invited address or the request is refused with GOOGLE_EMAIL_MISMATCH. " +
+            "termsAccepted must be true. Returns the same token pair as login, so the app is " +
+            "signed in immediately, but user.profileCompleted is false and user.fullName is null " +
+            "(or Google's display name, as a prefill): route to Complete Profile, not Home. The " +
+            "invitation is redeemed only on success, and re-posting the same token afterwards " +
+            "returns INVITATION_USED.")
         .Produces<AuthResponse>()
         .Produces<ApiProblemDetails>(StatusCodes.Status400BadRequest, ProblemJson)
         .Produces<ApiProblemDetails>(StatusCodes.Status409Conflict, ProblemJson);
@@ -109,17 +110,19 @@ public static class RegistrationEndpoints
                 return result.Error!.ToProblem(http);
             }
 
+            // Order matters: the name has to be on the user before the profile can be marked
+            // complete, because that is where the "completed implies named" invariant is kept.
             user.SetFullName(request.FullName, clock.UtcNow);
             user.MarkProfileCompleted(clock.UtcNow);
             await identityDb.SaveChangesAsync(ct);
 
             await transaction.CommitAsync(ct);
 
-            var profile = await profileHandler.GetAsync(userId, ct);
-
+            // Echoed from the request rather than re-read: it is what was just committed, and
+            // a second round trip could only disagree with it.
             return Results.Ok(new AthleteProfileResponse(
-                user.Id, user.FullName, user.Email,
-                profile?.DateOfBirth, profile?.Gender, profile?.Sport,
+                user.Id, request.FullName, user.Email,
+                request.DateOfBirth, request.Gender, request.Sport,
                 ProfileCompleted: true));
         })
         .RequireAuthorization("AthleteOnly")
@@ -128,10 +131,12 @@ public static class RegistrationEndpoints
         .WithSummary("Fill in the athlete's own profile after registration.")
         .WithDescription(
             "Athlete-only, and always scoped to the caller's own profile — the user id comes from " +
-            "the token, never the body. Sets profileCompleted to true, after which both /auth/me " +
-            "and every later authentication response report it as true, so the app routes to Home " +
-            "instead of Complete Profile. Safe to call again to edit the details. " +
-            "Profile photo is not accepted yet; it needs file storage, which arrives in phase 13.")
+            "the token, never the body. fullName, dateOfBirth, gender and sport are all required " +
+            "and enforced here, not only in the app. Sets profileCompleted to true, after which " +
+            "both /auth/me and every later authentication response report it as true and guarantee " +
+            "a non-null fullName, so the app routes to Home instead of Complete Profile. Safe to " +
+            "call again to edit the details. Profile photo is not accepted yet; it needs file " +
+            "storage, which arrives in phase 13, and the app shows initials until then.")
         .Produces<AthleteProfileResponse>()
         .Produces<ApiProblemDetails>(StatusCodes.Status400BadRequest, ProblemJson)
         .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)

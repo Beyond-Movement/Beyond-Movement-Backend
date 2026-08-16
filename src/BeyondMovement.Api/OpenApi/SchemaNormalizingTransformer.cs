@@ -18,6 +18,12 @@ namespace BeyondMovement.Api.OpenApi;
 /// <c>errorCode</c> is typed as a bare string. The permitted values are listed instead, so
 /// the generated client gets a checkable set rather than free text.
 /// </item>
+/// <item>
+/// An enum used nullably anywhere gets <c>null</c> folded into the single shared component
+/// schema, so <c>Gender</c> would advertise null as a legal value in the Complete Profile
+/// request that requires it. The null member is dropped and the type stated as string;
+/// per-property nullability is already carried by the property not being required.
+/// </item>
 /// </list>
 /// </summary>
 public sealed class SchemaNormalizingTransformer : IOpenApiSchemaTransformer
@@ -26,15 +32,40 @@ public sealed class SchemaNormalizingTransformer : IOpenApiSchemaTransformer
         OpenApiSchema schema, OpenApiSchemaTransformerContext context, CancellationToken cancellationToken)
     {
         CollapseNumericUnion(schema);
+        DropNullFromEnum(schema);
 
         // Property sub-schemas are not always visited on their own, so walk them too.
         foreach (var property in schema.Properties?.Values.OfType<OpenApiSchema>() ?? [])
+        {
             CollapseNumericUnion(property);
+            DropNullFromEnum(property);
+        }
 
         if (context.JsonTypeInfo.Type == typeof(ApiProblemDetails))
             DeclareErrorCodeValues(schema);
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// One component schema serves every use of an enum, so a single nullable use — an athlete
+    /// who has not set a gender — would otherwise make null a legal value everywhere, including
+    /// the request that requires one.
+    /// </summary>
+    private static void DropNullFromEnum(OpenApiSchema schema)
+    {
+        if (schema.Enum is not { Count: > 0 } values)
+            return;
+
+        var withoutNull = values
+            .Where(value => value is not null && value.GetValueKind() != System.Text.Json.JsonValueKind.Null)
+            .ToList();
+
+        if (withoutNull.Count == values.Count)
+            return;
+
+        schema.Enum = withoutNull;
+        schema.Type = JsonSchemaType.String;
     }
 
     private static void CollapseNumericUnion(OpenApiSchema schema)

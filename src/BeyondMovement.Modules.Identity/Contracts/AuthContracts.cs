@@ -30,6 +30,12 @@ public sealed record ChangePasswordRequest(string CurrentPassword, string NewPas
 /// refresh or registration without a follow-up call. The Admin has no such step, so it is
 /// always true for them.
 /// </param>
+/// <param name="FullName">
+/// Null until the athlete finishes Complete Profile — registration establishes authentication
+/// only and never collects a name. Whenever <paramref name="ProfileCompleted"/> is true this
+/// is guaranteed non-null and non-blank; the domain refuses to mark a profile complete
+/// otherwise, so the app may treat the pair as an invariant rather than re-checking.
+/// </param>
 /// <param name="AthleteListSort">
 /// The coach's saved athlete-list order, hydrated at login so the choice survives a restart
 /// and follows them to another device (architecture section 6). Null for athletes, who have
@@ -39,7 +45,7 @@ public sealed record UserSummary(
     Guid Id,
     UserRole Role,
     UserStatus Status,
-    string FullName,
+    string? FullName,
     string Email,
     bool ProfileCompleted,
     AthleteListSort? AthleteListSort);
@@ -58,6 +64,10 @@ public sealed record AuthResponse(
 /// False for an athlete who has created an account but not yet finished Complete Profile.
 /// The app routes to Complete Profile rather than Home when this is false.
 /// </param>
+/// <param name="FullName">
+/// Null until Complete Profile is finished, and guaranteed non-null once
+/// <paramref name="ProfileCompleted"/> is true. Same invariant as <see cref="UserSummary"/>.
+/// </param>
 /// <param name="MinimumSupportedAppVersion">
 /// The oldest mobile build this API still supports, for the forced-upgrade prompt.
 /// </param>
@@ -65,7 +75,7 @@ public sealed record CurrentUserResponse(
     Guid Id,
     UserRole Role,
     UserStatus Status,
-    string FullName,
+    string? FullName,
     string Email,
     Guid CoachId,
     bool ProfileCompleted,

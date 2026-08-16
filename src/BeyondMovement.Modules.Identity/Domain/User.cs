@@ -10,7 +10,13 @@ public sealed class User
     public string Email { get; private set; } = null!;
     public string? PasswordHash { get; private set; }
     public string? GoogleSubjectId { get; private set; }
-    public string FullName { get; private set; } = null!;
+
+    /// <summary>
+    /// Null for an athlete who has registered but not finished Complete Profile — registration
+    /// establishes authentication only. Never null once <see cref="ProfileCompleted"/> is true;
+    /// <see cref="MarkProfileCompleted"/> enforces that.
+    /// </summary>
+    public string? FullName { get; private set; }
     public string? Phone { get; private set; }
     public UserStatus Status { get; private set; } = UserStatus.Active;
     public string TimeZone { get; private set; } = "UTC";
@@ -56,6 +62,11 @@ public sealed class User
     /// Either a password hash or a Google subject must be supplied; the caller decides which,
     /// because Create Account offers both.
     /// </summary>
+    /// <param name="fullName">
+    /// Google's display name where sign-in supplied one, otherwise null. It is a prefill for
+    /// Complete Profile, not an answer: registration does not ask for a name, and the athlete
+    /// confirms or replaces this before the profile can be marked complete.
+    /// </param>
     public static User CreateAthlete(
         string email, string? fullName, string? passwordHash, string? googleSubjectId,
         Guid coachId, DateTime nowUtc)
@@ -67,8 +78,7 @@ public sealed class User
         {
             Role = UserRole.Athlete,
             Email = email.ToLowerInvariant(),
-            // May be blank when registering with Google; Complete Profile requires it.
-            FullName = fullName ?? string.Empty,
+            FullName = fullName,
             PasswordHash = passwordHash,
             GoogleSubjectId = googleSubjectId,
             Status = UserStatus.Active,
@@ -85,8 +95,18 @@ public sealed class User
         UpdatedAtUtc = nowUtc;
     }
 
+    /// <summary>
+    /// The single place <see cref="ProfileCompleted"/> becomes true, which is what makes the
+    /// guarantee the mobile app relies on enforceable: a completed profile always has a name.
+    /// Reaching here without one is a bug in the caller, not bad input, so it throws rather
+    /// than returning a validation failure — the endpoint validates the request first.
+    /// </summary>
     public void MarkProfileCompleted(DateTime nowUtc)
     {
+        if (string.IsNullOrWhiteSpace(FullName))
+            throw new InvalidOperationException(
+                "A profile cannot be marked complete without a full name.");
+
         ProfileCompletedAtUtc ??= nowUtc;
         UpdatedAtUtc = nowUtc;
     }

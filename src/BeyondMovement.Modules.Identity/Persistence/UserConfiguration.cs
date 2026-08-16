@@ -17,7 +17,10 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         b.Property(x => x.GoogleSubjectId).HasMaxLength(128);
         b.HasIndex(x => x.GoogleSubjectId).IsUnique().HasFilter("\"GoogleSubjectId\" IS NOT NULL");
 
-        b.Property(x => x.FullName).IsRequired().HasMaxLength(200);
+        // Nullable on purpose: an athlete exists between registering and completing their
+        // profile, and has no name during that window. The invariant "completed implies named"
+        // is kept by User.MarkProfileCompleted, which a column constraint cannot express.
+        b.Property(x => x.FullName).HasMaxLength(200);
         b.Property(x => x.Phone).HasMaxLength(40);
         b.Property(x => x.TimeZone).IsRequired().HasMaxLength(64);
 

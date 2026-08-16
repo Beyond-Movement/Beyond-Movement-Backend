@@ -32,7 +32,7 @@ public sealed class AthleteApiFactory : ApiFactory
         var baseTime = new DateTime(2026, 1, 1, 9, 0, 0, DateTimeKind.Utc);
 
         await AddAthleteAsync(db, scope.ServiceProvider, "alex@nowhere.test", "Alex Thompson",
-            "Tennis", new DateOnly(2001, 4, 17), baseTime, gender: "Female");
+            "Tennis", new DateOnly(2001, 4, 17), baseTime, gender: Gender.Female);
 
         await AddAthleteAsync(db, scope.ServiceProvider, "jordan@nowhere.test", "Jordan Blake",
             "Swimming", new DateOnly(1999, 2, 11), baseTime.AddDays(1));
@@ -40,9 +40,11 @@ public sealed class AthleteApiFactory : ApiFactory
         await AddAthleteAsync(db, scope.ServiceProvider, "sam@nowhere.test", "Sam Reed",
             "Athletics", new DateOnly(2000, 6, 3), baseTime.AddDays(2), status: UserStatus.Paused);
 
-        // No sport: proves sport-sorting puts blanks last rather than first.
+        // Registered but never finished Complete Profile, so no sport and no date of birth.
+        // Proves sport-sorting puts blanks last rather than first, and that the coach can still
+        // see an athlete who has not filled anything in.
         await AddAthleteAsync(db, scope.ServiceProvider, "robin@nowhere.test", "Robin Vale",
-            null, null, baseTime.AddDays(3));
+            sport: null, dateOfBirth: null, baseTime.AddDays(3));
 
         ForeignAthleteId = await AddAthleteAsync(db, scope.ServiceProvider,
             "foreign@nowhere.test", "Foreign Athlete", "Cycling", null, baseTime,
@@ -58,7 +60,7 @@ public sealed class AthleteApiFactory : ApiFactory
         DateOnly? dateOfBirth,
         DateTime? createdAtUtc = null,
         UserStatus status = UserStatus.Active,
-        string? gender = null,
+        Gender? gender = null,
         Guid? coachId = null)
     {
         var hasher = services.GetRequiredService<IPasswordHasher<User>>();
@@ -69,7 +71,6 @@ public sealed class AthleteApiFactory : ApiFactory
 
         var user = User.CreateAthlete(email, fullName, "placeholder", null, owner, created);
         user.SetPasswordHash(hasher.HashPassword(user, AthletePassword), created);
-        user.MarkProfileCompleted(created);
 
         if (status == UserStatus.Paused)
             user.Pause(created);
@@ -77,7 +78,15 @@ public sealed class AthleteApiFactory : ApiFactory
         db.Users.Add(user);
 
         var profile = AthleteProfile.CreateEmpty(user.Id, owner, created);
-        profile.CompleteProfile(dateOfBirth, gender, sport, created);
+
+        // Complete Profile is all-or-nothing, so the fixture is too: an athlete missing any
+        // detail is one who never finished it, and must not read as completed.
+        if (sport is not null && dateOfBirth is not null)
+        {
+            profile.CompleteProfile(dateOfBirth.Value, gender ?? Gender.Female, sport, created);
+            user.MarkProfileCompleted(created);
+        }
+
         db.AthleteProfiles.Add(profile);
 
         await db.SaveChangesAsync();

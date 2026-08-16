@@ -87,8 +87,11 @@ public sealed class AthleteDirectory(AppDbContext db)
         // also work but defeats any index; ILike keeps the door open for a trigram index later.
         var pattern = $"%{Escape(term)}%";
 
+        // An athlete who has not completed their profile has no name to match on, so searching
+        // falls back to the email — otherwise they would be unfindable in the coach's own list.
         return query.Where(x =>
-            EF.Functions.ILike(x.User.FullName, pattern) ||
+            (x.User.FullName != null && EF.Functions.ILike(x.User.FullName, pattern)) ||
+            EF.Functions.ILike(x.User.Email, pattern) ||
             (x.Profile.Sport != null && EF.Functions.ILike(x.Profile.Sport, pattern)));
     }
 
@@ -99,15 +102,24 @@ public sealed class AthleteDirectory(AppDbContext db)
     private static IQueryable<UserProfilePair> ApplySort(
         IQueryable<UserProfilePair> query, AthleteListSort sort) => sort switch
         {
-            AthleteListSort.NameDesc => query.OrderByDescending(x => x.User.FullName).ThenBy(x => x.User.Id),
+            // Athletes with no name yet sort last on both name orders, the same way athletes
+            // with no sport do: an unnamed row at the top of the list looks like a bug.
+            AthleteListSort.NameDesc => query
+                .OrderBy(x => x.User.FullName == null)
+                .ThenByDescending(x => x.User.FullName)
+                .ThenBy(x => x.User.Id),
             // Athletes with no sport yet sort last rather than leading the list.
             AthleteListSort.Sport => query
                 .OrderBy(x => x.Profile.Sport == null)
                 .ThenBy(x => x.Profile.Sport)
-                .ThenBy(x => x.User.FullName),
+                .ThenBy(x => x.User.FullName)
+                .ThenBy(x => x.User.Id),
             AthleteListSort.NewestFirst => query.OrderByDescending(x => x.User.CreatedAtUtc).ThenBy(x => x.User.Id),
             AthleteListSort.OldestFirst => query.OrderBy(x => x.User.CreatedAtUtc).ThenBy(x => x.User.Id),
-            _ => query.OrderBy(x => x.User.FullName).ThenBy(x => x.User.Id)
+            _ => query
+                .OrderBy(x => x.User.FullName == null)
+                .ThenBy(x => x.User.FullName)
+                .ThenBy(x => x.User.Id)
         };
 
     // Id is the tie-breaker on every sort: without one, two athletes sharing a name or a
