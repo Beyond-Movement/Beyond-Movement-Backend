@@ -9,8 +9,8 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ## Phase 3 — Onboarding alignment
 
-All six points from the mobile review, plus the removal of `termsAccepted`. **Five breaking
-changes.**
+All six points from the mobile review, the removal of `termsAccepted`, and `email` on the
+athlete list. **Six breaking changes.**
 
 ### Breaking · `POST /auth/register` no longer takes `fullName`
 
@@ -110,6 +110,28 @@ there is nothing to accept and no consent to record.
 athlete who has registered but not completed their profile has no name, and would otherwise be
 unfindable in the coach's own list. This supersedes the phase 2 table, which says "full name or
 sport".
+
+### Breaking · `AthleteListItem` gains `email`
+
+Non-nullable, always present. The agreed behaviour is that a row with `fullName: null` shows the
+athlete's email instead — but the list response had no email to show, so the rule could not
+actually be implemented. Added, and a test now asserts every row carries one.
+
+`AthleteDetail` already had it; this only closes the gap on the list.
+
+### Invitation code format
+
+Asked and answered, because the assumption in the mobile review was wrong in both halves:
+
+- **Ten characters, not six.** Alphabet `ABCDEFGHJKMNPQRSTWXYZ23456789` — 29 symbols, no `O`,
+  `I`, `L`, `U` or `V`, because those are misread when retyped from an email.
+- **Emailed formatted five-dash-five**, for example `MRPZB-AXZYY`.
+- **`/invitations/validate` accepts either form.** The code is normalised before lookup: every
+  non-alphanumeric character is stripped and the rest upper-cased. `MRPZB-AXZYY`, `MRPZBAXZYY`,
+  `mrpzb-axzyy` and `mrpzb axzyy` all resolve to the same invitation.
+
+So a six-box code input will not work — it needs ten characters, and it can accept the dash or
+not, as suits the design. The endpoint description in the contract now states all of this.
 
 ### Decisions closed
 

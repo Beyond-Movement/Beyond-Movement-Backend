@@ -120,6 +120,24 @@ public sealed class AthleteManagementTests(AthleteApiFactory factory) : IClassFi
         // carries no profileCompleted flag, so the app shows the email in its place.
         var athlete = Assert.Single(items);
         Assert.Equal(JsonValueKind.Null, athlete.GetProperty("fullName").ValueKind);
+        Assert.Equal("nameless@nowhere.test", athlete.GetProperty("email").GetString());
+    }
+
+    [Fact]
+    public async Task Every_row_carries_an_email_even_when_it_has_no_name()
+    {
+        var admin = await AdminClientAsync();
+
+        var page = await ListAsync(admin);
+
+        // The row shows the email whenever the name is null, so an absent email would leave the
+        // coach looking at a blank line - and a client that models it as required cannot parse
+        // the response at all.
+        foreach (var item in page.GetProperty("items").EnumerateArray())
+        {
+            Assert.True(item.TryGetProperty("email", out var email), "every list row needs an email");
+            Assert.False(string.IsNullOrWhiteSpace(email.GetString()));
+        }
     }
 
     [Fact]

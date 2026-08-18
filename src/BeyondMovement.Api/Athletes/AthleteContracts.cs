@@ -21,13 +21,19 @@ public enum AthleteStatusFilter { All, Active, Paused }
 /// <summary>One row of the athlete list.</summary>
 /// <param name="FullName">
 /// Null for an athlete who has been invited and has registered but has not finished Complete
-/// Profile. They are still the coach's athlete and still listed; the app shows the email until
-/// a name exists. Non-null whenever <c>profileCompleted</c> is true.
+/// Profile. They are still the coach's athlete and still listed. Non-null whenever the athlete
+/// has completed their profile.
+/// </param>
+/// <param name="Email">
+/// Always present. It is what the list shows in place of a name while
+/// <paramref name="FullName"/> is null, so the row is never blank and the coach can tell which
+/// invitee has not finished. Also what search matches for those athletes.
 /// </param>
 /// <param name="Status">Account status only. Sessions remaining and "no active package" arrive in phase 4.</param>
 public sealed record AthleteListItem(
     Guid Id,
     string? FullName,
+    string Email,
     string? Sport,
     UserStatus Status,
     DateTime CreatedAtUtc);

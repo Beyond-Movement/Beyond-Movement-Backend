@@ -422,13 +422,19 @@ paths:
       tags:
       - Invitations
       summary: Check an emailed invitation code and start account creation.
-      description: Does NOT consume the invitation — it is redeemed only when the account is created,
-        so a user may validate, abandon Create Account, and come back. Returns the invited email (show
-        it read-only on Create Account; it is already verified, because only that inbox received the code)
-        and a short-lived registrationToken to post to /auth/register. Failures distinguish INVITATION_INVALID,
-        INVITATION_EXPIRED, INVITATION_USED and INVITATION_REVOKED so the error screen can say something
-        useful. Rate-limited to 10 attempts per hour per IP; exceeding it returns 429 TOO_MANY_REQUESTS
-        with retryAfterSeconds in the body and a Retry-After header, both in seconds.
+      description: 'The code is TEN characters from the alphabet ABCDEFGHJKMNPQRSTWXYZ23456789, emailed
+        formatted as five-dash-five, for example MRPZB-AXZYY. It is normalised before lookup: every non-alphanumeric
+        character is stripped and the rest upper-cased, so the dash is optional, spaces are ignored and
+        case does not matter. mrpzb-axzyy, MRPZBAXZYY and ''mrpzb axzyy'' all resolve to the same invitation.
+        O, I, L, U and V are absent from the alphabet on purpose, because they are misread as 0, 1 and
+        each other when retyped from an email. Does NOT consume the invitation — it is redeemed only when
+        the account is created, so a user may validate, abandon Create Account, and come back. Returns
+        the invited email (show it read-only on Create Account; it is already verified, because only that
+        inbox received the code) and a short-lived registrationToken to post to /auth/register. Failures
+        distinguish INVITATION_INVALID, INVITATION_EXPIRED, INVITATION_USED and INVITATION_REVOKED so
+        the error screen can say something useful. Rate-limited to 10 attempts per hour per IP; exceeding
+        it returns 429 TOO_MANY_REQUESTS with retryAfterSeconds in the body and a Retry-After header,
+        both in seconds.'
       operationId: ValidateInvitation
       parameters:
       - name: code
@@ -925,6 +931,7 @@ components:
       required:
       - id
       - fullName
+      - email
       - sport
       - status
       - createdAtUtc
@@ -937,6 +944,8 @@ components:
           type:
           - 'null'
           - string
+        email:
+          type: string
         sport:
           type:
           - 'null'

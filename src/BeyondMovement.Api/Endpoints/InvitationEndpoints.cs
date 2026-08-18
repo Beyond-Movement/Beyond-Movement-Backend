@@ -47,6 +47,13 @@ public static class InvitationEndpoints
         .WithName("ValidateInvitation")
         .WithSummary("Check an emailed invitation code and start account creation.")
         .WithDescription(
+            "The code is TEN characters from the alphabet ABCDEFGHJKMNPQRSTWXYZ23456789, emailed " +
+            "formatted as five-dash-five, for example MRPZB-AXZYY. It is normalised before " +
+            "lookup: every non-alphanumeric character is stripped and the rest upper-cased, so " +
+            "the dash is optional, spaces are ignored and case does not matter. mrpzb-axzyy, " +
+            "MRPZBAXZYY and 'mrpzb axzyy' all resolve to the same invitation. O, I, L, U and V " +
+            "are absent from the alphabet on purpose, because they are misread as 0, 1 and each " +
+            "other when retyped from an email. " +
             "Does NOT consume the invitation — it is redeemed only when the account is created, " +
             "so a user may validate, abandon Create Account, and come back. Returns the invited " +
             "email (show it read-only on Create Account; it is already verified, because only " +
