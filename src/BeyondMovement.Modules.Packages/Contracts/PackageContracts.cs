@@ -1,0 +1,68 @@
+namespace BeyondMovement.Modules.Packages.Contracts;
+
+// Money crosses the wire as an integer count of piastres, never a decimal. See PackagePricing
+// for why. Every price field in this file is named ...Minor to make that impossible to miss.
+
+/// <param name="Features">
+/// Ordered. The order sent is the order stored and the order returned; there is no separate
+/// position field to keep in step.
+/// </param>
+public sealed record SavePackageOptionRequest(
+    string Name,
+    int Sessions,
+    long DefaultPriceMinor,
+    IReadOnlyList<string> Features);
+
+/// <param name="Version">
+/// The version the caller last read. Editing, archiving or restoring with a stale version is
+/// refused with CONCURRENCY_CONFLICT rather than silently overwriting the other device's change.
+/// </param>
+public sealed record EditPackageOptionRequest(
+    string Name,
+    int Sessions,
+    long DefaultPriceMinor,
+    IReadOnlyList<string> Features,
+    int Version);
+
+/// <summary>Sent when archiving or restoring, which are also changes and also versioned.</summary>
+public sealed record PackageOptionVersionRequest(int Version);
+
+/// <summary>The Admin's view. Athletes never see this shape — they get a price, not a policy.</summary>
+public sealed record PackageOptionResponse(
+    Guid Id,
+    string Name,
+    int Sessions,
+    long DefaultPriceMinor,
+    string Currency,
+    IReadOnlyList<string> Features,
+    bool IsArchived,
+    DateTime? ArchivedAtUtc,
+    int Version,
+    DateTime CreatedAtUtc,
+    DateTime UpdatedAtUtc);
+
+/// <param name="PriceMinor">Piastres. Stored exactly as sent — never rounded.</param>
+public sealed record SetCustomPriceRequest(long PriceMinor);
+
+public sealed record CustomPriceResponse(
+    Guid AthleteUserId,
+    Guid PackageOptionId,
+    long PriceMinor,
+    string Currency);
+
+/// <summary>
+/// One card in the athlete's catalogue.
+/// <para>
+/// <see cref="PriceMinor"/> is the final price for this athlete, already accounting for a
+/// custom override or loyalty. There is deliberately no field saying which applied, and no
+/// default price to compare against: the athlete is shown a price, not the coach's pricing
+/// policy, and a "was 4000" the athlete never agreed to would be an invention.
+/// </para>
+/// </summary>
+public sealed record CatalogueItemResponse(
+    Guid Id,
+    string Name,
+    int Sessions,
+    IReadOnlyList<string> Features,
+    long PriceMinor,
+    string Currency);

@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using BeyondMovement.Modules.Identity.Contracts;
+using BeyondMovement.Modules.Packages;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.OpenApi;
 
@@ -93,7 +94,12 @@ public sealed class SchemaNormalizingTransformer : IOpenApiSchemaTransformer
         if (schema.Properties?.TryGetValue("errorCode", out var errorCode) != true)
             return;
 
+        // Every module's codes, unioned here because the Api is the only project that can see
+        // all of them - modules may not reference one another. A code missing from this list is
+        // a code the generated client has no case for.
+        string[] all = [.. ApiErrorCodes.All, .. PackageErrorCodes.All];
+
         if (errorCode is OpenApiSchema property)
-            property.Enum = [.. ApiErrorCodes.All.Select(code => JsonValue.Create(code)! as JsonNode)];
+            property.Enum = [.. all.Order(StringComparer.Ordinal).Select(code => JsonValue.Create(code)! as JsonNode)];
     }
 }

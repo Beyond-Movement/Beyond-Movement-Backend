@@ -2,10 +2,13 @@ using BeyondMovement.Api.Authentication;
 using BeyondMovement.Api.Endpoints;
 using BeyondMovement.Api;
 using BeyondMovement.Api.Athletes;
+using BeyondMovement.Api.Packages;
+using BeyondMovement.Modules.Athletes.Features;
+using BeyondMovement.Modules.Packages.Features;
+using BeyondMovement.Modules.Packages.Persistence;
 using BeyondMovement.Api.Middleware;
 using BeyondMovement.Modules.Identity.Features.AccountStatus;
 using BeyondMovement.Api.OpenApi;
-using BeyondMovement.Modules.Athletes.Features;
 using BeyondMovement.Modules.Athletes.Persistence;
 using BeyondMovement.Modules.Identity.Features.Invitations;
 using BeyondMovement.Modules.Identity.Features.Register;
@@ -144,9 +147,22 @@ builder.Services.AddScoped<CompleteProfileHandler>();
 builder.Services.AddScoped<SetAccountStatusHandler>();
 builder.Services.AddScoped<AthleteDirectory>();
 
+// --- packages module ---------------------------------------------------
+builder.Services.AddScoped<IPackagesDbContext>(sp => sp.GetRequiredService<AppDbContext>());
+builder.Services.AddScoped<PackageOptionHandler>();
+builder.Services.AddScoped<CustomPriceHandler>();
+builder.Services.AddScoped<SetLoyaltyHandler>();
+
+// Spans Packages and Athletes, so it lives in the composition root and reads only.
+builder.Services.AddScoped<CatalogueReader>();
+
 builder.Services.AddValidatorsFromAssemblyContaining<LoginValidator>();
+builder.Services.AddValidatorsFromAssemblyContaining<SavePackageOptionValidator>();
 
 builder.Services.AddApiRateLimiting();
+
+// Singleton: the counter has to outlive the request, or every attempt would be the first one.
+builder.Services.AddSingleton<PasswordResetRateLimiter>();
 
 // --- authentication ------------------------------------------------------
 // Bearer options are built from JwtOptions by ConfigureJwtBearerOptions, so signing and
@@ -214,6 +230,8 @@ app.MapAuthEndpoints();
 app.MapInvitationEndpoints();
 app.MapRegistrationEndpoints();
 app.MapAthleteEndpoints();
+app.MapPackageOptionEndpoints();
+app.MapPricingEndpoints();
 app.MapPreferenceEndpoints();
 
 if (app.Environment.IsDevelopment())

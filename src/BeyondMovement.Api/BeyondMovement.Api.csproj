@@ -5,6 +5,7 @@
     <ProjectReference Include="..\BeyondMovement.Infrastructure\BeyondMovement.Infrastructure.csproj" />
     <ProjectReference Include="..\BeyondMovement.Modules.Identity\BeyondMovement.Modules.Identity.csproj" />
     <ProjectReference Include="..\BeyondMovement.Modules.Athletes\BeyondMovement.Modules.Athletes.csproj" />
+    <ProjectReference Include="..\BeyondMovement.Modules.Packages\BeyondMovement.Modules.Packages.csproj" />
   </ItemGroup>
 
   <ItemGroup>

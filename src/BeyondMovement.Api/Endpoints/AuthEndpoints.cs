@@ -142,6 +142,7 @@ public static class AuthEndpoints
             ForgotPasswordRequest request,
             IValidator<ForgotPasswordRequest> validator,
             ForgotPasswordHandler handler,
+            PasswordResetRateLimiter perEmail,
             IConfiguration configuration,
             HttpContext http,
             CancellationToken ct) =>
@@ -150,11 +151,18 @@ public static class AuthEndpoints
             if (!validation.IsValid)
                 return validation.ToValidationProblem(http);
 
+            // Before the handler, and so before any database lookup: the limit must count the
+            // address that was submitted, not the accounts that exist. Checking only real
+            // accounts would make a 429 mean "this address is registered".
+            if (perEmail.Check(request.Email) is { } limited)
+                return limited.ToProblem(http);
+
             await handler.HandleAsync(request, configuration["App:PasswordResetUrlTemplate"]!, ct);
 
             return Results.Ok();
         })
         .AllowAnonymous()
+        .RequireRateLimiting(RateLimitPolicies.PasswordReset)
         .WithName("ForgotPassword")
         .WithSummary("Send a password reset link to the address, if an account exists.")
         .WithDescription(
@@ -163,9 +171,16 @@ public static class AuthEndpoints
             "email is sent containing a deep link of the form " +
             "beyondmovement://reset-password?token=<token>. The token is single-use, expires after " +
             "one hour, and is URL-encoded in the link, so decode it before sending it to " +
-            "/auth/reset-password.")
+            "/auth/reset-password. " +
+            "Rate-limited on two axes: 3 requests per hour per email address, and 10 per hour " +
+            "per IP. Either limit returns 429 TOO_MANY_REQUESTS with retryAfterSeconds in the " +
+            "body and a Retry-After header, both in seconds and both up to 3600 - show minutes, " +
+            "not seconds. The per-email limit counts the address that was submitted, whether or " +
+            "not an account exists, so a 429 still reveals nothing about who is registered: " +
+            "treat it exactly like the 200, as 'we have sent a link if that address is known'.")
         .Produces(StatusCodes.Status200OK)
-        .Produces<ApiProblemDetails>(StatusCodes.Status400BadRequest, ProblemJson);
+        .Produces<ApiProblemDetails>(StatusCodes.Status400BadRequest, ProblemJson)
+        .Produces<ApiProblemDetails>(StatusCodes.Status429TooManyRequests, ProblemJson);
 
     private static void MapResetPassword(RouteGroupBuilder group) =>
         group.MapPost("/reset-password", async (

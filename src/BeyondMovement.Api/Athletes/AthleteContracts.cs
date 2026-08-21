@@ -29,12 +29,17 @@ public enum AthleteStatusFilter { All, Active, Paused }
 /// <paramref name="FullName"/> is null, so the row is never blank and the coach can tell which
 /// invitee has not finished. Also what search matches for those athletes.
 /// </param>
-/// <param name="Status">Account status only. Sessions remaining and "no active package" arrive in phase 4.</param>
+/// <param name="IsLoyal">
+/// Whether the coach has marked this athlete loyal, which earns 15% off every package's default
+/// price. The discount itself is never shown here — the athlete's catalogue carries final prices.
+/// </param>
+/// <param name="Status">Account status only. Sessions remaining and "no active package" arrive with purchasing.</param>
 public sealed record AthleteListItem(
     Guid Id,
     string? FullName,
     string Email,
     string? Sport,
+    bool IsLoyal,
     UserStatus Status,
     DateTime CreatedAtUtc);
 
@@ -51,6 +56,7 @@ public sealed record AthleteDetail(
     DateOnly? DateOfBirth,
     Gender? Gender,
     string? Sport,
+    bool IsLoyal,
     UserStatus Status,
     bool ProfileCompleted,
     DateTime CreatedAtUtc);

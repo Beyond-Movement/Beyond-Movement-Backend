@@ -100,6 +100,41 @@ paths:
                 $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
+  /api/v1/catalogue:
+    get:
+      tags:
+      - Pricing
+      summary: The packages this athlete can buy, at their price.
+      description: Athlete-only, and always the caller's own catalogue - the athlete id comes from the
+        token, never a parameter. Archived options are excluded. priceMinor is the FINAL price for this
+        athlete in piastres, already accounting for a custom price or loyalty; there is deliberately no
+        field saying which applied and no default price to compare against, because the athlete is shown
+        a price rather than the coach's pricing policy. Ordered cheapest first. Do not reproduce the pricing
+        rule on the client - if this number is wrong, it is a backend bug.
+      operationId: AthleteCatalogue
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CatalogueItemResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
   /api/v1/auth/me/preferences:
     put:
       tags:
@@ -299,11 +334,16 @@ paths:
       tags:
       - Authentication
       summary: Send a password reset link to the address, if an account exists.
-      description: Always returns 200, whether or not the address exists — it cannot be used to discover
-        accounts, so never show a 'no account found' message. When an account does exist, an email is
+      description: 'Always returns 200, whether or not the address exists — it cannot be used to discover
+        accounts, so never show a ''no account found'' message. When an account does exist, an email is
         sent containing a deep link of the form beyondmovement://reset-password?token=<token>. The token
         is single-use, expires after one hour, and is URL-encoded in the link, so decode it before sending
-        it to /auth/reset-password.
+        it to /auth/reset-password. Rate-limited on two axes: 3 requests per hour per email address, and
+        10 per hour per IP. Either limit returns 429 TOO_MANY_REQUESTS with retryAfterSeconds in the body
+        and a Retry-After header, both in seconds and both up to 3600 - show minutes, not seconds. The
+        per-email limit counts the address that was submitted, whether or not an account exists, so a
+        429 still reveals nothing about who is registered: treat it exactly like the 200, as ''we have
+        sent a link if that address is known''.'
       operationId: ForgotPassword
       requestBody:
         content:
@@ -316,6 +356,12 @@ paths:
           description: OK
         '400':
           description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '429':
+          description: Too Many Requests
           content:
             application/problem+json:
               schema:
@@ -819,6 +865,558 @@ paths:
                 $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
+  /api/v1/package-options:
+    get:
+      tags:
+      - Package options
+      summary: The coach's package options, active by default.
+      description: Pass archived=true for the archive instead. The two lists are separate requests rather
+        than one list the client filters, because the Admin screens show them separately and an athlete
+        must never receive an archived option at all. Ordered by name. Prices are integer piastres - see
+        defaultPriceMinor.
+      operationId: ListPackageOptions
+      parameters:
+      - name: archived
+        in: query
+        schema:
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PackageOptionResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+    post:
+      tags:
+      - Package options
+      summary: Add a package option to the catalogue.
+      description: name is trimmed and must be unique among ACTIVE options, case-insensitively - a name
+        freed up by archiving may be reused. sessions is 1-1000. defaultPriceMinor is a non-negative integer
+        number of piastres, 100 to the EGP, never a decimal. features is 1-10 non-blank strings of at
+        most 100 characters each, and the order sent is the order stored and returned. A duplicate name
+        returns 409 PACKAGE_NAME_CONFLICT; anything else invalid returns 400 VALIDATION_FAILED with per-field
+        detail in errors.
+      operationId: CreatePackageOption
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SavePackageOptionRequest'
+        required: true
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageOptionResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/package-options/{id}:
+    get:
+      tags:
+      - Package options
+      summary: One package option, archived or not.
+      description: An id belonging to another coach returns 404 PACKAGE_OPTION_NOT_FOUND rather than 403,
+        so the API never confirms that an id it will not serve exists. Use the returned version when editing,
+        archiving or restoring.
+      operationId: GetPackageOption
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageOptionResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+    put:
+      tags:
+      - Package options
+      summary: Replace a package option's details.
+      description: 'Every field is replaced, including the whole feature list in the order sent. There
+        is no partial update: a package option is read as one card, and editing it field by field could
+        leave it half-changed. Send the version you last read - a stale version returns 409 CONCURRENCY_CONFLICT
+        rather than overwriting another device''s change, and the version increases on every successful
+        change. An archived option cannot be edited and returns 409 PACKAGE_OPTION_ARCHIVED; restore it
+        first.'
+      operationId: EditPackageOption
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EditPackageOptionRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageOptionResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/package-options/{id}/archive:
+    post:
+      tags:
+      - Package options
+      summary: Withdraw a package option from the athlete catalogue.
+      description: Package options are never deleted. Archiving hides the option from athletes, leaves
+        it visible to the Admin under archived=true, and does not touch anything an athlete has already
+        bought - a price withdrawn today is still the price somebody paid last week. Archiving an already-archived
+        option returns 409 PACKAGE_OPTION_ARCHIVED.
+      operationId: ArchivePackageOption
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PackageOptionVersionRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageOptionResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/package-options/{id}/restore:
+    post:
+      tags:
+      - Package options
+      summary: Return an archived package option to the athlete catalogue.
+      description: Restoring an option that is not archived returns 409 PACKAGE_OPTION_NOT_ARCHIVED. The
+        unique-name rule covers active options only, so if another option has taken the name while this
+        one was archived, restoring still succeeds and both names stand - refusing would leave the coach
+        unable to recover the option at all. Rename one afterwards.
+      operationId: RestorePackageOption
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PackageOptionVersionRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageOptionResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/athletes/{athleteId}/loyalty:
+    put:
+      tags:
+      - Pricing
+      summary: Mark an athlete as loyal, or remove it.
+      description: 'Loyalty is athlete-level, not per package: a loyal athlete gets 15% off every package''s
+        default price. It is idempotent - marking an already-loyal athlete loyal changes nothing and does
+        not reset how long they have been loyal. isLoyal also appears on the athlete list and the athlete
+        detail. An athlete belonging to another coach returns 404 ATHLETE_NOT_FOUND rather than 403.'
+      operationId: SetAthleteLoyalty
+      parameters:
+      - name: athleteId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetLoyaltyRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoyaltyResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/athletes/{athleteId}/custom-prices:
+    get:
+      tags:
+      - Pricing
+      summary: Every price override this athlete has.
+      description: Only the overrides. A package option missing from this list is priced by loyalty or
+        by its default - use the catalogue preview to see what the athlete will actually pay.
+      operationId: ListAthleteCustomPrices
+      parameters:
+      - name: athleteId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CustomPriceResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/athletes/{athleteId}/custom-prices/{packageOptionId}:
+    put:
+      tags:
+      - Pricing
+      summary: Set this athlete's price for one package option.
+      description: 'PUT, because there is at most one override per athlete and package option: calling
+        it again moves the price rather than adding a second. priceMinor is a non-negative integer number
+        of piastres and is stored exactly as sent - never rounded, and never discounted further, even
+        for a loyal athlete. An override is an agreed price, not a starting point, so it beats loyalty
+        outright.'
+      operationId: SetAthleteCustomPrice
+      parameters:
+      - name: athleteId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: packageOptionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetCustomPriceRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomPriceResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+    delete:
+      tags:
+      - Pricing
+      summary: Drop this athlete's price override.
+      description: 'Normal pricing resumes immediately: loyalty if the athlete is loyal, otherwise the
+        package''s default price. Removing an override that does not exist returns 404 CUSTOM_PRICE_NOT_FOUND.'
+      operationId: RemoveAthleteCustomPrice
+      parameters:
+      - name: athleteId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: packageOptionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '204':
+          description: No Content
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/athletes/{athleteId}/catalogue:
+    get:
+      tags:
+      - Pricing
+      summary: What this athlete sees, priced exactly as they will see it.
+      description: The same calculation the athlete's own catalogue uses, so the coach can check a price
+        without reproducing the precedence rule on the client. Returns an empty list for an athlete belonging
+        to another coach rather than disclosing that the id exists.
+      operationId: PreviewAthleteCatalogue
+      parameters:
+      - name: athleteId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CatalogueItemResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
 components:
   schemas:
     ApiProblemDetails:
@@ -844,26 +1442,32 @@ components:
           - string
         errorCode:
           enum:
-          - VALIDATION_FAILED
-          - INVALID_CREDENTIALS
           - ACCOUNT_LOCKED
           - ACCOUNT_PAUSED
-          - INVALID_TOKEN
+          - ATHLETE_NOT_FOUND
+          - CONCURRENCY_CONFLICT
+          - CUSTOM_PRICE_NOT_FOUND
+          - EMAIL_ALREADY_REGISTERED
+          - GOOGLE_EMAIL_MISMATCH
+          - INVALID_CREDENTIALS
+          - INVALID_GOOGLE_TOKEN
           - INVALID_REFRESH_TOKEN
           - INVALID_RESET_TOKEN
-          - INVALID_GOOGLE_TOKEN
-          - INVITATION_REQUIRED
-          - PASSWORD_NOT_SET
-          - INVITATION_INVALID
+          - INVALID_TOKEN
           - INVITATION_EXPIRED
-          - INVITATION_USED
+          - INVITATION_INVALID
+          - INVITATION_REQUIRED
           - INVITATION_REVOKED
-          - REGISTRATION_TOKEN_INVALID
-          - GOOGLE_EMAIL_MISMATCH
-          - EMAIL_ALREADY_REGISTERED
+          - INVITATION_USED
+          - PACKAGE_NAME_CONFLICT
+          - PACKAGE_OPTION_ARCHIVED
+          - PACKAGE_OPTION_NOT_ARCHIVED
+          - PACKAGE_OPTION_NOT_FOUND
+          - PASSWORD_NOT_SET
           - PROFILE_ALREADY_COMPLETED
+          - REGISTRATION_TOKEN_INVALID
           - TOO_MANY_REQUESTS
-          - ATHLETE_NOT_FOUND
+          - VALIDATION_FAILED
           type: string
         correlationId:
           type: string
@@ -889,6 +1493,7 @@ components:
       - dateOfBirth
       - gender
       - sport
+      - isLoyal
       - status
       - profileCompleted
       - createdAtUtc
@@ -920,6 +1525,8 @@ components:
           type:
           - 'null'
           - string
+        isLoyal:
+          type: boolean
         status:
           $ref: '#/components/schemas/UserStatus'
         profileCompleted:
@@ -933,6 +1540,7 @@ components:
       - fullName
       - email
       - sport
+      - isLoyal
       - status
       - createdAtUtc
       type: object
@@ -950,6 +1558,8 @@ components:
           type:
           - 'null'
           - string
+        isLoyal:
+          type: boolean
         status:
           $ref: '#/components/schemas/UserStatus'
         createdAtUtc:
@@ -1033,6 +1643,33 @@ components:
           format: int32
         user:
           $ref: '#/components/schemas/UserSummary'
+    CatalogueItemResponse:
+      required:
+      - id
+      - name
+      - sessions
+      - features
+      - priceMinor
+      - currency
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        sessions:
+          type: integer
+          format: int32
+        features:
+          type: array
+          items:
+            type: string
+        priceMinor:
+          type: integer
+          format: int64
+        currency:
+          type: string
     ChangePasswordRequest:
       required:
       - currentPassword
@@ -1104,6 +1741,49 @@ components:
           - $ref: '#/components/schemas/AthleteListSort'
         minimumSupportedAppVersion:
           type: string
+    CustomPriceResponse:
+      required:
+      - athleteUserId
+      - packageOptionId
+      - priceMinor
+      - currency
+      type: object
+      properties:
+        athleteUserId:
+          type: string
+          format: uuid
+        packageOptionId:
+          type: string
+          format: uuid
+        priceMinor:
+          type: integer
+          format: int64
+        currency:
+          type: string
+    EditPackageOptionRequest:
+      required:
+      - name
+      - sessions
+      - defaultPriceMinor
+      - features
+      - version
+      type: object
+      properties:
+        name:
+          type: string
+        sessions:
+          type: integer
+          format: int32
+        defaultPriceMinor:
+          type: integer
+          format: int64
+        features:
+          type: array
+          items:
+            type: string
+        version:
+          type: integer
+          format: int32
     ForgotPasswordRequest:
       required:
       - email
@@ -1185,6 +1865,73 @@ components:
       properties:
         refreshToken:
           type: string
+    LoyaltyResponse:
+      required:
+      - athleteId
+      - isLoyal
+      type: object
+      properties:
+        athleteId:
+          type: string
+          format: uuid
+        isLoyal:
+          type: boolean
+    PackageOptionResponse:
+      required:
+      - id
+      - name
+      - sessions
+      - defaultPriceMinor
+      - currency
+      - features
+      - isArchived
+      - archivedAtUtc
+      - version
+      - createdAtUtc
+      - updatedAtUtc
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        sessions:
+          type: integer
+          format: int32
+        defaultPriceMinor:
+          type: integer
+          format: int64
+        currency:
+          type: string
+        features:
+          type: array
+          items:
+            type: string
+        isArchived:
+          type: boolean
+        archivedAtUtc:
+          type:
+          - 'null'
+          - string
+          format: date-time
+        version:
+          type: integer
+          format: int32
+        createdAtUtc:
+          type: string
+          format: date-time
+        updatedAtUtc:
+          type: string
+          format: date-time
+    PackageOptionVersionRequest:
+      required:
+      - version
+      type: object
+      properties:
+        version:
+          type: integer
+          format: int32
     PagedResultOfAthleteListItem:
       required:
       - items
@@ -1258,6 +2005,41 @@ components:
           type: string
         newPassword:
           type: string
+    SavePackageOptionRequest:
+      required:
+      - name
+      - sessions
+      - defaultPriceMinor
+      - features
+      type: object
+      properties:
+        name:
+          type: string
+        sessions:
+          type: integer
+          format: int32
+        defaultPriceMinor:
+          type: integer
+          format: int64
+        features:
+          type: array
+          items:
+            type: string
+    SetCustomPriceRequest:
+      required:
+      - priceMinor
+      type: object
+      properties:
+        priceMinor:
+          type: integer
+          format: int64
+    SetLoyaltyRequest:
+      required:
+      - isLoyal
+      type: object
+      properties:
+        isLoyal:
+          type: boolean
     UpdatePreferencesRequest:
       required:
       - athleteListSort
@@ -1332,4 +2114,6 @@ tags:
 - name: BeyondMovement.Api
 - name: Authentication
 - name: Athletes
+- name: Pricing
 - name: Invitations
+- name: Package options

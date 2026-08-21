@@ -20,6 +20,24 @@ public static class RateLimitPolicies
     /// </summary>
     private const int DefaultPermitLimit = 10;
 
+    /// <summary>
+    /// The per-IP half of the password-reset limit. The per-email half lives in
+    /// <see cref="PasswordResetRateLimiter"/>, because the address is in the request body and a
+    /// partitioner runs before the body is read.
+    /// <para>
+    /// This one catches the attack the per-email limit cannot see: one machine walking a list of
+    /// addresses, three requests each, never tripping any single address's counter.
+    /// </para>
+    /// </summary>
+    public const string PasswordReset = "password-reset";
+
+    /// <summary>
+    /// Not from the architecture, which specifies only the per-email limit. Ten an hour is far
+    /// more than a household or a small office will ever need — forgetting a password is rare —
+    /// while a list-walking script hits it almost immediately. Configurable per environment.
+    /// </summary>
+    private const int DefaultPasswordResetPerIp = 10;
+
     private static readonly TimeSpan Window = TimeSpan.FromHours(1);
 
     public static IServiceCollection AddApiRateLimiting(this IServiceCollection services) =>
@@ -33,6 +51,21 @@ public static class RateLimitPolicies
                 var permitLimit = context.RequestServices
                     .GetRequiredService<IConfiguration>()
                     .GetValue("RateLimits:InvitationValidationPerHour", DefaultPermitLimit);
+
+                return RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    factory: _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = permitLimit,
+                        Window = Window
+                    });
+            });
+
+            options.AddPolicy(PasswordReset, context =>
+            {
+                var permitLimit = context.RequestServices
+                    .GetRequiredService<IConfiguration>()
+                    .GetValue("RateLimits:PasswordResetPerIpPerHour", DefaultPasswordResetPerIp);
 
                 return RateLimitPartition.GetFixedWindowLimiter(
                     partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
