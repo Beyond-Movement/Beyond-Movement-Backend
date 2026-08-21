@@ -1,6 +1,8 @@
 using System.Text.Json.Nodes;
 using BeyondMovement.Modules.Identity.Contracts;
 using BeyondMovement.Modules.Packages;
+using BeyondMovement.Modules.Packages.Contracts;
+using BeyondMovement.Modules.Packages.Domain;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.OpenApi;
 
@@ -45,7 +47,69 @@ public sealed class SchemaNormalizingTransformer : IOpenApiSchemaTransformer
         if (context.JsonTypeInfo.Type == typeof(ApiProblemDetails))
             DeclareErrorCodeValues(schema);
 
+        DeclareLimits(schema, context.JsonTypeInfo.Type);
+
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Writes the validation limits into the schema itself rather than leaving them described in
+    /// prose, so a generated client can reject a bad value before it costs a round trip and a
+    /// reader can see the bounds without parsing an English sentence.
+    /// <para>
+    /// They are stated here rather than read from the FluentValidation rules because there is no
+    /// reliable mapping between the two — a rule expressed with <c>Must</c> has no schema
+    /// equivalent at all. The cost is that these must be kept in step with the validators; the
+    /// constants they are taken from are the same ones the validators use, which is what keeps
+    /// them honest.
+    /// </para>
+    /// </summary>
+    private static void DeclareLimits(OpenApiSchema schema, Type type)
+    {
+        if (type == typeof(SavePackageOptionRequest) || type == typeof(EditPackageOptionRequest))
+        {
+            Limit(schema, "name", s => s.MaxLength = PackageOption.MaxNameLength);
+
+            Limit(schema, "sessions", s =>
+            {
+                s.Minimum = PackageOption.MinSessions.ToString();
+                s.Maximum = PackageOption.MaxSessions.ToString();
+            });
+
+            Limit(schema, "defaultPriceMinor", s =>
+            {
+                s.Minimum = "0";
+                s.Maximum = PackagePricing.MaxPriceMinor.ToString();
+            });
+
+            Limit(schema, "features", s =>
+            {
+                s.MinItems = PackageOption.MinFeatures;
+                s.MaxItems = PackageOption.MaxFeatures;
+
+                if (s.Items is OpenApiSchema item)
+                    item.MaxLength = PackageOptionFeature.MaxTextLength;
+            });
+
+            Limit(schema, "version", s => s.Minimum = "1");
+        }
+        else if (type == typeof(SetCustomPriceRequest))
+        {
+            Limit(schema, "priceMinor", s =>
+            {
+                s.Minimum = "0";
+                s.Maximum = PackagePricing.MaxPriceMinor.ToString();
+            });
+        }
+    }
+
+    private static void Limit(OpenApiSchema schema, string property, Action<OpenApiSchema> apply)
+    {
+        if (schema.Properties?.TryGetValue(property, out var found) == true
+            && found is OpenApiSchema concrete)
+        {
+            apply(concrete);
+        }
     }
 
     /// <summary>

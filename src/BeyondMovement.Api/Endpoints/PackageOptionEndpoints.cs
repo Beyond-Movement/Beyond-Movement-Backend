@@ -105,8 +105,9 @@ public static class PackageOptionEndpoints
         .WithName("CreatePackageOption")
         .WithSummary("Add a package option to the catalogue.")
         .WithDescription(
-            "name is trimmed and must be unique among ACTIVE options, case-insensitively - a " +
-            "name freed up by archiving may be reused. sessions is 1-1000. defaultPriceMinor is " +
+            "name is trimmed and must be unique across the WHOLE catalogue, case-insensitively - " +
+            "archived options included, so archiving does not free a name for reuse. sessions is " +
+            "1-1000. defaultPriceMinor is " +
             "a non-negative integer number of piastres, 100 to the EGP, never a decimal. " +
             "features is 1-10 non-blank strings of at most 100 characters each, and the order " +
             "sent is the order stored and returned. A duplicate name returns 409 " +
@@ -215,10 +216,8 @@ public static class PackageOptionEndpoints
         .WithSummary("Return an archived package option to the athlete catalogue.")
         .WithDescription(
             "Restoring an option that is not archived returns 409 PACKAGE_OPTION_NOT_ARCHIVED. " +
-            "The unique-name rule covers active options only, so if another option has taken the " +
-            "name while this one was archived, restoring still succeeds and both names stand - " +
-            "refusing would leave the coach unable to recover the option at all. Rename one " +
-            "afterwards.")
+            "Restore cannot fail on a name collision: names are unique across archived options " +
+            "too, so no other option can have taken this one's name while it was away.")
         .Produces<PackageOptionResponse>()
         .Produces<ApiProblemDetails>(StatusCodes.Status400BadRequest, ProblemJson)
         .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)

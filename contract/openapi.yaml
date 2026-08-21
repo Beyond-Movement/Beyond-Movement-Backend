@@ -908,12 +908,12 @@ paths:
       tags:
       - Package options
       summary: Add a package option to the catalogue.
-      description: name is trimmed and must be unique among ACTIVE options, case-insensitively - a name
-        freed up by archiving may be reused. sessions is 1-1000. defaultPriceMinor is a non-negative integer
-        number of piastres, 100 to the EGP, never a decimal. features is 1-10 non-blank strings of at
-        most 100 characters each, and the order sent is the order stored and returned. A duplicate name
-        returns 409 PACKAGE_NAME_CONFLICT; anything else invalid returns 400 VALIDATION_FAILED with per-field
-        detail in errors.
+      description: name is trimmed and must be unique across the WHOLE catalogue, case-insensitively -
+        archived options included, so archiving does not free a name for reuse. sessions is 1-1000. defaultPriceMinor
+        is a non-negative integer number of piastres, 100 to the EGP, never a decimal. features is 1-10
+        non-blank strings of at most 100 characters each, and the order sent is the order stored and returned.
+        A duplicate name returns 409 PACKAGE_NAME_CONFLICT; anything else invalid returns 400 VALIDATION_FAILED
+        with per-field detail in errors.
       operationId: CreatePackageOption
       requestBody:
         content:
@@ -1127,10 +1127,9 @@ paths:
       tags:
       - Package options
       summary: Return an archived package option to the athlete catalogue.
-      description: Restoring an option that is not archived returns 409 PACKAGE_OPTION_NOT_ARCHIVED. The
-        unique-name rule covers active options only, so if another option has taken the name while this
-        one was archived, restoring still succeeds and both names stand - refusing would leave the coach
-        unable to recover the option at all. Rename one afterwards.
+      description: 'Restoring an option that is not archived returns 409 PACKAGE_OPTION_NOT_ARCHIVED.
+        Restore cannot fail on a name collision: names are unique across archived options too, so no other
+        option can have taken this one''s name while it was away.'
       operationId: RestorePackageOption
       parameters:
       - name: id
@@ -1239,8 +1238,11 @@ paths:
       tags:
       - Pricing
       summary: Every price override this athlete has.
-      description: Only the overrides. A package option missing from this list is priced by loyalty or
-        by its default - use the catalogue preview to see what the athlete will actually pay.
+      description: Only the overrides, and an empty list is normal - most athletes have none. A package
+        option missing from this list is priced by loyalty or by its default; use the catalogue preview
+        to see what the athlete will actually pay. An unknown athlete, or one belonging to another coach,
+        returns 404 ATHLETE_NOT_FOUND rather than an empty list, so a bad id cannot be mistaken for an
+        athlete who simply has no overrides.
       operationId: ListAthleteCustomPrices
       parameters:
       - name: athleteId
@@ -1266,6 +1268,12 @@ paths:
                 $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
           content:
             application/problem+json:
               schema:
@@ -1384,8 +1392,9 @@ paths:
       - Pricing
       summary: What this athlete sees, priced exactly as they will see it.
       description: The same calculation the athlete's own catalogue uses, so the coach can check a price
-        without reproducing the precedence rule on the client. Returns an empty list for an athlete belonging
-        to another coach rather than disclosing that the id exists.
+        without reproducing the precedence rule on the client. An unknown athlete, or one belonging to
+        another coach, returns 404 ATHLETE_NOT_FOUND. An empty list means the coach has no active package
+        options, not that the athlete is unknown.
       operationId: PreviewAthleteCatalogue
       parameters:
       - name: athleteId
@@ -1411,6 +1420,12 @@ paths:
                 $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
           content:
             application/problem+json:
               schema:
@@ -1770,18 +1785,27 @@ components:
       type: object
       properties:
         name:
+          maxLength: 100
           type: string
         sessions:
+          maximum: 1000
+          minimum: 1
           type: integer
           format: int32
         defaultPriceMinor:
+          maximum: 1000000000
+          minimum: 0
           type: integer
           format: int64
         features:
+          maxItems: 10
+          minItems: 1
           type: array
           items:
+            maxLength: 100
             type: string
         version:
+          minimum: 1
           type: integer
           format: int32
     ForgotPasswordRequest:
@@ -2014,16 +2038,24 @@ components:
       type: object
       properties:
         name:
+          maxLength: 100
           type: string
         sessions:
+          maximum: 1000
+          minimum: 1
           type: integer
           format: int32
         defaultPriceMinor:
+          maximum: 1000000000
+          minimum: 0
           type: integer
           format: int64
         features:
+          maxItems: 10
+          minItems: 1
           type: array
           items:
+            maxLength: 100
             type: string
     SetCustomPriceRequest:
       required:
@@ -2031,6 +2063,8 @@ components:
       type: object
       properties:
         priceMinor:
+          maximum: 1000000000
+          minimum: 0
           type: integer
           format: int64
     SetLoyaltyRequest:

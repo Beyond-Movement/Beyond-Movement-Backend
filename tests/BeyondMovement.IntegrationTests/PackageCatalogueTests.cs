@@ -109,6 +109,53 @@ public sealed class PackageCatalogueTests(AthleteApiFactory factory) : IClassFix
         Assert.Equal("PACKAGE_NAME_CONFLICT", body.GetProperty("errorCode").GetString());
     }
 
+    [Fact]
+    public async Task Archiving_does_not_free_the_name_for_reuse()
+    {
+        var admin = await AdminClientAsync();
+        var created = await CreateOptionAsync(admin, "Name Held While Archived");
+        var id = created.GetProperty("id").GetGuid();
+
+        var archived = await admin.PostAsJsonAsync(
+            $"/api/v1/package-options/{id}/archive", new { version = 1 });
+        archived.EnsureSuccessStatusCode();
+
+        // Without this, a second option could take the name and then both would be active the
+        // moment the first was restored - two live packages called the same thing.
+        var response = await admin.PostAsJsonAsync("/api/v1/package-options", new
+        {
+            name = "name held while archived",
+            sessions = 4,
+            defaultPriceMinor = 100_000,
+            features = new[] { "One" }
+        });
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("PACKAGE_NAME_CONFLICT", body.GetProperty("errorCode").GetString());
+    }
+
+    [Fact]
+    public async Task Restoring_can_never_collide_on_a_name()
+    {
+        var admin = await AdminClientAsync();
+        var created = await CreateOptionAsync(admin, "Always Restorable");
+        var id = created.GetProperty("id").GetGuid();
+
+        var archived = await admin.PostAsJsonAsync(
+            $"/api/v1/package-options/{id}/archive", new { version = 1 });
+        var version = (await archived.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("version").GetInt32();
+
+        // The name was held while archived, so nothing can have taken it, so restore is always
+        // available - the coach can never be locked out of recovering an option.
+        var restored = await admin.PostAsJsonAsync(
+            $"/api/v1/package-options/{id}/restore", new { version });
+
+        Assert.Equal(HttpStatusCode.OK, restored.StatusCode);
+    }
+
     [Theory]
     [InlineData(0, 400_000, new[] { "One" })]                 // sessions below the minimum
     [InlineData(1001, 400_000, new[] { "One" })]              // sessions above the maximum
@@ -359,6 +406,45 @@ public sealed class PackageCatalogueTests(AthleteApiFactory factory) : IClassFix
         Assert.Equal(340_000, PriceIn(after, id));
 
         await admin.PutAsJsonAsync($"/api/v1/athletes/{athleteId}/loyalty", new { isLoyal = false });
+    }
+
+    [Fact]
+    public async Task An_unknown_athlete_is_not_found_on_every_pricing_endpoint()
+    {
+        var admin = await AdminClientAsync();
+        var created = await CreateOptionAsync(admin, "Unknown Athlete Guard");
+        var optionId = created.GetProperty("id").GetGuid();
+        var stranger = Guid.NewGuid();
+
+        // An empty list would read as "this athlete has no overrides" and hide the bad id.
+        var list = await admin.GetAsync($"/api/v1/athletes/{stranger}/custom-prices");
+        var preview = await admin.GetAsync($"/api/v1/athletes/{stranger}/catalogue");
+        var set = await admin.PutAsJsonAsync(
+            $"/api/v1/athletes/{stranger}/custom-prices/{optionId}", new { priceMinor = 100_000 });
+        var remove = await admin.DeleteAsync($"/api/v1/athletes/{stranger}/custom-prices/{optionId}");
+        var loyalty = await admin.PutAsJsonAsync(
+            $"/api/v1/athletes/{stranger}/loyalty", new { isLoyal = true });
+
+        foreach (var response in new[] { list, preview, set, remove, loyalty })
+        {
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+
+            var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("ATHLETE_NOT_FOUND", body.GetProperty("errorCode").GetString());
+        }
+    }
+
+    [Fact]
+    public async Task An_athlete_with_no_overrides_gets_an_empty_list_not_a_not_found()
+    {
+        var admin = await AdminClientAsync();
+        var athleteId = await AthleteIdAsync(admin, "jordan@nowhere.test");
+
+        var response = await admin.GetAsync($"/api/v1/athletes/{athleteId}/custom-prices");
+
+        // The other half of the pair above: empty is a real answer, and must stay a 200.
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Empty((await response.Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray());
     }
 
     [Fact]

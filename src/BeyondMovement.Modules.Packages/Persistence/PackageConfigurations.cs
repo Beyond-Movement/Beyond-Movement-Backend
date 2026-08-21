@@ -16,13 +16,10 @@ public sealed class PackageOptionConfiguration : IEntityTypeConfiguration<Packag
         b.Property(x => x.DefaultPriceMinor).IsRequired();
         b.Property(x => x.Version).IsRequired();
 
-        // Case-insensitive uniqueness per coach, enforced by the database rather than by a
-        // read-then-write in the handler, which two Admin devices can interleave. Archived rows
-        // are excluded: a name withdrawn from the catalogue should be reusable.
-        b.HasIndex(x => new { x.CoachId, x.Name })
-            .IsUnique()
-            .HasFilter("\"IsArchived\" = false")
-            .HasDatabaseName("IX_PackageOptions_CoachId_Name_Active");
+        // Uniqueness is case-insensitive and spans archived options, which EF cannot express:
+        // it needs a unique index on lower("Name"), created by raw SQL in the migration. The
+        // handler checks first so the caller gets PACKAGE_NAME_CONFLICT rather than a database
+        // exception; the index is what holds when two Admin devices race.
 
         // The Admin list is always "this coach's, archived or not", so both screens are one index.
         b.HasIndex(x => new { x.CoachId, x.IsArchived });

@@ -110,7 +110,7 @@ the athlete never agreed to would be an invention, and revealing that a discount
 
 | Field | Rule |
 |---|---|
-| `name` | Required, trimmed, ≤100 chars, **case-insensitively unique among active options** |
+| `name` | Required, trimmed, ≤100 chars, **case-insensitively unique across the whole catalogue** |
 | `sessions` | Whole number, 1–1000 |
 | `defaultPriceMinor` | Integer ≥ 0, ≤ 1,000,000,000 piastres (10,000,000 EGP) |
 | `features` | 1–10 entries, each non-blank and ≤100 chars, **order preserved** |
@@ -118,7 +118,31 @@ the athlete never agreed to would be an invention, and revealing that a discount
 Order is stored explicitly, so the order sent is the order stored and returned — not sorted, not
 whatever order the database returns rows in.
 
-A name freed by archiving **can be reused**: uniqueness covers active options only.
+**These limits are now in `openapi.yaml` itself** — `maxLength`, `minimum`, `maximum`, `minItems`,
+`maxItems`, including `maxLength` on each feature string — so a generated client can reject a bad
+value without a round trip, rather than the bounds living only in prose.
+
+### Every pricing endpoint 404s on an unknown athlete
+
+`GET /athletes/{id}/custom-prices`, `GET /athletes/{id}/catalogue`, both `custom-prices/{optionId}`
+methods and `PUT /athletes/{id}/loyalty` all return **404 `ATHLETE_NOT_FOUND`** for an athlete id
+that is unknown or belongs to another coach. The list endpoints previously returned an empty
+list, which is wrong: **an empty list is a real answer** — most athletes have no overrides, and a
+coach with no package options has an empty catalogue — so a bad id was indistinguishable from a
+screen that merely looks empty.
+
+Setting and removing a custom price also verify the athlete before writing anything. That check
+was missing entirely: an override could be attached to an athlete id belonging to another coach.
+Low impact with one coach, but it was a real hole.
+
+**Uniqueness spans archived options too.** Archiving does not free a name for reuse — that was
+my earlier call and it was wrong, because it allowed exactly the sequence the review found:
+reuse an archived name, restore the archived option, end up with two active packages called the
+same thing. Enforced by a unique index on `(CoachId, lower(Name))`, so it holds even when two
+Admin devices race.
+
+A consequence worth having: **restore can no longer fail on a name collision**, because nothing
+can have taken the name while the option was archived. The coach can always recover an option.
 
 ### Archive behaviour
 
@@ -126,9 +150,8 @@ Options are **never deleted**. Archiving hides an option from the athlete catalo
 visible to the Admin under `archived=true`, and touches nothing an athlete has already bought.
 Archived options **cannot be edited** until restored — `409 PACKAGE_OPTION_ARCHIVED`.
 
-One edge case decided here: if another option took the name while this one was archived,
-**restore still succeeds** and both names stand. Refusing would leave the coach unable to recover
-the option at all. Rename one afterwards.
+Restore always succeeds on a name basis — see the uniqueness rule above — so the only way it
+fails is `PACKAGE_OPTION_NOT_ARCHIVED` or a stale `version`.
 
 ### Concurrency
 

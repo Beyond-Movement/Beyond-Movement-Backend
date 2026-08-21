@@ -123,16 +123,18 @@ public sealed class PackageOptionHandler(IPackagesDbContext db, IClock clock)
 
     /// <summary>
     /// Checked here so the caller gets PACKAGE_NAME_CONFLICT rather than a database exception.
-    /// The unique index is still the thing that makes it true under a race; this is the polite
-    /// path, not the guarantee.
+    /// The unique index on lower(Name) is still what makes it true under a race between two
+    /// Admin devices; this is the polite path, not the guarantee.
     /// </summary>
     private Task<bool> NameTakenAsync(Guid coachId, string name, Guid? excluding, CancellationToken ct)
     {
         var normalized = name.Trim();
 
+        // Archived options count. A name is a name whether or not the option is on sale, and
+        // two packages called the same thing are ambiguous in the archive as much as the
+        // catalogue - the coach cannot tell which is which when restoring one.
         return db.PackageOptions.AnyAsync(o =>
             o.CoachId == coachId
-            && !o.IsArchived
             && o.Id != excluding
             && o.Name.ToLower() == normalized.ToLower(), ct);
     }

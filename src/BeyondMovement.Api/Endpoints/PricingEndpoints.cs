@@ -4,6 +4,7 @@ using BeyondMovement.Modules.Athletes.Features;
 using BeyondMovement.Modules.Identity.Contracts;
 using BeyondMovement.Modules.Packages.Contracts;
 using BeyondMovement.Modules.Packages.Features;
+using BeyondMovement.SharedKernel;
 using FluentValidation;
 
 namespace BeyondMovement.Api.Endpoints;
@@ -72,22 +73,33 @@ public static class PricingEndpoints
         group.MapGet("/custom-prices", async (
             Guid athleteId,
             CustomPriceHandler handler,
+            CatalogueReader reader,
             ClaimsPrincipal principal,
+            HttpContext http,
             CancellationToken ct) =>
         {
             if (!principal.TryGetIdentity(out _, out var coachId))
                 return Results.Unauthorized();
+
+            // An empty list is a real answer here - most athletes have no overrides - so an
+            // unknown athlete has to be told apart from one that simply has none set.
+            if (!await reader.BelongsToCoachAsync(coachId, athleteId, ct))
+                return PricingErrors.AthleteNotFound.ToProblem(http);
 
             return Results.Ok(await handler.ListForAthleteAsync(coachId, athleteId, ct));
         })
         .WithName("ListAthleteCustomPrices")
         .WithSummary("Every price override this athlete has.")
         .WithDescription(
-            "Only the overrides. A package option missing from this list is priced by loyalty or " +
-            "by its default - use the catalogue preview to see what the athlete will actually pay.")
+            "Only the overrides, and an empty list is normal - most athletes have none. A package " +
+            "option missing from this list is priced by loyalty or by its default; use the " +
+            "catalogue preview to see what the athlete will actually pay. An unknown athlete, or " +
+            "one belonging to another coach, returns 404 ATHLETE_NOT_FOUND rather than an empty " +
+            "list, so a bad id cannot be mistaken for an athlete who simply has no overrides.")
         .Produces<IReadOnlyList<CustomPriceResponse>>()
         .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
-        .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson);
+        .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson)
+        .Produces<ApiProblemDetails>(StatusCodes.Status404NotFound, ProblemJson);
 
     private static void MapSetCustomPrice(RouteGroupBuilder group) =>
         group.MapPut("/custom-prices/{packageOptionId:guid}", async (
@@ -96,6 +108,7 @@ public static class PricingEndpoints
             SetCustomPriceRequest request,
             IValidator<SetCustomPriceRequest> validator,
             CustomPriceHandler handler,
+            CatalogueReader reader,
             ClaimsPrincipal principal,
             HttpContext http,
             CancellationToken ct) =>
@@ -106,6 +119,12 @@ public static class PricingEndpoints
 
             if (!principal.TryGetIdentity(out _, out var coachId))
                 return Results.Unauthorized();
+
+            // The athlete id arrives in the URL, so it is checked before anything is written.
+            // Without this an override could be attached to an id that is not this coach's
+            // athlete, and nothing downstream would ever notice.
+            if (!await reader.BelongsToCoachAsync(coachId, athleteId, ct))
+                return PricingErrors.AthleteNotFound.ToProblem(http);
 
             var result = await handler.SetAsync(coachId, athleteId, packageOptionId, request.PriceMinor, ct);
 
@@ -130,12 +149,16 @@ public static class PricingEndpoints
             Guid athleteId,
             Guid packageOptionId,
             CustomPriceHandler handler,
+            CatalogueReader reader,
             ClaimsPrincipal principal,
             HttpContext http,
             CancellationToken ct) =>
         {
             if (!principal.TryGetIdentity(out _, out var coachId))
                 return Results.Unauthorized();
+
+            if (!await reader.BelongsToCoachAsync(coachId, athleteId, ct))
+                return PricingErrors.AthleteNotFound.ToProblem(http);
 
             var result = await handler.RemoveAsync(coachId, athleteId, packageOptionId, ct);
 
@@ -157,22 +180,29 @@ public static class PricingEndpoints
             Guid athleteId,
             CatalogueReader reader,
             ClaimsPrincipal principal,
+            HttpContext http,
             CancellationToken ct) =>
         {
             if (!principal.TryGetIdentity(out _, out var coachId))
                 return Results.Unauthorized();
 
-            return Results.Ok(await reader.PreviewForCoachAsync(coachId, athleteId, ct));
+            var catalogue = await reader.PreviewForCoachAsync(coachId, athleteId, ct);
+
+            return catalogue is null
+                ? PricingErrors.AthleteNotFound.ToProblem(http)
+                : Results.Ok(catalogue);
         })
         .WithName("PreviewAthleteCatalogue")
         .WithSummary("What this athlete sees, priced exactly as they will see it.")
         .WithDescription(
             "The same calculation the athlete's own catalogue uses, so the coach can check a " +
-            "price without reproducing the precedence rule on the client. Returns an empty list " +
-            "for an athlete belonging to another coach rather than disclosing that the id exists.")
+            "price without reproducing the precedence rule on the client. An unknown athlete, or " +
+            "one belonging to another coach, returns 404 ATHLETE_NOT_FOUND. An empty list means " +
+            "the coach has no active package options, not that the athlete is unknown.")
         .Produces<IReadOnlyList<CatalogueItemResponse>>()
         .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
-        .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson);
+        .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson)
+        .Produces<ApiProblemDetails>(StatusCodes.Status404NotFound, ProblemJson);
 
     private static void MapAthleteCatalogue(IEndpointRouteBuilder app) =>
         app.MapGet("/api/v1/catalogue", async (
@@ -204,5 +234,16 @@ public static class PricingEndpoints
 
 /// <param name="IsLoyal">True to mark loyal, false to remove it.</param>
 public sealed record SetLoyaltyRequest(bool IsLoyal);
+
+internal static class PricingErrors
+{
+    /// <summary>
+    /// 404 rather than 403, so the API never confirms that an athlete id it will not serve
+    /// exists. The same code and message the athlete endpoints already return, so the client
+    /// has one case to handle rather than one per area.
+    /// </summary>
+    public static readonly Error AthleteNotFound =
+        new(ApiErrorCodes.AthleteNotFound, "No such athlete.", StatusCodes.Status404NotFound);
+}
 
 public sealed record LoyaltyResponse(Guid AthleteId, bool IsLoyal);
