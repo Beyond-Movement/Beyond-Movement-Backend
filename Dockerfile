@@ -25,6 +25,7 @@ COPY src/BeyondMovement.Api/BeyondMovement.Api.csproj                         sr
 COPY src/BeyondMovement.Infrastructure/BeyondMovement.Infrastructure.csproj   src/BeyondMovement.Infrastructure/
 COPY src/BeyondMovement.Modules.Athletes/BeyondMovement.Modules.Athletes.csproj src/BeyondMovement.Modules.Athletes/
 COPY src/BeyondMovement.Modules.Identity/BeyondMovement.Modules.Identity.csproj src/BeyondMovement.Modules.Identity/
+COPY src/BeyondMovement.Modules.Packages/BeyondMovement.Modules.Packages.csproj src/BeyondMovement.Modules.Packages/
 COPY src/BeyondMovement.SharedKernel/BeyondMovement.SharedKernel.csproj       src/BeyondMovement.SharedKernel/
 
 RUN dotnet restore src/BeyondMovement.Api/BeyondMovement.Api.csproj
