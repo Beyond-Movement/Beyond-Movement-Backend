@@ -7,6 +7,288 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ---
 
+## Phase 4 — Package options, loyalty and custom pricing
+
+The catalogue only. **Purchasing, InstaPay, pending purchases, payment confirmation, package
+activation, remaining-session tracking and purchase history are all excluded** and remain part
+of the later payment work, as specified.
+
+> **This supersedes the current spec documents, which have not been updated yet.**
+> `product-specification.md` §4.5, `software-architecture.md` §14.3 and `development-roadmap.md`
+> Phase 4 all describe Phase 4 as the *purchased* package — one active package per athlete,
+> BR-03, remaining sessions. That model is not gone; it has moved to the later phase, and none
+> of it is implemented here. Until those documents are amended they describe a Phase 4 the API
+> does not have.
+
+### Money is an integer count of piastres
+
+Every price field ends in `Minor` and is a **64-bit integer number of piastres**, 100 to the
+Egyptian pound. `defaultPriceMinor: 400000` is 4,000.00 EGP.
+
+This was the delegated decision, and it is deliberate. A decimal price serialised as a JSON
+number is parsed into a Dart `double`, and doubles cannot represent most decimal fractions
+exactly. On one price the error is invisible; it shows up the first time prices are summed.
+Dart's `int` is exact 64-bit, so an integer of piastres has no such failure mode anywhere along
+the chain — C#, Postgres, JSON, Dart.
+
+To display: `priceMinor / 100` with two decimal places. Never do arithmetic on the divided value.
+
+`currency` is returned beside every price and is always `"EGP"`. It is there so the client never
+assumes, and so a second currency later is a value change rather than a contract change.
+
+### The 15% loyalty rounding rule
+
+**Price × 0.85, rounded to the nearest tenth of a pound (10 piastres), halves away from zero.**
+
+Fifteen percent of an arbitrary price lands on fractions of a piastre — 999.99 becomes 849.9915 —
+and a catalogue full of prices like that reads as a bug rather than a discount. Rounding to a
+tenth keeps every loyalty price something a person would write down.
+
+| Default | ×0.85 | Charged |
+|---|---|---|
+| 4,000.00 | 3,400.00 | **3,400.00** |
+| 999.99 | 849.9915 | **850.00** |
+| 33.33 | 28.3305 | **28.30** |
+| 1.00 | 0.85 | **0.90** (a midpoint, so away from zero) |
+
+Two things this rule does **not** do:
+
+- **Default prices and custom overrides are never rounded.** They are numbers a person chose,
+  and rounding a deliberate 1,234.56 to 1,234.60 would be the API overruling the coach. Only the
+  *computed* loyalty price is rounded.
+- **A discount can never exceed the original price.** Rounding to the nearest tenth rounds up as
+  often as down, and below about a pound that could land above the undiscounted price — 0.06
+  would "discount" to 0.10. The result is clamped. No coaching package costs 6 piastres; the
+  guard exists so the rule cannot misbehave rather than because it was likely to.
+
+### Effective-price precedence
+
+Exactly as specified, and calculated **server-side only**:
+
+1. Athlete/package custom price
+2. 15% loyalty discount
+3. Package default price
+
+**A custom price is not discounted again for a loyal athlete.** It is an agreed price for that
+athlete, not a starting point; compounding the two would make the number the coach typed not the
+number the athlete pays. A custom price of **0 is a real override**, not an absent one — a test
+pins this, because `if (price)` in almost any language would fall through to the default.
+
+### Admin endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/v1/package-options` | Active options |
+| `GET` | `/api/v1/package-options?archived=true` | Archived options |
+| `GET` | `/api/v1/package-options/{id}` | One option |
+| `POST` | `/api/v1/package-options` | Create |
+| `PUT` | `/api/v1/package-options/{id}` | Edit |
+| `POST` | `/api/v1/package-options/{id}/archive` | Archive |
+| `POST` | `/api/v1/package-options/{id}/restore` | Restore |
+| `PUT` | `/api/v1/athletes/{athleteId}/loyalty` | Mark or unmark loyal |
+| `GET` | `/api/v1/athletes/{athleteId}/custom-prices` | This athlete's overrides |
+| `PUT` | `/api/v1/athletes/{athleteId}/custom-prices/{packageOptionId}` | Set an override |
+| `DELETE` | `/api/v1/athletes/{athleteId}/custom-prices/{packageOptionId}` | Remove an override |
+| `GET` | `/api/v1/athletes/{athleteId}/catalogue` | Preview what this athlete will pay |
+
+The catalogue preview is there so the coach can check a price **without the client reproducing
+the precedence rule**.
+
+### Athlete endpoint
+
+`GET /api/v1/catalogue` — athlete-only, always the caller's own, from the token.
+
+Each item: `id`, `name`, `sessions`, `features` (ordered), `priceMinor`, `currency`. Archived
+options are excluded. Ordered cheapest first.
+
+`priceMinor` is the **final** price. There is deliberately **no** `defaultPriceMinor`, no
+`isLoyal`, and no field saying which rule applied — a test asserts their absence. A "was 4,000"
+the athlete never agreed to would be an invention, and revealing that a discount applied invites
+"why not me?" between athletes.
+
+### Validation
+
+| Field | Rule |
+|---|---|
+| `name` | Required, trimmed, ≤100 chars, **case-insensitively unique across the whole catalogue** |
+| `sessions` | Whole number, 1–1000 |
+| `defaultPriceMinor` | Integer ≥ 0, ≤ 1,000,000,000 piastres (10,000,000 EGP) |
+| `features` | 1–10 entries, each non-blank and ≤100 chars, **order preserved** |
+
+Order is stored explicitly, so the order sent is the order stored and returned — not sorted, not
+whatever order the database returns rows in.
+
+**These limits are now in `openapi.yaml` itself** — `maxLength`, `minimum`, `maximum`, `minItems`,
+`maxItems`, including `maxLength` on each feature string — so a generated client can reject a bad
+value without a round trip, rather than the bounds living only in prose.
+
+### Every pricing endpoint 404s on an unknown athlete
+
+`GET /athletes/{id}/custom-prices`, `GET /athletes/{id}/catalogue`, both `custom-prices/{optionId}`
+methods and `PUT /athletes/{id}/loyalty` all return **404 `ATHLETE_NOT_FOUND`** for an athlete id
+that is unknown or belongs to another coach. The list endpoints previously returned an empty
+list, which is wrong: **an empty list is a real answer** — most athletes have no overrides, and a
+coach with no package options has an empty catalogue — so a bad id was indistinguishable from a
+screen that merely looks empty.
+
+Setting and removing a custom price also verify the athlete before writing anything. That check
+was missing entirely: an override could be attached to an athlete id belonging to another coach.
+Low impact with one coach, but it was a real hole.
+
+**Uniqueness spans archived options too.** Archiving does not free a name for reuse — that was
+my earlier call and it was wrong, because it allowed exactly the sequence the review found:
+reuse an archived name, restore the archived option, end up with two active packages called the
+same thing. Enforced by a unique index on `(CoachId, lower(Name))`, so it holds even when two
+Admin devices race.
+
+A consequence worth having: **restore can no longer fail on a name collision**, because nothing
+can have taken the name while the option was archived. The coach can always recover an option.
+
+### Archive behaviour
+
+Options are **never deleted**. Archiving hides an option from the athlete catalogue, leaves it
+visible to the Admin under `archived=true`, and touches nothing an athlete has already bought.
+Archived options **cannot be edited** until restored — `409 PACKAGE_OPTION_ARCHIVED`.
+
+Restore always succeeds on a name basis — see the uniqueness rule above — so the only way it
+fails is `PACKAGE_OPTION_NOT_ARCHIVED` or a stale `version`.
+
+### Concurrency
+
+Every option carries a `version`, an integer that increases on every successful change. Send the
+version you last read on edit, archive and restore. A stale version returns
+`409 CONCURRENCY_CONFLICT` rather than silently overwriting — the coach may have the catalogue
+open on a phone and a tablet, and without this the second save wins invisibly.
+
+### Error codes
+
+| Code | Status | Meaning |
+|---|---|---|
+| `PACKAGE_OPTION_NOT_FOUND` | 404 | No such option, **or it belongs to another coach** |
+| `PACKAGE_NAME_CONFLICT` | 409 | Another active option has that name |
+| `PACKAGE_OPTION_ARCHIVED` | 409 | Editing or re-archiving an archived option |
+| `PACKAGE_OPTION_NOT_ARCHIVED` | 409 | Restoring one that is not archived |
+| `CONCURRENCY_CONFLICT` | 409 | Stale `version` |
+| `CUSTOM_PRICE_NOT_FOUND` | 404 | Removing an override that does not exist |
+
+**Three suggested codes were deliberately not adopted**, since the invitation was to publish
+authoritative names:
+
+- `PACKAGE_OPTION_VALIDATION_FAILED` and `CUSTOM_PRICE_INVALID` → both are **`VALIDATION_FAILED`**,
+  which every endpoint already returns with per-field detail in `errors`. Two names for one
+  condition is how clients end up handling only one of them.
+- `PACKAGE_OPTION_CONFLICT` → **`CONCURRENCY_CONFLICT`**, which is not package-specific. Sessions
+  will raise the identical condition later, and one code per entity multiplies without telling
+  the client anything new.
+
+`PACKAGE_OPTION_NOT_ARCHIVED` was added; restore needed a distinct failure.
+
+### Athlete list and profile
+
+`AthleteListItem` and `AthleteDetail` both gain **`isLoyal`**. Loyalty is athlete-level, and
+marking it is idempotent — marking an already-loyal athlete loyal does not reset how long they
+have been loyal.
+
+### Authorization
+
+Every Admin endpoint is `AdminOnly`; an athlete reaching one gets **403**. A resource belonging
+to another coach is **404, not 403**, so the API never confirms that an id it will not serve
+exists. `GET /api/v1/catalogue` is athlete-only and always scoped to the token.
+
+### Not decided here
+
+`sport` on the athlete profile is still required free text — unchanged. Documentation updates to
+`product-specification.md`, `ui-ux-design-decisions.md`, `software-architecture.md` and
+`development-roadmap.md` are still outstanding, and the recommendation to wait for the
+loyalty/custom-pricing UI before writing them stands.
+
+---
+
+## Phase 3.1 — Password reset rate limiting
+
+**Not a shape change.** `POST /auth/forgot-password` still returns `200` on the happy path with
+no body. It can now also return **`429`**, which it could not before, so a client that treats
+any non-2xx as a generic failure will show the wrong message.
+
+### There was no rate limiting on this endpoint before now
+
+Confirmed by inspection: `/invitations/validate` was the only rate-limited route in the API.
+`forgot-password` was open, which made it a free mail-bomb against any known address. The
+architecture (section 12.5) had specified a limit; it had simply never been implemented.
+
+### The limits
+
+| Axis | Limit | Window | Configurable via |
+|---|---|---|---|
+| Per email address | **3** | 1 hour, fixed | `RateLimits:PasswordResetPerEmailPerHour` |
+| Per IP address | **10** | 1 hour, fixed | `RateLimits:PasswordResetPerIpPerHour` |
+
+**Both apply.** Whichever trips first returns the 429. The per-email limit stops one address
+being mail-bombed; the per-IP limit catches the attack per-email cannot see — one machine
+walking a list of addresses, three requests each, never tripping any single address's counter.
+
+The per-email figure is the architecture's. **The per-IP figure is not in any source document** —
+it was chosen here and is open to revision. Ten an hour is far more than a household or a small
+office needs, since forgetting a password is rare, while a list-walking script hits it at once.
+
+The email is normalised before counting — trimmed and lower-cased — so `A@b.com`, `a@b.com` and
+`  a@b.com  ` share one allowance rather than getting three.
+
+Windows are **fixed, not sliding**: the allowance resets at the top of the hour-long window
+rather than rolling. `retryAfterSeconds` always reports the true remaining time.
+
+### The 429 response
+
+Identical in shape to every other error in the API:
+
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc6585#section-4",
+  "title": "Too many password reset requests for this address. Try again later.",
+  "status": 429,
+  "errorCode": "TOO_MANY_REQUESTS",
+  "correlationId": "0HN7...",
+  "retryAfterSeconds": 3542
+}
+```
+
+- **`errorCode`** is `TOO_MANY_REQUESTS`, already in the error-code enum.
+- **`retryAfterSeconds`** is in the body, and the **`Retry-After`** header carries the same
+  number of seconds. A test asserts the two agree, so honour either.
+- Both can be **up to 3600**. Render minutes, not seconds — "try again in 59 minutes", not
+  "try again in 3542 seconds".
+- `title` differs slightly between the per-email and per-IP limits. Branch on `errorCode`, never
+  on the title.
+
+### Account-enumeration protection is preserved, deliberately
+
+This was the delicate part. **The per-email counter is keyed on the address that was submitted,
+before any database lookup**, so a 429 arrives on the fourth request whether or not an account
+exists. Counting only real accounts would have made the 429 mean *"this address is registered"* —
+turning the very feature meant to prevent enumeration into the oracle it was designed to avoid.
+
+A test asserts that a registered address and an unknown one return byte-identical 429 bodies,
+apart from the per-request `correlationId`.
+
+**So on mobile, treat 429 exactly like 200:** *"If that address is registered, we have sent a
+link."* Never surface anything that distinguishes them, and never show "no account found".
+
+### The trade-off, stated plainly
+
+Per-email limiting means someone can deliberately spend a victim's three attempts and stop them
+resetting their password for the rest of the hour. That is inherent to per-email limiting, not a
+flaw in this implementation, and the architecture asks for it — the alternative is letting one
+address be mail-bombed indefinitely. The window is short. Worth knowing it exists.
+
+### Note for mobile
+
+The client-side 60-second cooldown is still worth keeping — it gives immediate feedback without
+a round trip. It is now a UX affordance rather than the enforcement, which is the right split.
+The two do not need to agree: 60 seconds client-side and 3-per-hour server-side simply means a
+user tapping every 61 seconds is stopped by the server on the fourth attempt.
+
+---
+
 ## Phase 3 — Onboarding alignment
 
 All six points from the mobile review, the removal of `termsAccepted`, and `email` on the

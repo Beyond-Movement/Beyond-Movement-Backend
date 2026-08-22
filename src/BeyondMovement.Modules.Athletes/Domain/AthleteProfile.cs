@@ -17,6 +17,19 @@ public sealed class AthleteProfile
     public DateOnly? DateOfBirth { get; private set; }
     public string? Notes { get; private set; }
 
+    /// <summary>
+    /// Whether the coach has marked this athlete as loyal, which earns a standing discount on
+    /// every package's default price.
+    /// <para>
+    /// It lives on the athlete rather than on a package because that is what it describes: a
+    /// relationship with the coach, not a property of any one package. The discount itself is
+    /// the Packages module's business — this flag only records the fact.
+    /// </para>
+    /// </summary>
+    public bool IsLoyal { get; private set; }
+
+    public DateTime? LoyalSinceUtc { get; private set; }
+
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
@@ -37,6 +50,20 @@ public sealed class AthleteProfile
         CreatedAtUtc = nowUtc,
         UpdatedAtUtc = nowUtc
     };
+
+    /// <summary>
+    /// Idempotent: marking a loyal athlete loyal again keeps the original date, so the coach
+    /// tapping twice does not reset how long they have been loyal.
+    /// </summary>
+    public void SetLoyalty(bool isLoyal, DateTime nowUtc)
+    {
+        if (IsLoyal == isLoyal)
+            return;
+
+        IsLoyal = isLoyal;
+        LoyalSinceUtc = isLoyal ? nowUtc : null;
+        UpdatedAtUtc = nowUtc;
+    }
 
     /// <summary>
     /// Every detail is required here even though the columns are nullable: the columns allow

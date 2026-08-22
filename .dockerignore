@@ -1,0 +1,30 @@
+# Keeps the build context small and keeps secrets out of the image.
+# Without this, `docker build` uploads every bin/ and obj/ folder in the repo -
+# and any host-built binaries that land in the image can conflict with the ones
+# built inside it.
+
+**/bin/
+**/obj/
+
+# Secrets and local configuration. .env is gitignored but Docker does not read
+# .gitignore, so it has to be excluded here too or it ends up in the context.
+.env
+**/*.user
+**/secrets.json
+
+.git/
+.github/
+.vs/
+.vscode/
+.idea/
+
+# Not needed to build or run the API.
+tests/
+docs/
+skills/
+contract/
+*.md
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+requests.http
