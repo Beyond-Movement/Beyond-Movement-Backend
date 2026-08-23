@@ -707,10 +707,21 @@ Kept separate from Users because the Admin has none of these fields, and because
 
 A paused athlete may still hold an active package, and an unpaused athlete may have none. The athlete-list query computes the Active/Inactive badge from the package join; the pause state is a separate field the Admin sees on the profile.
 
-**Packages**
+**PackageOptions** — the catalogue. **Built.**
+`Id · CoachId · Name · Sessions · DefaultPriceMinor · IsArchived · ArchivedAtUtc · Version · CreatedAtUtc · UpdatedAtUtc`
+
+**PackageOptionFeatures** — one line on the card, order is meaning. **Built.**
+`Id · PackageOptionId · Position · Text`
+
+**AthletePackagePrices** — a price agreed with one athlete for one option. **Built.**
+`Id · AthleteUserId · PackageOptionId · PriceMinor · CreatedAtUtc · UpdatedAtUtc`
+
+`AthleteProfiles` also gains `IsLoyal · LoyalSinceUtc`. Prices are **integer piastres**, 100 to the EGP — never a decimal, because a decimal in JSON becomes a Dart `double` and loses precision once summed. Unique indexes: `(CoachId, lower(Name))` across archived options too, `(PackageOptionId, Position)`, and `(AthleteUserId, PackageOptionId)`. `Version` is an explicit integer bumped on every change, not `RowVersion`.
+
+**Packages (purchased)** — **not built**, deferred with §14.3.
 `Id · AthleteProfileId · Name · TotalSessions · UsedSessions · Price · Currency · StartDate · EndDate (nullable) · Status (Active|Completed|Closed) · PaymentStatus (Unpaid|PartiallyPaid|Paid) · Notes · CreatedAt · UpdatedAt · RowVersion`
 
-`RemainingSessions` is **computed** (`TotalSessions − UsedSessions`), never stored, so it cannot drift. `RowVersion` provides optimistic concurrency on the deduction path.
+`RemainingSessions` is **computed** (`TotalSessions − UsedSessions`), never stored, so it cannot drift. `RowVersion` provides optimistic concurrency on the deduction path. When this is built it must record the price **as paid**, copied from the option, so repricing or archiving a `PackageOption` can never alter a completed purchase.
 
 **Sessions**
 `Id · AthleteProfileId · PackageId (nullable) · CalendlyEventUri (unique, nullable) · ScheduledStartUtc · ScheduledEndUtc · DurationMinutes · DeliveryType (Online|FaceToFace|Observation) · Status (Scheduled|Attended|Cancelled|NoShow) · LocationOrPlatform · MeetingUrl · AttendedAt · AttendedByUserId · ConsumedSessionCount (0 or 1) · CancelledAt · CancellationReason · CreatedAt · UpdatedAt · RowVersion`
@@ -1378,7 +1389,7 @@ ASP.NET Core rate limiting middleware plus Redis counters:
 | Endpoint group | Limit |
 |---|---|
 | `POST /auth/login` | 5 per 15 min per IP + per email |
-| `POST /auth/forgot-password` | 3 per hour per email |
+| `POST /auth/forgot-password` | 3 per hour per email **and 10 per hour per IP** — both built |
 | `GET /invitations/validate` | 10 per hour per IP |
 | `POST /files/upload-url` | 30 per hour per user |
 | Chat message send | 60 per minute per user |
@@ -1527,6 +1538,39 @@ Base: `/api/v1`. All endpoints authenticated unless marked **(anon)**. `A` = Adm
 | GET | `/athletes/{id}/export` | A | Data export |
 
 ### 14.3 Packages
+
+> **⚠ None of the endpoints in this table exist. They are the PURCHASE model, deferred.**
+>
+> The `Packages` module today owns a **catalogue**, not purchases. What is actually built, all
+> under `/api/v1`:
+>
+> | Method | Path | Role | Purpose |
+> |---|---|---|---|
+> | GET | `/package-options?archived=` | A | Active or archived options |
+> | GET | `/package-options/{id}` | A | One option |
+> | POST | `/package-options` | A | Create |
+> | PUT | `/package-options/{id}` | A | Edit (send `version`) |
+> | POST | `/package-options/{id}/archive` | A | Withdraw from the athlete catalogue |
+> | POST | `/package-options/{id}/restore` | A | Return it |
+> | PUT | `/athletes/{id}/loyalty` | A | Mark or unmark loyal |
+> | GET | `/athletes/{id}/custom-prices` | A | This athlete's overrides |
+> | PUT | `/athletes/{id}/custom-prices/{optionId}` | A | Set an override |
+> | DELETE | `/athletes/{id}/custom-prices/{optionId}` | A | Remove an override |
+> | GET | `/athletes/{id}/catalogue` | A | Preview this athlete's prices |
+> | GET | `/catalogue` | T | The athlete's own catalogue, final prices only |
+>
+> **`PackageOption` is a separate entity from the future `PurchasedPackage`**, deliberately. A
+> catalogue entry can be renamed, repriced or archived; none of that may reach back and change
+> what somebody already bought, so a purchased package must record its price as paid.
+>
+> Money is an **integer count of piastres**, never a decimal. The effective price is
+> `custom override ?? (loyal ? default × 0.85 : default)`, computed server-side only, in
+> `PackagePricing`. **BR-03** (one active package per athlete) belongs to the purchase model and
+> is not enforced yet, because nothing can be purchased.
+>
+> Authoritative shapes: `contract/openapi.yaml`. Rationale: `contract/CHANGELOG.md` → "Phase 4".
+
+The original purchase design, retained for the deferred phase:
 
 | Method | Path | Role | Purpose |
 |---|---|---|---|

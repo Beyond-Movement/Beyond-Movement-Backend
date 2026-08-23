@@ -487,6 +487,17 @@ Notifications
 - ​ Session Reminders — Enable or disable upcoming session reminders.
 
 Business
+
+> **The Package Options backend is built** — see `contract/CHANGELOG.md` → "Phase 4". Beyond the
+> list below it also supports **ordered features** on each option (1–10 lines), **archive and
+> restore** instead of delete, an athlete-level **loyalty** discount, and **per-athlete price
+> overrides**. Screen behaviour for loyalty and custom pricing is still to be designed and is
+> deliberately not described here. Two things the screens must honour:
+>
+> - **Prices are integer piastres** (100 to the EGP). Divide by 100 to display.
+> - **The athlete sees a final price only.** The app must never reproduce the pricing rule, and
+>   must never show an athlete which discount applied.
+
 - ​ Packages — Opens the Package Options screen where the Admin can:
 
 ○​ View available package options

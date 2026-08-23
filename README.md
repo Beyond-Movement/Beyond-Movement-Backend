@@ -3,10 +3,48 @@
 ASP.NET Core 10 modular monolith on PostgreSQL. The Flutter app lives in a separate
 repository; the two are connected only by [`contract/openapi.yaml`](contract/openapi.yaml).
 
+- **Conventions, flows and traps — read this first** → `skills/CLAUDE (1).md`
+- **What the API actually does today** → [`contract/CHANGELOG.md`](contract/CHANGELOG.md)
+- **Exact request/response shapes** → [`contract/openapi.yaml`](contract/openapi.yaml)
 - **What the product must do** → `skills/product-specification (1).md`
 - **How the system is built** → `skills/software-architecture (1).md`
-- **Conventions and rules for this repo** → `skills/CLAUDE (1).md`
-- **What changed for the mobile client** → [`contract/CHANGELOG.md`](contract/CHANGELOG.md)
+- **What we build next** → `skills/development-roadmap (1).md`
+
+> **The four `skills/` documents are the original brief and lag behind the code** wherever the
+> client has changed direction. Packages is the live example: Phase 4 shipped a *catalogue*,
+> while the specification still describes *purchased* packages. Both documents now carry a
+> warning at the relevant section. Read them for intent; read the changelog for behaviour.
+
+---
+
+## What is built
+
+| Area | State |
+|---|---|
+| Auth — login, JWT, rotating refresh with family revocation, lockout, paused checks | ✅ |
+| Google sign-in — authenticates only, never creates an account | ✅ |
+| Password reset and change password, rate limited | ✅ |
+| Invitations — create, validate, resend, revoke, redeem | ✅ |
+| Registration and Complete Profile | ✅ |
+| Athlete list — search, filter, sort, paging, pause, reactivate | ✅ |
+| Package catalogue — options, features, archive/restore, loyalty, per-athlete prices | ✅ |
+| Scheduling, attendance, to-dos, finance, chat, notifications | Not started |
+
+**180 tests** — `dotnet test` needs Docker for the integration suite.
+
+## Working on this with someone else
+
+- **Each developer has their own user secrets and their own local database.** The values do not
+  need to match. Nothing secret is committed; `.env` and user secrets are both gitignored.
+- **Regenerate `contract/openapi.yaml` whenever an endpoint changes**, and write what changed in
+  `contract/CHANGELOG.md`. The mobile developer reads those two files and nothing else — a change
+  that is not in them does not exist as far as the app is concerned.
+- **One migration per logical change**, named descriptively. Never edit a migration that has been
+  applied — add a new one. Two people generating migrations at once will conflict on
+  `AppDbContextModelSnapshot.cs`; regenerate rather than hand-merging it.
+- **Modules never reference each other.** If a feature needs two, it goes in the Api project —
+  `AthleteDirectory` and `CatalogueReader` are the pattern to copy.
+- `dotnet build` treats warnings as errors. A build that is not clean will not pass CI.
 
 ---
 

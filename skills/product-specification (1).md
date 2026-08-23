@@ -476,6 +476,18 @@ Athlete List, Athlete Profile, Edit Athlete, Pause Confirmation, Delete Confirma
 
 ## 4.5 Packages
 
+> **⚠ This section describes the PURCHASED package only, and is not yet built.**
+>
+> The client split packages in two after this document was written:
+>
+> | | Where it lives |
+> |---|---|
+> | **Package options** — the reusable catalogue the coach sells: name, sessions, default price, ordered features, archive/restore, athlete loyalty discount, per-athlete price overrides | **Built.** Phase 4. Specified in `contract/CHANGELOG.md` → "Phase 4". Nothing about it is described below. |
+> | **Purchased packages** — everything in this section: an athlete buying a package, session balance, history, renewal, BR-03 | **Not built.** Deferred to Phase 4b in the roadmap. |
+>
+> Read this section for the purchase model. Do **not** read it as a description of what the API
+> does today, and do not treat the absence of a catalogue here as meaning one should not exist.
+
 **Purpose**
 
 Track the session balance and package history for each athlete.

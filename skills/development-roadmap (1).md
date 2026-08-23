@@ -46,7 +46,54 @@ Open this document → find the current phase → pick your role → work on the
 
 **Identity & Invitations • Athletes • Packages • Scheduling •** Chat • To-Dos • Finance (Payments & Expenses) • Notifications • Reporting • Files
 
-# PHASE 0 — Project Setup
+# Progress — where the backend actually is
+
+Updated as phases complete. **Backend-complete** means the endpoints, rules, migrations and tests
+are done and the contract is published; a phase is not *done* by this document's own definition
+until the Flutter screens are connected and tested end to end.
+
+| # | Phase | Backend | Mobile integration |
+|---|---|---|---|
+| 0 | Project Setup | ✅ Complete | n/a |
+| 1 | Authentication & Access | ✅ Complete | done |
+| 2 | Athlete Management | ✅ Complete | done |
+| 3 | Invitation Codes & Account Creation | ✅ Complete | done |
+| 4 | **Package catalogue** (revised scope — see below) | ✅ Complete | In progress |
+| 5 | Scheduling & Calendly | ▶ **Start here** | — |
+| 6 | Attendance & Session Notes | Not started | — |
+| 7 | To-Dos | Not started | — |
+| 8 | Finance | Not started | — |
+| 9 | Admin Dashboard | Not started | — |
+| 10 | Notifications | Not started | — |
+| 11 | Reports & Analytics | Not started | — |
+| 12 | Athlete Experience | Not started | — |
+| 13 | Chat & Files | Not started | — |
+| 14 | Hardening, QA & Release | Not started | — |
+
+## What was built beyond the original phase text
+
+Phases 1–3 grew during implementation. The additions, all published in `contract/CHANGELOG.md`:
+
+- **Google sign-in** on both login and account creation — authenticates only, never registers (BR-01).
+- **Change password** while signed in, and password reset by emailed deep link.
+- **Rotating refresh tokens with family revocation** — reusing a rotated token kills the whole family.
+- **`profileCompleted`** on every authentication response, so the app routes without a second call.
+- **`fullName` is nullable** until Complete Profile, and guaranteed non-null once it is finished.
+- **`Gender` enum** (`Female` / `Male`) replacing free text.
+- **`termsAccepted` removed** — the client decided the app ships with no Terms or Privacy Policy.
+- **Rate limiting** on invitation validation (10/hour/IP) and password reset (3/hour/email, 10/hour/IP).
+- **Coach sort preference** persisted for the athlete list.
+
+## Immediate next step
+
+**Phase 5 — Scheduling & Calendly.** It is blocked on open decision **A-01**: *does the Calendly
+plan include webhooks?* The answer changes the design between push and polling, so settle it
+before writing code.
+
+If A-01 cannot be answered yet, the next unblocked work is the **purchase phase** split out of
+Phase 4 below, which needs no external answer.
+
+# PHASE 0 — Project Setup ✅ COMPLETE
 
 | **BACKEND**                                                                                                 | **FLUTTER / MOBILE**                                      |
 |-------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------|
@@ -57,7 +104,7 @@ Open this document → find the current phase → pick your role → work on the
 
 **CHECK:** Architecture: High-Level Architecture, Technology Stack, Mobile Architecture, Backend Architecture.
 
-# PHASE 1 — Authentication & Access
+# PHASE 1 — Authentication & Access ✅ BACKEND COMPLETE
 
 | **BACKEND**                                              | **FLUTTER / MOBILE**                         |
 |----------------------------------------------------------|----------------------------------------------|
@@ -70,7 +117,7 @@ Open this document → find the current phase → pick your role → work on the
 
 **CHECK:** Architecture: Authentication & Authorization. Product Spec: Authentication & Invitations.
 
-# PHASE 2 — Athlete Management — Admin First
+# PHASE 2 — Athlete Management — Admin First ✅ BACKEND COMPLETE
 
 | **BACKEND**                                                               | **FLUTTER / MOBILE**                      |
 |---------------------------------------------------------------------------|-------------------------------------------|
@@ -84,7 +131,7 @@ Open this document → find the current phase → pick your role → work on the
 
 **CHECK:** Architecture: Athletes module + Database Design. UI/UX: Athlete List and Athlete Profile.
 
-# PHASE 3 — Invitation Codes & Athlete Account Creation
+# PHASE 3 — Invitation Codes & Athlete Account Creation ✅ BACKEND COMPLETE
 
 | **BACKEND**                                                               | **FLUTTER / MOBILE**                                 |
 |---------------------------------------------------------------------------|------------------------------------------------------|
@@ -99,20 +146,50 @@ Open this document → find the current phase → pick your role → work on the
 
 Invitation links are a later enhancement over the same invitation record and validation flow. They are not required for the code-first Phase 3 increment.
 
-# PHASE 4 — Packages
+# PHASE 4 — Package catalogue ✅ COMPLETE (revised scope)
 
-| **BACKEND**                                                   | **FLUTTER / MOBILE**                                           |
-|---------------------------------------------------------------|----------------------------------------------------------------|
-| • Package model + create package.                             | • Admin package section on Athlete Profile.                    |
-| • Enforce one active package per athlete.                     | • Create Package.                                              |
-| • Package history.                                            | • Package History / details screens that are already designed. |
-| • Remaining sessions = total - used.                          | • Athlete package view later when Athlete UI is ready.         |
-| • Close/complete package behavior.                            |                                                                |
-| • Package payment status fields needed by later Finance work. |                                                                |
+> **The client split this phase in two.** Phase 4 is now the **catalogue** of package options the
+> coach sells. Everything about a package an athlete has **bought** moved to the purchase phase
+> below. The rest of this document, the Product Specification §4.5 and the Software Architecture
+> §14.3 still describe the combined, older model — they have not been rewritten.
+
+| **BACKEND — done** | **FLUTTER / MOBILE** |
+|---|---|
+| • `PackageOption`: name, sessions, default price, ordered features. | • Package Options list, Add and Edit screens. |
+| • Archive and restore. Options are never deleted. | • Archive / restore with swipe, archived list. |
+| • Case-insensitive unique names across active **and** archived. | • Duplicate-name error handling. |
+| • Optimistic concurrency via `version`. | • Reload-on-conflict handling. |
+| • Athlete-level loyalty flag, 15% off every default price. | • Loyalty badge on the athlete list and profile. |
+| • Per-athlete, per-package price overrides. | • Custom price entry, when designed. |
+| • Server-owned precedence: custom → loyalty → default. | • Display only. **Never reproduce the rule.** |
+| • Athlete catalogue returning final prices only. | • Athlete package list, when the UI is ready. |
+| • Money as integer piastres; loyalty rounded to the nearest tenth. | • Divide by 100 for display. |
+
+**CHECK:** `contract/CHANGELOG.md` → "Phase 4". The architecture and specification are **not**
+current for this phase.
+
+# PHASE 4b — Package purchase (deferred, not started)
+
+Split out of the original Phase 4. Nothing here is built.
+
+| **BACKEND** | **FLUTTER / MOBILE** |
+|---|---|
+| • Purchase a package option, creating a purchased package. | • Purchase flow. |
+| • InstaPay, pending purchases, payment confirmation. | • Payment screens. |
+| • Activation, and **BR-03** one active package per athlete. | • Athlete package view. |
+| • Remaining sessions = total − used. | • Balance display. |
+| • Purchase history, close/complete behaviour. | • Package History screens. |
+| • Payment status fields needed by Finance. | |
+
+A purchased package must record the price **as paid**, independent of the catalogue: repricing or
+archiving an option can never alter what somebody already bought.
+
+**Blocked on C-01** — payment statuses are `Unpaid/PartiallyPaid/Paid` in the Product
+Specification and `Paid/Pending` in the UI document. Settle that before modelling.
 
 **CHECK:** Architecture: Packages module, database invariants. Product Spec: Packages + BR-03.
 
-# PHASE 5 — Scheduling & Calendly
+# PHASE 5 — Scheduling & Calendly ▶ NEXT (blocked on A-01)
 
 | **BACKEND**                                                    | **FLUTTER / MOBILE**                                            |
 |----------------------------------------------------------------|-----------------------------------------------------------------|
