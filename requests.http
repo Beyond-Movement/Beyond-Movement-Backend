@@ -3,7 +3,7 @@
 # Start the API first:  dotnet run --project src/BeyondMovement.Api
 
 @host = http://localhost:5229
-@email = admin@beyondmovement.com
+@email = lillysynchro@gmail.com
 
 # Fill this in locally and do not commit the value. It is whatever you set as
 #   dotnet user-secrets set "Seed:AdminPassword" "<value>" --project src/BeyondMovement.Api

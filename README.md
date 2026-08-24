@@ -179,7 +179,7 @@ about a minute.
 ```bash
 curl -s -X POST http://localhost:5229/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@beyondmovement.com","password":"<your Seed:AdminPassword>"}'
+  -d '{"email":"lillysynchro@gmail.com","password":"<your Seed:AdminPassword>"}'
 ```
 
 **2. Invite an athlete** (any address — nothing is actually sent):

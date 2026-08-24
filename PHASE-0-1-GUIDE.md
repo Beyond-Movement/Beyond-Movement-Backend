@@ -849,7 +849,7 @@ Create `requests.http` at the repo root and use the REST Client extension:
 POST {{host}}/api/v1/auth/login
 Content-Type: application/json
 
-{ "email": "admin@beyondmovement.com", "password": "your-seed-password" }
+{ "email": "lillysynchro@gmail.com", "password": "your-seed-password" }
 
 ### refresh
 POST {{host}}/api/v1/auth/refresh
