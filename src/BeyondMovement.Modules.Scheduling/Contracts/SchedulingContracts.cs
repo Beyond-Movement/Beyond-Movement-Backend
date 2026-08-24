@@ -34,3 +34,33 @@ public static class SessionMapping
         x.ScheduledStartUtc, x.ScheduledEndUtc, x.DurationMinutes, x.DeliveryType, x.Status,
         x.LocationOrPlatform, x.MeetingUrl, x.RescheduleUrl);
 }
+
+/// <summary>
+/// Records an Observation the coach carried out — watching an athlete compete or train.
+/// Observations are arranged in person and never appear on a Calendly booking page, so unlike
+/// every other session this API stores, one is created here rather than projected from Calendly
+/// (architecture A-03). The same Mark as Attended action then deducts it, subject to BR-07.
+/// </summary>
+/// <param name="AthleteProfileId">Whose observation it was. Admin-only, so it is named explicitly.</param>
+/// <param name="LocationOrPlatform">Where it happened — the UI calls this "relevant location or event details".</param>
+public sealed record CreateObservationRequest(
+    Guid AthleteProfileId,
+    DateTime StartUtc,
+    DateTime EndUtc,
+    string? LocationOrPlatform = null);
+
+public sealed record SaveSessionNoteRequest(string Content);
+
+public sealed record SessionNoteResponse(
+    Guid Id,
+    Guid SessionId,
+    Guid AuthorUserId,
+    string Content,
+    DateTime CreatedAtUtc,
+    DateTime UpdatedAtUtc);
+
+public static class SessionNoteMapping
+{
+    public static SessionNoteResponse ToResponse(this SessionNote x) =>
+        new(x.Id, x.SessionId, x.AuthorUserId, x.Content, x.CreatedAtUtc, x.UpdatedAtUtc);
+}

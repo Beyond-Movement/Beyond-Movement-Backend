@@ -27,9 +27,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<PackageOption> PackageOptions => Set<PackageOption>();
     public DbSet<PackageOptionFeature> PackageOptionFeatures => Set<PackageOptionFeature>();
     public DbSet<AthletePackagePrice> AthletePackagePrices => Set<AthletePackagePrice>();
+    public DbSet<PurchasedPackage> PurchasedPackages => Set<PurchasedPackage>();
 
     // Scheduling module
     public DbSet<Session> Sessions => Set<Session>();
+    public DbSet<SessionNote> SessionNotes => Set<SessionNote>();
     public DbSet<CalendlyWebhookEvent> CalendlyWebhookEvents => Set<CalendlyWebhookEvent>();
     public DbSet<BookingOperation> BookingOperations => Set<BookingOperation>();
     public DbSet<SchedulingChange> SchedulingChanges => Set<SchedulingChange>();
@@ -52,6 +54,15 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(Session).Assembly);
 
         modelBuilder.Entity<Session>().HasOne<AthleteProfile>().WithMany()
+            .HasForeignKey(x => x.AthleteProfileId).OnDelete(DeleteBehavior.Restrict);
+
+        // Sessions and purchased packages are owned by different modules, so neither can declare
+        // the relationship between them - it is wired here, where the whole graph is visible.
+        // Restrict, because deleting a package that sessions were deducted from would erase the
+        // evidence for those deductions.
+        modelBuilder.Entity<Session>().HasOne<PurchasedPackage>().WithMany()
+            .HasForeignKey(x => x.PackageId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PurchasedPackage>().HasOne<AthleteProfile>().WithMany()
             .HasForeignKey(x => x.AthleteProfileId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<BookingOperation>().HasOne<AthleteProfile>().WithMany()
             .HasForeignKey(x => x.AthleteProfileId).OnDelete(DeleteBehavior.Cascade);

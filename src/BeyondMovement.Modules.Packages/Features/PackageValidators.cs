@@ -90,3 +90,19 @@ public sealed class SetCustomPriceValidator : AbstractValidator<SetCustomPriceRe
             .InclusiveBetween(0, PackagePricing.MaxPriceMinor)
             .WithMessage("A custom price must be a non-negative amount in piastres.");
 }
+
+public sealed class PurchasePackageValidator : AbstractValidator<PurchasePackageRequest>
+{
+    public PurchasePackageValidator()
+    {
+        RuleFor(x => x.PackageOptionId).NotEmpty();
+
+        RuleFor(x => x.EndDate)
+            .GreaterThanOrEqualTo(x => x.StartDate!.Value)
+            .When(x => x.StartDate is not null && x.EndDate is not null)
+            .WithName("endDate")
+            .WithMessage("End date cannot be before the start date.");
+
+        RuleFor(x => x.Notes).MaximumLength(PurchasedPackage.MaxNotesLength);
+    }
+}

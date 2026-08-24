@@ -6,6 +6,7 @@ namespace BeyondMovement.Modules.Scheduling.Persistence;
 public interface ISchedulingDbContext
 {
     DbSet<Session> Sessions { get; }
+    DbSet<SessionNote> SessionNotes { get; }
     DbSet<CalendlyWebhookEvent> CalendlyWebhookEvents { get; }
     DbSet<BookingOperation> BookingOperations { get; }
     DbSet<SchedulingChange> SchedulingChanges { get; }

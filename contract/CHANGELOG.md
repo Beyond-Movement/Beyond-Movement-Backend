@@ -7,6 +7,168 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ---
 
+## Phase 6 — Attendance, session notes and purchased packages
+
+Marking a session attended is the only thing in this product that consumes something the athlete
+paid for, so this phase is mostly about making that happen **exactly once**. Everything else here
+exists to support it.
+
+**Nothing from Phase 5 changed shape.** `SessionResponse` is byte-for-byte what it was, and no
+existing field moved or was removed. The two changes to things the app already reads are both
+additive and are listed under "What changed in existing shapes" below.
+
+### Purchased packages now exist
+
+Phase 4 shipped a **catalogue** — `PackageOption`, per-athlete prices, loyalty. It deliberately
+did not ship the thing an athlete *owns*, and attendance has nothing to deduct from without one,
+so the purchase model lands here.
+
+| Method | Path | Role | Purpose |
+|---|---|---|---|
+| POST | `/api/v1/athletes/{athleteId}/packages` | A | Record a purchase |
+| GET | `/api/v1/athletes/{athleteId}/packages` | A | Package history, newest first |
+| GET | `/api/v1/athletes/{athleteId}/packages/active` | A | Current package and balance |
+| GET | `/api/v1/packages/{id}` | A | One package |
+| POST | `/api/v1/packages/{id}/close` | A | End a package early |
+| GET | `/api/v1/me/package` | T | The athlete's own active package |
+
+`athleteId` is the athlete's **user** id, matching every other `/athletes/{athleteId}` route.
+`athleteProfileId` on the response is the **profile** id, which is what the session endpoints use.
+They are different ids and the app needs both.
+
+**The price is not in the request and cannot be.** It is computed server-side from the option's
+default price, the athlete's loyalty flag and any override — the same `PackagePricing` rule that
+produced the number the athlete was already shown — and then **copied onto the package as paid**.
+Renaming, repricing or archiving the catalogue option afterwards never reaches a purchase. An
+Admin who could send a price could send a different one from the one the athlete was quoted.
+
+`remainingSessions` is sent even though it is `totalSessions − usedSessions`, so the number the app
+displays and the number the server deducts against are the same arithmetic done once. It can
+legitimately be `0`; the UI shows **"New sessions pending"** for that (architecture C-04), but the
+field stays a number.
+
+**BR-03 — one active package per athlete** — is now enforced, by a partial unique index rather
+than a check in a handler, because two Admin devices purchasing at the same moment are two
+transactions and only the database sees both. A second purchase while one is active is
+409 `ACTIVE_PACKAGE_EXISTS`; close the current one first. A package that runs out becomes
+`Completed` on its own, which is what frees the athlete to buy the next one.
+
+**Not here, deliberately:** a package has no payment status and there is no endpoint to edit its
+price. Payment status is derived from confirmed payments, which are Phase 8 and do not exist, and
+which values it takes is still open decision C-01.
+
+### Mark as Attended
+
+`POST /api/v1/sessions/{id}/attend` — Admin only. `{"outcome": "Attended"}` or
+`{"outcome": "NoShow"}`; `outcome` defaults to `Attended`. `Cancelled` is not accepted here,
+because cancelling also has to reach Calendly and has its own endpoint.
+
+The response carries the session **and** the package, both as they now stand after one
+transaction:
+
+```json
+{
+  "session":  { "...": "the same SessionResponse shape as everywhere else" },
+  "consumedSessionCount": 1,
+  "package":  { "...": "PurchasedPackageResponse, or null" },
+  "progress": { "packageId": "…", "sessionNumber": 7, "totalSessions": 12, "remainingSessions": 5 }
+}
+```
+
+Both are returned rather than left for the client to re-read, because they changed together and
+sending them together is the only way the app can show a state that actually existed — a re-read
+can interleave with another change. `package` and `progress` are null when the session consumed
+nothing and the athlete has no active package.
+
+**How much it deducts is decided server-side** and reported as `consumedSessionCount`. The app
+must not compute it:
+
+| Case | Consumes | Rule |
+|---|---|---|
+| Ordinary session, attended | 1 | BR-05 |
+| Observation attended, ran **longer than** 60 minutes | 1 | BR-07 |
+| Observation attended, 60 minutes or less | 0 | BR-07 — an hour exactly is not longer than an hour |
+| No-show | 0 by default | A-04, `Features__NoShowDeducts` |
+| Booking, and cancellation before attendance | 0 | BR-04, BR-06 |
+
+**Exactly-once is what the error codes are for.** These are not failures to retry past:
+
+| Code | Status | Means |
+|---|---|---|
+| `SESSION_ALREADY_ATTENDED` | 409 | The deduction has already happened, once. Re-read, do not retry. |
+| `SESSION_ALREADY_RESOLVED` | 409 | Already marked a no-show. |
+| `SESSION_CANCELLED` | 409 | BR-06 — a cancelled session can never be attended. |
+| `ACTIVE_PACKAGE_NOT_FOUND` | 409 | Nothing to deduct from. Sell a package. |
+| `NO_SESSIONS_REMAINING` | 409 | The package is exhausted. Renew. |
+| `CONCURRENCY_CONFLICT` | 409 | Two requests raced; this one deducted nothing. |
+
+The last one is the double-tap case: two simultaneous requests produce one success and one 409,
+never two deductions. Per the architecture this action is **online-only** — never queue it, and
+disable the button when offline.
+
+**A session that has been attended can no longer be cancelled** (409 `SESSION_ALREADY_ATTENDED`
+from `POST /sessions/{id}/cancel`). Consumed value is never given back silently. If Calendly
+cancels it out of order through a webhook, the session is left Attended and the deduction stands.
+
+### Session position — "Session 7 of 12"
+
+`GET /api/v1/sessions/{id}/package-progress` — the Admin Session Details header. Deliberately a
+separate endpoint rather than a field added to `GET /sessions/{id}`, so the Phase 5 session shape
+the app already reads does not change.
+
+`sessionNumber` is the session's own position once attended, and the position it *would* take if
+it has not been resolved yet — which is what the screen wants to show before the coach taps Mark
+as Attended. It is **null** when no position exists to state: a cancelled session, or a short
+observation that will never consume one. 404 `PACKAGE_NOT_FOUND` when the athlete has no package,
+which is a normal state.
+
+### Observations
+
+`POST /api/v1/sessions/observations` — Admin only. The one kind of session this API creates
+itself. Observations are arranged in person and never appear on a Calendly booking page, so the
+coach records one after the fact (architecture A-03). Everything else still comes from Calendly
+and cannot be created here.
+
+It is created `Scheduled` and deducts nothing yet — a booking never deducts (BR-04) — then marked
+attended like any other session, at which point BR-07 decides. `startUtc` and `endUtc` must both
+be UTC and in order and may not span more than a day. `athleteProfileId` is the **profile** id.
+
+### Session notes
+
+`GET`, `POST` `/api/v1/sessions/{sessionId}/notes`, and `PUT`, `DELETE`
+`/api/v1/sessions/{sessionId}/notes/{noteId}`. **Admin only** — the UI/UX document places these on
+Session Details (Admin View), and nothing in it shows a coach's session notes to the athlete.
+Opening them up later is additive; having shown them by mistake is not undoable.
+
+A session holds **many** notes rather than one editable block, because the screen offers add as
+well as edit and a record that can only be overwritten loses what was written last time. Editing
+leaves `createdAtUtc` where it is so the history keeps its order, and moves `updatedAtUtc`. Notes
+can be added to a session in any status — they are usually written up afterwards.
+
+### What changed in existing shapes
+
+Two additive changes, both to things the app already reads:
+
+- **`SessionStatus` gained `Attended` and `NoShow`**, and is now `Scheduled | Attended | Cancelled
+  | NoShow` — all four the specification requires (architecture C-03). Any client that switches on
+  session status needs arms for the two new values.
+- **`ApiProblemDetails.errorCode` gained** `ACTIVE_PACKAGE_EXISTS`, `ACTIVE_PACKAGE_NOT_FOUND`,
+  `NO_SESSIONS_REMAINING`, `PACKAGE_ALREADY_CLOSED`, `PACKAGE_NOT_ACTIVE`, `PACKAGE_NOT_FOUND`,
+  `SESSION_ALREADY_ATTENDED`, `SESSION_ALREADY_RESOLVED`, `SESSION_CANCELLED`,
+  `SESSION_NOTE_NOT_FOUND` and `OBSERVATION_RANGE_INVALID`.
+
+`PACKAGE_NOT_FOUND` is a package somebody bought; `PACKAGE_OPTION_NOT_FOUND` is an entry in the
+catalogue. They are different screens and the codes are kept apart on purpose.
+
+### Configuration
+
+`Features__NoShowDeducts` — whether a no-show consumes a session. **False by default**, which is
+the specified default (A-04): the athlete who did not turn up has not had coaching, and charging
+them for it is a decision the coach makes deliberately rather than one the software assumes. It is
+a single deployment-wide setting, not per athlete.
+
+---
+
 ## Phase 5 — Scheduling, Calendly and sessions
 
 Booking runs on Calendly. This API owns the athlete's side of it: which session types can be

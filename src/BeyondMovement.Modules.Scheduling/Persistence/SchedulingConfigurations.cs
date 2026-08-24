@@ -12,11 +12,21 @@ public sealed class SessionConfiguration : IEntityTypeConfiguration<Session>
         {
             t.HasCheckConstraint("CK_Sessions_TimeRange", "\"ScheduledEndUtc\" > \"ScheduledStartUtc\"");
             t.HasCheckConstraint("CK_Sessions_Duration", "\"DurationMinutes\" > 0");
+            t.HasCheckConstraint("CK_Sessions_Consumed",
+                "\"ConsumedSessionCount\" IN (0, 1)");
+
+            // BR-04 and BR-06 as a constraint rather than a convention: only a session that
+            // actually happened may record having consumed one.
+            t.HasCheckConstraint("CK_Sessions_ConsumedOnlyWhenResolved",
+                "\"ConsumedSessionCount\" = 0 OR \"Status\" IN ('Attended', 'NoShow')");
         });
         b.HasKey(x => x.Id);
-        b.Property(x => x.CalendlyEventUri).HasMaxLength(500).IsRequired();
-        b.Property(x => x.CalendlyInviteeUri).HasMaxLength(500).IsRequired();
-        b.Property(x => x.CalendlyEventTypeUri).HasMaxLength(500).IsRequired();
+        // Nullable since Phase 6: an Observation is recorded by the Admin and has no Calendly
+        // event behind it. The unique indexes below still hold - Postgres treats nulls as
+        // distinct, so any number of observations can sit beside the booked sessions.
+        b.Property(x => x.CalendlyEventUri).HasMaxLength(500);
+        b.Property(x => x.CalendlyInviteeUri).HasMaxLength(500);
+        b.Property(x => x.CalendlyEventTypeUri).HasMaxLength(500);
         b.Property(x => x.DeliveryType).HasConversion<string>().HasMaxLength(30).IsRequired();
         b.Property(x => x.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
         b.Property(x => x.LocationOrPlatform).HasMaxLength(500);
@@ -24,6 +34,9 @@ public sealed class SessionConfiguration : IEntityTypeConfiguration<Session>
         b.Property(x => x.CancelUrl).HasMaxLength(1000);
         b.Property(x => x.RescheduleUrl).HasMaxLength(1000);
         b.Property(x => x.CancellationReason).HasMaxLength(1000);
+
+        // 0 or 1, and never more than that even if application code goes wrong.
+        b.Property(x => x.ConsumedSessionCount).IsRequired();
         b.Property(x => x.Version).IsRowVersion();
         b.HasIndex(x => x.CalendlyEventUri).IsUnique();
         b.HasIndex(x => x.CalendlyInviteeUri).IsUnique();
@@ -77,9 +90,12 @@ public sealed class CalendlyUnmatchedBookingConfiguration : IEntityTypeConfigura
     public void Configure(EntityTypeBuilder<CalendlyUnmatchedBooking> b)
     {
         b.ToTable("CalendlyUnmatchedBookings"); b.HasKey(x => x.Id);
-        b.Property(x => x.CalendlyEventUri).HasMaxLength(500).IsRequired();
-        b.Property(x => x.CalendlyInviteeUri).HasMaxLength(500).IsRequired();
-        b.Property(x => x.CalendlyEventTypeUri).HasMaxLength(500).IsRequired();
+        // Nullable since Phase 6: an Observation is recorded by the Admin and has no Calendly
+        // event behind it. The unique indexes below still hold - Postgres treats nulls as
+        // distinct, so any number of observations can sit beside the booked sessions.
+        b.Property(x => x.CalendlyEventUri).HasMaxLength(500);
+        b.Property(x => x.CalendlyInviteeUri).HasMaxLength(500);
+        b.Property(x => x.CalendlyEventTypeUri).HasMaxLength(500);
         b.Property(x => x.InviteeEmail).HasMaxLength(256).IsRequired();
         b.Property(x => x.Reason).HasMaxLength(500).IsRequired();
         b.HasIndex(x => x.CalendlyInviteeUri).IsUnique();
@@ -94,5 +110,23 @@ public sealed class CalendlyReconciliationRunConfiguration : IEntityTypeConfigur
         b.ToTable("CalendlyReconciliationRuns"); b.HasKey(x => x.Id);
         b.Property(x => x.Error).HasMaxLength(1000);
         b.HasIndex(x => x.StartedAtUtc);
+    }
+}
+
+public sealed class SessionNoteConfiguration : IEntityTypeConfiguration<SessionNote>
+{
+    public void Configure(EntityTypeBuilder<SessionNote> b)
+    {
+        b.ToTable("SessionNotes");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Content).IsRequired().HasMaxLength(SessionNote.MaxContentLength);
+
+        // The two reads: one session's notes, and the athlete's history assembled from the
+        // sessions that belong to them.
+        b.HasIndex(x => new { x.SessionId, x.CreatedAtUtc });
+
+        b.HasOne<Session>().WithMany()
+            .HasForeignKey(x => x.SessionId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

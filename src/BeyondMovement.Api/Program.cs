@@ -1,3 +1,4 @@
+using BeyondMovement.Api.Attendance;
 using BeyondMovement.Api.Authentication;
 using BeyondMovement.Api.Endpoints;
 using BeyondMovement.Api;
@@ -161,6 +162,12 @@ builder.Services.AddScoped<SetLoyaltyHandler>();
 
 // Spans Packages and Athletes, so it lives in the composition root and reads only.
 builder.Services.AddScoped<CatalogueReader>();
+builder.Services.AddScoped<PackagePurchaseService>();
+
+// Attendance - Phase 6. Writes to Scheduling and Packages at once, so it lives in the Api
+// project rather than in either module (CLAUDE.md section 4).
+builder.Services.Configure<FeatureOptions>(builder.Configuration.GetSection(FeatureOptions.SectionName));
+builder.Services.AddScoped<AttendanceService>();
 
 // --- scheduling / Calendly ----------------------------------------------
 builder.Services.AddOptions<CalendlyOptions>()
@@ -277,6 +284,9 @@ app.MapPackageOptionEndpoints();
 app.MapPricingEndpoints();
 app.MapPreferenceEndpoints();
 app.MapSchedulingEndpoints();
+app.MapPurchasedPackageEndpoints();
+app.MapAttendanceEndpoints();
+app.MapSessionNoteEndpoints();
 
 if (app.Environment.IsDevelopment())
 {

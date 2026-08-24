@@ -2,7 +2,7 @@
 
 Context file for Claude Code. Read this before doing anything in this repository.
 
-**Last updated:** phases 0–4 backend complete. See section 8 for exactly where we are.
+**Last updated:** phases 0–6 backend complete. See section 8 for exactly where we are.
 
 ---
 
@@ -105,8 +105,8 @@ These are **read-only**. A cross-module *write* is orchestrated in an endpoint i
 |---|---|---|
 | `Modules.Identity` | Users, roles, status, JWT, refresh tokens, invitations, password reset, Google sign-in | **Built** |
 | `Modules.Athletes` | Athlete profiles, complete profile, loyalty flag | **Built** |
-| `Modules.Packages` | Package options, features, per-athlete price overrides, pricing rule | **Built** |
-| `Modules.Scheduling` | Sessions, Calendly, attendance | Phase 5–6 |
+| `Modules.Packages` | Package options, features, per-athlete price overrides, pricing rule, purchased packages | **Built** |
+| `Modules.Scheduling` | Sessions, Calendly, attendance, session notes | **Built** |
 | `Modules.ToDos` | To-dos, overdue job | Phase 7 |
 | `Modules.Finance` | Payments, expenses | Phase 8 |
 | `Modules.Reporting` | Dashboard aggregates — read-only, may query across module tables | Phase 9, 11 |
@@ -130,7 +130,9 @@ Enforced **at the database level as well as in code**, because application code 
 | Package names are unique | Unique index on `(CoachId, lower(Name))`, **archived options included** |
 | Feature order is unique per option | Unique index on `(PackageOptionId, Position)` |
 | No cross-athlete data access | Policy → ownership check → scoped query. Foreign resources return **404, not 403** |
-| **BR-03** — one active package per athlete | **Not yet built.** Belongs to the purchase phase, not the catalogue. |
+| **BR-03** — one active package per athlete | Partial unique index on `PurchasedPackages(AthleteProfileId) WHERE Status='Active'` |
+| **BR-04, BR-06** — only a session that happened consumes one | Check constraint: `ConsumedSessionCount = 0 OR Status IN ('Attended','NoShow')` |
+| Exactly-once deduction (BR-05) | Three layers: `Session.Resolve` refuses a non-Scheduled session; `xmin` row versions on both rows; check constraint `UsedSessions <= TotalSessions` |
 
 **Active/Inactive is not the same as Paused.** *Inactive* means "has no active package" and is derived, never stored. *Paused* is account access and lives in `Users.Status`. Do not merge them.
 
@@ -207,10 +209,10 @@ Transport is chosen at startup: **Postmark → SMTP → console**. The startup l
 | 3 | Invitations & onboarding | ✅ Done | Invite, validate, register, complete profile, `Gender` enum, `termsAccepted` removed |
 | 3.1 | Password-reset rate limiting | ✅ Done | 3/hour/email and 10/hour/IP, enumeration-safe |
 | 4 | **Package catalogue** | ✅ Done | Options, features, archive/restore, loyalty, per-athlete overrides, athlete catalogue |
-| 5 | Scheduling & Calendly | ▶ **Next** | Blocked on **A-01** |
-| 6 | Attendance & Notes | Not started | |
-| 7 | To-Dos | Not started | |
-| 8 | Finance | Not started | Depends on the purchase work below |
+| 5 | Scheduling & Calendly | ✅ Done | Calendly projection, webhooks, reconciliation, sessions |
+| 6 | **Attendance & Notes** | ✅ Done | Mark attended/no-show, exactly-once deduction, observations, session notes, **purchased packages** |
+| 7 | To-Dos | ▶ **Next** | |
+| 8 | Finance | Not started | Payment status on a package is still unbuilt — see C-01 |
 | 9–14 | Dashboard → Release | Not started | |
 
 **A phase is not *done* until the Flutter screens are connected and tested end to end.** By that definition phases 1–4 are backend-complete and awaiting mobile integration.
@@ -239,8 +241,8 @@ So `product-specification.md` §4.5, `software-architecture.md` §14.3 and `deve
 | C-01 | Payment statuses: Unpaid/PartiallyPaid/Paid (spec) or Paid/Pending (UI doc)? | Purchase phase, 8 |
 | C-02 | What does the Admin Home "New Session" quick action do? | Phase 6 |
 | A-02 | Where does session duration come from for the hours report? | Phase 5 |
-| A-03 | How are Observation sessions created, and when do they deduct? | Phase 6 |
-| A-04 | Does a No-show deduct a session? Current default: no. | Phase 6 |
+| — | A-03 Observation creation. **Decided:** Admin creates them manually via `POST /sessions/observations`; the >1h rule (BR-07) is evaluated on Mark as Attended | Closed |
+| — | A-04 No-show deduction. **Decided:** one deployment-wide setting, `Features__NoShowDeducts`, default off | Closed |
 | A-07 | Athlete deletion: hard delete or anonymize? | Phase 2 cleanup |
 | — | Should `sport` become an enum? **Decided: no**, required free text for v1 | Closed |
 | — | Admin athlete-edit endpoint | **Deferred** by the client, outside Phase 3 |

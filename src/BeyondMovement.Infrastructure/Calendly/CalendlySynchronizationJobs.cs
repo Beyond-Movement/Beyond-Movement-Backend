@@ -106,13 +106,18 @@ public sealed class CalendlySynchronizationJobs(
                 catch (UnmatchedCalendlyEventTypeException)
                 { await RecordUnmatched(invitee, "Calendly event type is not configured.", ct); flagged++; }
             }
+            // Sessions this API created itself - Observations - have no Calendly identity, so
+            // Calendly can never return them. Without this filter every observation is flagged
+            // as a missing booking on every run, and the Admin's review list fills with rows
+            // that are working exactly as intended.
             var missing = await db.Sessions.Where(x => x.Status == SessionStatus.Scheduled &&
-                x.ScheduledStartUtc >= from && x.ScheduledStartUtc <= to && !remoteUris.Contains(x.CalendlyInviteeUri)).ToListAsync(ct);
+                x.CalendlyInviteeUri != null &&
+                x.ScheduledStartUtc >= from && x.ScheduledStartUtc <= to && !remoteUris.Contains(x.CalendlyInviteeUri!)).ToListAsync(ct);
             foreach (var session in missing)
             {
                 if (!await db.CalendlyUnmatchedBookings.AnyAsync(x => x.CalendlyInviteeUri == session.CalendlyInviteeUri, ct))
-                    db.CalendlyUnmatchedBookings.Add(CalendlyUnmatchedBooking.Record(session.CalendlyEventUri,
-                        session.CalendlyInviteeUri, session.CalendlyEventTypeUri, "unknown@local.invalid",
+                    db.CalendlyUnmatchedBookings.Add(CalendlyUnmatchedBooking.Record(session.CalendlyEventUri!,
+                        session.CalendlyInviteeUri!, session.CalendlyEventTypeUri!, "unknown@local.invalid",
                         "Local scheduled session was not returned by Calendly; review required.", clock.UtcNow));
                 flagged++;
             }

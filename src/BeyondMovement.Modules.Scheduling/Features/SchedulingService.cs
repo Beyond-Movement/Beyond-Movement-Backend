@@ -111,10 +111,28 @@ public sealed class SchedulingService(
     public async Task<Result> CancelAsync(Session session, string? reason, CancellationToken ct)
     {
         if (session.Status == SessionStatus.Cancelled) return Result.Success();
-        try { await calendly.CancelEventAsync(session.CalendlyEventUri, reason, ct); }
-        catch (CalendlyApiException ex) { return Result.Failure(MapFailure(ex)); }
+
+        // A session that has already been resolved has consumed what it consumed, and the
+        // platform never reverses that silently. Refusing here is what stops the Admin from
+        // cancelling in Calendly and then finding the balance unchanged with no explanation.
+        if (session.Status == SessionStatus.Attended) return Result.Failure(SchedulingErrors.SessionAlreadyAttended);
+        if (session.Status == SessionStatus.NoShow) return Result.Failure(SchedulingErrors.SessionAlreadyResolved);
+
+        // An Observation was recorded here and never existed in Calendly, so there is nothing to
+        // cancel there and the local cancellation is the whole operation.
+        if (session.CalendlyEventUri is { } eventUri)
+        {
+            try { await calendly.CancelEventAsync(eventUri, reason, ct); }
+            catch (CalendlyApiException ex) { return Result.Failure(MapFailure(ex)); }
+        }
+
         session.Cancel(clock.UtcNow, reason);
-        await RecordChangeAsync(session.Id, SchedulingChangeType.Cancelled, session.CalendlyInviteeUri, ct);
+
+        // The dedup key is normally the Calendly invitee uri, which is what makes a replayed
+        // webhook idempotent. A locally created session has none; its own id is unique and
+        // serves the same purpose.
+        await RecordChangeAsync(session.Id, SchedulingChangeType.Cancelled,
+            session.CalendlyInviteeUri ?? session.Id.ToString(), ct);
         await db.SaveChangesAsync(ct);
         return Result.Success();
     }

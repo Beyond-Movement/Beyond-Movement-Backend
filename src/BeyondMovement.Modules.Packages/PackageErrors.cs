@@ -27,10 +27,21 @@ public static class PackageErrorCodes
     public const string ConcurrencyConflict = "CONCURRENCY_CONFLICT";
     public const string CustomPriceNotFound = "CUSTOM_PRICE_NOT_FOUND";
 
+    // The purchase model. Distinct from the catalogue codes above on purpose: PACKAGE_NOT_FOUND
+    // is a package somebody bought, PACKAGE_OPTION_NOT_FOUND is an entry in the catalogue, and a
+    // client that confuses the two shows the wrong screen.
+    public const string PackageNotFound = "PACKAGE_NOT_FOUND";
+    public const string ActivePackageExists = "ACTIVE_PACKAGE_EXISTS";
+    public const string NoSessionsRemaining = "NO_SESSIONS_REMAINING";
+    public const string PackageNotActive = "PACKAGE_NOT_ACTIVE";
+    public const string PackageAlreadyClosed = "PACKAGE_ALREADY_CLOSED";
+
     public static readonly string[] All =
     [
         PackageOptionNotFound, PackageNameConflict, PackageOptionArchived,
-        PackageOptionNotArchived, ConcurrencyConflict, CustomPriceNotFound
+        PackageOptionNotArchived, ConcurrencyConflict, CustomPriceNotFound,
+        PackageNotFound, ActivePackageExists, NoSessionsRemaining, PackageNotActive,
+        PackageAlreadyClosed
     ];
 }
 
@@ -62,4 +73,31 @@ public static class PackageErrors
     public static readonly Error CustomPriceNotFound = new(
         PackageErrorCodes.CustomPriceNotFound,
         "This athlete has no custom price for this package option.", 404);
+
+    public static readonly Error PackageNotFound = new(
+        PackageErrorCodes.PackageNotFound, "No such package.", 404);
+
+    /// <summary>
+    /// BR-03. The database holds this with a partial unique index; the handler checks first only
+    /// so the Admin gets this code instead of a constraint violation.
+    /// </summary>
+    public static readonly Error ActivePackageExists = new(
+        PackageErrorCodes.ActivePackageExists,
+        "This athlete already has an active package. Close it before starting another.", 409);
+
+    /// <summary>
+    /// The athlete has an active package but nothing left in it. Distinct from having no package
+    /// at all, which the attendance endpoint reports as PACKAGE_NOT_FOUND, because the coach's
+    /// next action differs: renew versus sell a first package.
+    /// </summary>
+    public static readonly Error NoSessionsRemaining = new(
+        PackageErrorCodes.NoSessionsRemaining,
+        "This package has no sessions remaining.", 409);
+
+    public static readonly Error PackageNotActive = new(
+        PackageErrorCodes.PackageNotActive,
+        "This package is no longer active.", 409);
+
+    public static readonly Error PackageAlreadyClosed = new(
+        PackageErrorCodes.PackageAlreadyClosed, "This package is already closed.", 409);
 }

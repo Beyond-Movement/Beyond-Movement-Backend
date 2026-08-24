@@ -77,3 +77,53 @@ public sealed class AthletePackagePriceConfiguration : IEntityTypeConfiguration<
             .OnDelete(DeleteBehavior.Cascade);
     }
 }
+
+public sealed class PurchasedPackageConfiguration : IEntityTypeConfiguration<PurchasedPackage>
+{
+    public void Configure(EntityTypeBuilder<PurchasedPackage> b)
+    {
+        b.ToTable("PurchasedPackages", t =>
+        {
+            t.HasCheckConstraint("CK_PurchasedPackages_TotalSessions", "\"TotalSessions\" > 0");
+
+            // The database's half of exactly-once deduction. Even a bug that called Consume twice
+            // past the domain guard cannot write a balance that says more sessions were used than
+            // were ever bought.
+            t.HasCheckConstraint("CK_PurchasedPackages_UsedSessions",
+                "\"UsedSessions\" >= 0 AND \"UsedSessions\" <= \"TotalSessions\"");
+
+            t.HasCheckConstraint("CK_PurchasedPackages_Price", "\"PricePaidMinor\" >= 0");
+            t.HasCheckConstraint("CK_PurchasedPackages_Dates",
+                "\"EndDate\" IS NULL OR \"EndDate\" >= \"StartDate\"");
+        });
+        b.HasKey(x => x.Id);
+
+        b.Property(x => x.Name).IsRequired().HasMaxLength(PurchasedPackage.MaxNameLength);
+        b.Property(x => x.Currency).IsRequired().HasMaxLength(3);
+        b.Property(x => x.Notes).HasMaxLength(PurchasedPackage.MaxNotesLength);
+        b.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+
+        // Maps to Postgres' xmin rather than a column of its own, exactly as Session does.
+        b.Property(x => x.Version).IsRowVersion();
+
+        // Computed from TotalSessions and UsedSessions. Without this EF maps it as a column and
+        // the balance becomes a third stored number that can disagree with the other two.
+        b.Ignore(x => x.RemainingSessions);
+
+        // BR-03 - at most one active package per athlete. A filtered unique index rather than a
+        // handler check, because two Admin devices purchasing at the same moment are two
+        // transactions, and only the database sees both.
+        b.HasIndex(x => x.AthleteProfileId).IsUnique()
+            .HasFilter("\"Status\" = 'Active'")
+            .HasDatabaseName("IX_PurchasedPackages_OneActivePerAthlete");
+
+        // Package history, newest first.
+        b.HasIndex(x => new { x.AthleteProfileId, x.CreatedAtUtc });
+
+        // SetNull, not Cascade: deleting a catalogue entry must never delete the record of what
+        // somebody bought. PackageOptionId is provenance, and losing it costs nothing.
+        b.HasOne<PackageOption>().WithMany()
+            .HasForeignKey(x => x.PackageOptionId)
+            .OnDelete(DeleteBehavior.SetNull);
+    }
+}

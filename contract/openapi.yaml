@@ -184,6 +184,42 @@ paths:
       responses:
         '200':
           description: OK
+  "/api/v1/me/package":
+    get:
+      tags:
+      - Packages
+      summary: The calling athlete's own active package.
+      description: Always the caller's own - there is no athlete id, and an athlete
+        can never read another's package. 404 PACKAGE_NOT_FOUND when they have none,
+        which includes an athlete who has not completed their profile yet.
+      operationId: GetMyPackage
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/PurchasedPackageResponse"
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+      security:
+      - bearerAuth: []
   "/api/v1/auth/login":
     post:
       tags:
@@ -1923,6 +1959,637 @@ paths:
                 "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
+  "/api/v1/athletes/{athleteId}/packages":
+    post:
+      tags:
+      - Packages
+      summary: Record that an athlete bought a package.
+      description: 'The price is not in the request and cannot be: it is computed
+        server-side from the option''s default price, the athlete''s loyalty flag
+        and any price override they have - the same rule and the same number the catalogue
+        already showed them - and then copied onto the package as paid. Repricing
+        or archiving the option afterwards never changes it. BR-03 allows one active
+        package per athlete, so a second purchase while one is active is 409 ACTIVE_PACKAGE_EXISTS;
+        close the current one first. An archived option cannot be sold (409 PACKAGE_OPTION_ARCHIVED).
+        startDate defaults to today in UTC, and endDate is optional because a package
+        normally ends when its sessions run out rather than on a date.'
+      operationId: PurchasePackage
+      parameters:
+      - name: athleteId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/PurchasePackageRequest"
+        required: true
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/PurchasedPackageResponse"
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+      security:
+      - bearerAuth: []
+    get:
+      tags:
+      - Packages
+      summary: Every package this athlete has ever had, newest first.
+      description: Active, completed and closed together, because the screen showing
+        history shows all three. An athlete who has never bought one gets an empty
+        list; an unknown athlete, or one belonging to another coach, gets 404 ATHLETE_NOT_FOUND,
+        so a bad id cannot be mistaken for an athlete with no packages.
+      operationId: ListAthletePackages
+      parameters:
+      - name: athleteId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/PurchasedPackageResponse"
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+      security:
+      - bearerAuth: []
+  "/api/v1/athletes/{athleteId}/packages/active":
+    get:
+      tags:
+      - Packages
+      summary: The athlete's current package and balance.
+      description: '404 PACKAGE_NOT_FOUND when the athlete has none, which is a normal
+        state - between packages, or before the first one - and not an error to report
+        as a failure. This is the call behind the athlete list''s Active/Inactive
+        badge and behind the balance on Session Details. remainingSessions can legitimately
+        be 0: the UI shows "New sessions pending" for that, but the number stays a
+        number.'
+      operationId: GetAthleteActivePackage
+      parameters:
+      - name: athleteId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/PurchasedPackageResponse"
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+      security:
+      - bearerAuth: []
+  "/api/v1/packages/{id}":
+    get:
+      tags:
+      - Packages
+      summary: One package.
+      description: A package belonging to another coach is 404 PACKAGE_NOT_FOUND,
+        the same as one that does not exist, so an id cannot be probed for existence.
+      operationId: GetPackage
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/PurchasedPackageResponse"
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+      security:
+      - bearerAuth: []
+  "/api/v1/packages/{id}/close":
+    post:
+      tags:
+      - Packages
+      summary: End a package early.
+      description: 'Ends it without deleting anything: the balance stays as it stands,
+        so the history still shows what was used. Closing is what frees the athlete
+        to buy another under BR-03. A package that ran out on its own is already Completed
+        and does not need closing. Closing an already-closed package is 409 PACKAGE_ALREADY_CLOSED.'
+      operationId: ClosePackage
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/PurchasedPackageResponse"
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+      security:
+      - bearerAuth: []
+  "/api/v1/sessions/{id}/attend":
+    post:
+      tags:
+      - Attendance
+      summary: Mark a session attended or a no-show, deducting once.
+      description: 'The only endpoint that moves a package balance. outcome is Attended
+        or NoShow and defaults to Attended; Cancelled is not accepted here because
+        cancelling also has to reach Calendly and has its own endpoint. How much it
+        deducts is decided server-side and returned as consumedSessionCount: one for
+        an ordinary attended session (BR-05), one for an attended observation only
+        if it ran longer than an hour (BR-07), and for a no-show whatever this deployment''s
+        policy says - which is nothing by default. The response carries the session
+        and the package as they now stand, both changed in one transaction, so the
+        client can replace its copies without re-reading and without ever showing
+        a balance that did not exist. package and progress are null when the session
+        consumed nothing and the athlete has no active package. Marking a session
+        that is already Attended is 409 SESSION_ALREADY_ATTENDED, already a no-show
+        is 409 SESSION_ALREADY_RESOLVED, and cancelled is 409 SESSION_CANCELLED (BR-06).
+        Those are not failures to retry past - they mean the deduction has already
+        happened exactly once, or must never happen. A session that would deduct from
+        an athlete with no active package is 409 ACTIVE_PACKAGE_NOT_FOUND, and one
+        whose package is exhausted is 409 NO_SESSIONS_REMAINING. Two requests racing
+        produce one success and one 409 CONCURRENCY_CONFLICT, never two deductions.'
+      operationId: MarkSessionAttendance
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/MarkAttendanceRequest"
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/AttendanceResponse"
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+      security:
+      - bearerAuth: []
+  "/api/v1/sessions/{id}/package-progress":
+    get:
+      tags:
+      - Attendance
+      summary: Where a session sits in the athlete's package - "Session 7 of 12".
+      description: Separate from GET /sessions/{id} rather than added to it, so the
+        Phase 5 session shape the app already reads does not change. sessionNumber
+        is the session's own position once it has been attended, and the position
+        it would take if it has not been resolved yet, which is what Session Details
+        shows before the coach taps Mark as Attended. It is null when no position
+        exists to state - a cancelled session, or a short observation that will never
+        consume one. 404 SESSION_NOT_FOUND covers an unknown session and someone else's
+        alike; an athlete with no package at all gets 404 PACKAGE_NOT_FOUND, which
+        is a normal state and not an error worth surfacing as one.
+      operationId: GetSessionPackageProgress
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SessionPackageProgress"
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+      security:
+      - bearerAuth: []
+  "/api/v1/sessions/observations":
+    post:
+      tags:
+      - Attendance
+      summary: Record an observation the coach carried out.
+      description: The one kind of session this API creates itself. Observations are
+        arranged in person and never appear on a Calendly booking page, so the coach
+        records one after the fact; everything else is projected from Calendly and
+        cannot be created here. The session is created Scheduled and deducts nothing
+        yet - a booking never deducts (BR-04) - and is then marked attended like any
+        other, at which point it consumes one session only if it ran longer than an
+        hour (BR-07). startUtc and endUtc must both be UTC and in order, and may not
+        span more than a day. athleteProfileId is the profile id carried on every
+        session, not the athlete's user id.
+      operationId: CreateObservation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/CreateObservationRequest"
+        required: true
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SessionResponse"
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+      security:
+      - bearerAuth: []
+  "/api/v1/sessions/{sessionId}/notes":
+    get:
+      tags:
+      - Session notes
+      summary: The notes on one session, oldest first.
+      description: Oldest first, because they read as a running record of the session
+        rather than a feed. An empty list is normal. An unknown session, or one belonging
+        to another coach, is 404 SESSION_NOT_FOUND.
+      operationId: ListSessionNotes
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/SessionNoteResponse"
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+      security:
+      - bearerAuth: []
+    post:
+      tags:
+      - Session notes
+      summary: Add a note to a session.
+      description: 'A session holds many notes rather than one editable block: the
+        screen offers add as well as edit, and a record that can only be overwritten
+        loses what was written last time the first time something is added this time.
+        Notes can be added to a session in any status - the coach often writes them
+        up after it has been marked attended, and a cancelled session can still be
+        worth a line saying why.'
+      operationId: CreateSessionNote
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/SaveSessionNoteRequest"
+        required: true
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SessionNoteResponse"
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+      security:
+      - bearerAuth: []
+  "/api/v1/sessions/{sessionId}/notes/{noteId}":
+    put:
+      tags:
+      - Session notes
+      summary: Rewrite a note.
+      description: Replaces the text. createdAtUtc deliberately stays put so the history
+        keeps its order when a note written days ago is corrected today; updatedAtUtc
+        moves. 404 SESSION_NOTE_NOT_FOUND covers a note that does not exist and one
+        that belongs to a different session alike.
+      operationId: EditSessionNote
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: noteId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/SaveSessionNoteRequest"
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SessionNoteResponse"
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+      security:
+      - bearerAuth: []
+    delete:
+      tags:
+      - Session notes
+      summary: Remove a note.
+      description: 204 with no body. Deleting a note that is already gone is 404 SESSION_NOTE_NOT_FOUND
+        rather than a silent success, so a client that thinks it deleted something
+        twice finds out.
+      operationId: DeleteSessionNote
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: noteId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '204':
+          description: No Content
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+      security:
+      - bearerAuth: []
 components:
   schemas:
     ApiProblemDetails:
@@ -1950,6 +2617,8 @@ components:
           enum:
           - ACCOUNT_LOCKED
           - ACCOUNT_PAUSED
+          - ACTIVE_PACKAGE_EXISTS
+          - ACTIVE_PACKAGE_NOT_FOUND
           - ATHLETE_NOT_FOUND
           - AVAILABILITY_RANGE_INVALID
           - BOOKING_IN_PROGRESS
@@ -1975,13 +2644,22 @@ components:
           - INVITATION_USED
           - LOCATION_INVALID
           - LOCATION_REQUIRED
+          - NO_SESSIONS_REMAINING
+          - OBSERVATION_RANGE_INVALID
+          - PACKAGE_ALREADY_CLOSED
           - PACKAGE_NAME_CONFLICT
+          - PACKAGE_NOT_ACTIVE
+          - PACKAGE_NOT_FOUND
           - PACKAGE_OPTION_ARCHIVED
           - PACKAGE_OPTION_NOT_ARCHIVED
           - PACKAGE_OPTION_NOT_FOUND
           - PASSWORD_NOT_SET
           - PROFILE_ALREADY_COMPLETED
           - REGISTRATION_TOKEN_INVALID
+          - SESSION_ALREADY_ATTENDED
+          - SESSION_ALREADY_RESOLVED
+          - SESSION_CANCELLED
+          - SESSION_NOTE_NOT_FOUND
           - SESSION_NOT_FOUND
           - SLOT_UNAVAILABLE
           - TIME_ZONE_INVALID
@@ -2142,6 +2820,27 @@ components:
           format: uuid
         status:
           "$ref": "#/components/schemas/UserStatus"
+    AttendanceResponse:
+      required:
+      - session
+      - consumedSessionCount
+      - package
+      - progress
+      type: object
+      properties:
+        session:
+          "$ref": "#/components/schemas/SessionResponse"
+        consumedSessionCount:
+          type: integer
+          format: int32
+        package:
+          oneOf:
+          - type: 'null'
+          - "$ref": "#/components/schemas/PurchasedPackageResponse"
+        progress:
+          oneOf:
+          - type: 'null'
+          - "$ref": "#/components/schemas/SessionPackageProgress"
     AuthResponse:
       required:
       - accessToken
@@ -2301,6 +3000,26 @@ components:
       properties:
         email:
           type: string
+    CreateObservationRequest:
+      required:
+      - athleteProfileId
+      - startUtc
+      - endUtc
+      type: object
+      properties:
+        athleteProfileId:
+          type: string
+          format: uuid
+        startUtc:
+          type: string
+          format: date-time
+        endUtc:
+          type: string
+          format: date-time
+        locationOrPlatform:
+          type:
+          - 'null'
+          - string
     CurrentUserResponse:
       required:
       - id
@@ -2489,6 +3208,11 @@ components:
           format: uuid
         isLoyal:
           type: boolean
+    MarkAttendanceRequest:
+      type: object
+      properties:
+        outcome:
+          "$ref": "#/components/schemas/SessionStatus"
     PackageOptionResponse:
       required:
       - id
@@ -2582,6 +3306,100 @@ components:
           oneOf:
           - type: 'null'
           - "$ref": "#/components/schemas/AthleteListSort"
+    PurchasedPackageResponse:
+      required:
+      - id
+      - athleteProfileId
+      - packageOptionId
+      - name
+      - totalSessions
+      - usedSessions
+      - remainingSessions
+      - pricePaidMinor
+      - currency
+      - startDate
+      - endDate
+      - status
+      - notes
+      - createdAtUtc
+      - updatedAtUtc
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        athleteProfileId:
+          type: string
+          format: uuid
+        packageOptionId:
+          type:
+          - 'null'
+          - string
+          format: uuid
+        name:
+          type: string
+        totalSessions:
+          type: integer
+          format: int32
+        usedSessions:
+          type: integer
+          format: int32
+        remainingSessions:
+          type: integer
+          format: int32
+        pricePaidMinor:
+          type: integer
+          format: int64
+        currency:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type:
+          - 'null'
+          - string
+          format: date
+        status:
+          "$ref": "#/components/schemas/PurchasedPackageStatus"
+        notes:
+          type:
+          - 'null'
+          - string
+        createdAtUtc:
+          type: string
+          format: date-time
+        updatedAtUtc:
+          type: string
+          format: date-time
+    PurchasedPackageStatus:
+      enum:
+      - Active
+      - Completed
+      - Closed
+      type: string
+    PurchasePackageRequest:
+      required:
+      - packageOptionId
+      type: object
+      properties:
+        packageOptionId:
+          type: string
+          format: uuid
+        startDate:
+          type:
+          - 'null'
+          - string
+          format: date
+        endDate:
+          type:
+          - 'null'
+          - string
+          format: date
+        notes:
+          type:
+          - 'null'
+          - string
     RefreshRequest:
       required:
       - refreshToken
@@ -2653,6 +3471,69 @@ components:
           items:
             maxLength: 100
             type: string
+    SaveSessionNoteRequest:
+      required:
+      - content
+      type: object
+      properties:
+        content:
+          type: string
+    SessionNoteResponse:
+      required:
+      - id
+      - sessionId
+      - authorUserId
+      - content
+      - createdAtUtc
+      - updatedAtUtc
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        sessionId:
+          type: string
+          format: uuid
+        authorUserId:
+          type: string
+          format: uuid
+        content:
+          type: string
+        createdAtUtc:
+          type: string
+          format: date-time
+        updatedAtUtc:
+          type: string
+          format: date-time
+    SessionPackageProgress:
+      required:
+      - packageId
+      - packageName
+      - sessionNumber
+      - totalSessions
+      - usedSessions
+      - remainingSessions
+      type: object
+      properties:
+        packageId:
+          type: string
+          format: uuid
+        packageName:
+          type: string
+        sessionNumber:
+          type:
+          - 'null'
+          - integer
+          format: int32
+        totalSessions:
+          type: integer
+          format: int32
+        usedSessions:
+          type: integer
+          format: int32
+        remainingSessions:
+          type: integer
+          format: int32
     SessionPage:
       required:
       - items
@@ -2718,7 +3599,9 @@ components:
     SessionStatus:
       enum:
       - Scheduled
+      - Attended
       - Cancelled
+      - NoShow
       type: string
     SetCustomPriceRequest:
       required:
@@ -2815,7 +3698,10 @@ tags:
 - name: Athletes
 - name: Pricing
 - name: Calendly webhooks
+- name: Packages
 - name: Invitations
 - name: Package options
 - name: Scheduling
 - name: Sessions
+- name: Attendance
+- name: Session notes

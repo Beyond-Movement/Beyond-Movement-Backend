@@ -1,3 +1,5 @@
+using BeyondMovement.Modules.Packages.Domain;
+
 namespace BeyondMovement.Modules.Packages.Contracts;
 
 // Money crosses the wire as an integer count of piastres, never a decimal. See PackagePricing
@@ -66,3 +68,55 @@ public sealed record CatalogueItemResponse(
     IReadOnlyList<string> Features,
     long PriceMinor,
     string Currency);
+
+/// <summary>
+/// Records that an athlete bought a catalogue option. Nothing about the price is in the request:
+/// it is decided server-side from the option, the athlete's loyalty and any override, exactly as
+/// the catalogue already shows it. An Admin who could send a price could send a different one
+/// from the one the athlete was quoted.
+/// </summary>
+/// <param name="StartDate">Defaults to today, in UTC, when omitted.</param>
+/// <param name="EndDate">Optional. A package normally ends when its sessions run out, not on a date.</param>
+public sealed record PurchasePackageRequest(
+    Guid PackageOptionId,
+    DateOnly? StartDate = null,
+    DateOnly? EndDate = null,
+    string? Notes = null);
+
+/// <summary>
+/// A package an athlete owns.
+/// <para>
+/// <see cref="RemainingSessions"/> is sent even though it is <see cref="TotalSessions"/> minus
+/// <see cref="UsedSessions"/>, so that the number the app displays and the number the server
+/// deducts against are the same arithmetic, done once, here.
+/// </para>
+/// <para>
+/// Note for the app: the UI shows <b>"New sessions pending"</b> rather than "0 sessions
+/// remaining" (architecture C-04). That is a presentation rule — this field really is <c>0</c>
+/// and must stay a number, or reports and deduction would each need a special case.
+/// </para>
+/// </summary>
+public sealed record PurchasedPackageResponse(
+    Guid Id,
+    Guid AthleteProfileId,
+    Guid? PackageOptionId,
+    string Name,
+    int TotalSessions,
+    int UsedSessions,
+    int RemainingSessions,
+    long PricePaidMinor,
+    string Currency,
+    DateOnly StartDate,
+    DateOnly? EndDate,
+    PurchasedPackageStatus Status,
+    string? Notes,
+    DateTime CreatedAtUtc,
+    DateTime UpdatedAtUtc);
+
+public static class PurchasedPackageMapping
+{
+    public static PurchasedPackageResponse ToResponse(this PurchasedPackage x) => new(
+        x.Id, x.AthleteProfileId, x.PackageOptionId, x.Name, x.TotalSessions, x.UsedSessions,
+        x.RemainingSessions, x.PricePaidMinor, x.Currency, x.StartDate, x.EndDate, x.Status,
+        x.Notes, x.CreatedAtUtc, x.UpdatedAtUtc);
+}
