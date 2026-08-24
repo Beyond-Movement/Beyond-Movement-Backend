@@ -28,9 +28,12 @@ repository; the two are connected only by [`contract/openapi.yaml`](contract/ope
 | Registration and Complete Profile | ✅ |
 | Athlete list — search, filter, sort, paging, pause, reactivate | ✅ |
 | Package catalogue — options, features, archive/restore, loyalty, per-athlete prices | ✅ |
-| Scheduling, attendance, to-dos, finance, chat, notifications | Not started |
+| Scheduling — Calendly booking, availability, webhooks, reconciliation, sessions | ✅ |
+| Purchased packages — purchase at the quoted price, balance, history, close, one active each | ✅ |
+| Attendance — mark attended or no-show, exactly-once deduction, observations, session notes | ✅ |
+| To-dos, finance, chat, notifications | Not started |
 
-**180 tests** — `dotnet test` needs Docker for the integration suite.
+**223 tests** — `dotnet test` needs Docker for the integration suite.
 
 ## Working on this with someone else
 

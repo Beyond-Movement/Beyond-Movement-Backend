@@ -215,19 +215,23 @@ Transport is chosen at startup: **Postmark → SMTP → console**. The startup l
 | 8 | Finance | Not started | Payment status on a package is still unbuilt — see C-01 |
 | 9–14 | Dashboard → Release | Not started | |
 
-**A phase is not *done* until the Flutter screens are connected and tested end to end.** By that definition phases 1–4 are backend-complete and awaiting mobile integration.
+**A phase is not *done* until the Flutter screens are connected and tested end to end.** By that definition phases 1–6 are backend-complete and awaiting mobile integration.
 
 ### 8.1 The Phase 4 scope change — read this before touching packages
 
 The client **split Phase 4 in two**, and the source documents have **not** been updated. They still describe the old model.
 
-| | Built now (Phase 4) | Deferred to the purchase phase |
-|---|---|---|
-| What | A **catalogue** of reusable package options the coach sells | A **purchased package** an athlete owns |
-| Includes | Name, sessions, default price, ordered features, archive/restore, loyalty, per-athlete overrides | Purchasing, InstaPay, pending purchases, payment confirmation, activation, remaining sessions, history |
-| Invariants | Unique names, one override per athlete/option | **BR-03** one active package per athlete |
+| | Phase 4 | Built in Phase 6 | Still deferred |
+|---|---|---|---|
+| What | A **catalogue** of reusable package options the coach sells | A **purchased package** an athlete owns | The money around it |
+| Includes | Name, sessions, default price, ordered features, archive/restore, loyalty, per-athlete overrides | Purchase, price copied as paid, remaining sessions, history, close | InstaPay, pending purchases, payment confirmation, package payment status |
+| Invariants | Unique names, one override per athlete/option | **BR-03** one active package per athlete | — |
 
-So `product-specification.md` §4.5, `software-architecture.md` §14.3 and `development-roadmap.md` Phase 4 describe work that is **real but not yet built**, under a phase number that now means something else.
+**The purchase model was pulled forward into Phase 6**, because attendance has nothing to deduct
+from without it. What is still missing is only the payment half: a package carries no payment
+status, there is no endpoint to edit its price, and both wait on Phase 8 and on **C-01**.
+
+So `product-specification.md` §4.5, `software-architecture.md` §14.3 and `development-roadmap.md` Phase 4 describe work that is now **partly built** — read `contract/CHANGELOG.md` → "Phase 6" for what actually shipped.
 
 **`contract/CHANGELOG.md` is the working source of truth for API behaviour.** It is regenerated and reviewed with every change; the four source documents are not. When they disagree, the changelog is what shipped.
 
