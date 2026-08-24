@@ -65,7 +65,7 @@ public sealed class SchedulingService(
         if (prior?.SessionId is { } priorSessionId)
         {
             var priorSession = await db.Sessions.AsNoTracking().SingleOrDefaultAsync(x => x.Id == priorSessionId, ct);
-            if (priorSession is not null) return Result<SessionResponse>.Success(priorSession.ToResponse());
+            if (priorSession is not null) return Result<SessionResponse>.Success(priorSession.ToResponse(athleteName));
         }
         if (prior is not null) return Result<SessionResponse>.Failure(SchedulingErrors.BookingInProgress);
 
@@ -97,7 +97,7 @@ public sealed class SchedulingService(
             operation?.Complete(existing.Id, clock.UtcNow);
             await RecordChangeAsync(existing.Id, SchedulingChangeType.Booked, created.Uri, ct);
             await db.SaveChangesAsync(ct);
-            return Result<SessionResponse>.Success(existing.ToResponse());
+            return Result<SessionResponse>.Success(existing.ToResponse(athleteName));
         }
         catch (CalendlyApiException ex)
         {

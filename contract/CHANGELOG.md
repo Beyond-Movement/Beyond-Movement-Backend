@@ -35,6 +35,26 @@ Every failure is the same `ApiProblemDetails` in `application/problem+json` the 
 uses, and each endpoint now declares the statuses it can actually produce rather than leaving
 them to be discovered.
 
+### `SessionResponse` carries `athleteName`
+
+Added for the Admin schedule and upcoming-session cards, which need to show who a session is
+with. `athleteProfileId` alone would have meant a second request per row, or a client-side join
+against a list the schedule screen has no reason to have loaded.
+
+**Required and never null**, on every endpoint that returns a session and for both Admin and
+Athlete callers — an athlete sees their own name on their own sessions, so one model serves both.
+
+It is the athlete's `fullName`, **falling back to their email address** when that is null. A name
+is null until an athlete completes their profile, and a session can exist before that: booking
+through this API requires a name, but a booking made on Calendly's own page does not. Rather than
+publish a nullable field that is populated in almost every case — the shape most likely to reach
+production untested — the API guarantees something renderable and says here what it can be. An
+email on a schedule card is the same fallback `AthleteListItem` already leaves to the client,
+resolved server-side this time.
+
+The name is read from the account at request time, not stored on the session, so an athlete who
+corrects their name sees it corrected on sessions they booked beforehand.
+
 ### Availability is asked for a week at a time
 
 `fromUtc` and `toUtc` must be UTC, in the future, in order, and **at most 7 days apart**. Wider
@@ -53,7 +73,7 @@ can be taken between reading it and booking it.
 | `BookableSessionType` | `id`, `name`, `durationMinutes`, `deliveryType`, `locations[]` |
 | `BookableLocation` | `kind`, `location` (nullable) |
 | `AvailableSlot` | `startUtc`, `endUtc` |
-| `SessionResponse` | `id`, `athleteProfileId`, `startUtc`, `endUtc`, `durationMinutes`, `deliveryType`, `status`, `locationOrPlatform`, `meetingUrl`, `rescheduleUrl` |
+| `SessionResponse` | `id`, `athleteProfileId`, `athleteName`, `startUtc`, `endUtc`, `durationMinutes`, `deliveryType`, `status`, `locationOrPlatform`, `meetingUrl`, `rescheduleUrl` |
 | `SessionPage` | `items[]`, `nextCursor` |
 | `RescheduleUrlResponse` | `url` |
 

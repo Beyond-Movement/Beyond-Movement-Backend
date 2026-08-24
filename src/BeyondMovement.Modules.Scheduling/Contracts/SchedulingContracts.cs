@@ -13,7 +13,10 @@ public sealed record AvailableSlot(DateTime StartUtc, DateTime EndUtc);
 public sealed record BookSessionRequest(string EventTypeId, DateTime StartUtc, string TimeZone,
     string? LocationKind = null, string? Location = null);
 public sealed record CancelSessionRequest(string? Reason);
-public sealed record SessionResponse(Guid Id, Guid AthleteProfileId, DateTime StartUtc, DateTime EndUtc,
+// AthleteName is passed in rather than read from the session: the athlete's name belongs to
+// Identity, which this module cannot see, so the caller joins it. See SchedulingEndpoints.
+public sealed record SessionResponse(Guid Id, Guid AthleteProfileId, string AthleteName,
+    DateTime StartUtc, DateTime EndUtc,
     int DurationMinutes, DeliveryType DeliveryType, SessionStatus Status, string? LocationOrPlatform,
     string? MeetingUrl, string? RescheduleUrl);
 public sealed record SessionPage(IReadOnlyList<SessionResponse> Items, string? NextCursor);
@@ -26,7 +29,8 @@ public sealed record RescheduleUrlResponse(string Url);
 
 public static class SessionMapping
 {
-    public static SessionResponse ToResponse(this Session x) => new(x.Id, x.AthleteProfileId,
+    public static SessionResponse ToResponse(this Session x, string athleteName) => new(x.Id,
+        x.AthleteProfileId, athleteName,
         x.ScheduledStartUtc, x.ScheduledEndUtc, x.DurationMinutes, x.DeliveryType, x.Status,
         x.LocationOrPlatform, x.MeetingUrl, x.RescheduleUrl);
 }

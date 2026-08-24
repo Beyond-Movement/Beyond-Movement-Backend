@@ -124,7 +124,10 @@ public static class SchedulingEndpoints
                 "30. cursor carries the start time the next page resumes after - treat it as opaque " +
                 "and pass nextCursor back unchanged. A null nextCursor is the last page; a non-null " +
                 "one means at least one more session follows, so page until it is null rather than " +
-                "until a short page. An athlete with no profile gets an empty page, not an error.")
+                "until a short page. An athlete with no profile gets an empty page, not an error. " +
+                "athleteName is carried on every session so an Admin schedule can be drawn without " +
+                "a second call per row; it is the athlete's full name, or their email address if " +
+                "they have not completed their profile yet.")
             .Produces<SessionPage>()
             .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson);
 
@@ -259,9 +262,15 @@ public static class SchedulingEndpoints
         if (toUtc is not null) query = query.Where(x => x.ScheduledStartUtc < toUtc);
         if (status is not null) query = query.Where(x => x.Status == status);
         if (DateTime.TryParse(cursor, out var before)) query = query.Where(x => x.ScheduledStartUtc > before.ToUniversalTime());
-        var rows = await query.OrderBy(x => x.ScheduledStartUtc).Take(take + 1).ToListAsync(ct);
-        var next = rows.Count > take ? rows[take - 1].ScheduledStartUtc.ToString("O") : null;
-        return Results.Ok(new SessionPage(rows.Take(take).Select(x => x.ToResponse()).ToArray(), next));
+        var rows = await (from session in query.OrderBy(x => x.ScheduledStartUtc).Take(take + 1)
+                          join profile in db.AthleteProfiles on session.AthleteProfileId equals profile.Id
+                          join user in db.Users on profile.UserId equals user.Id
+                          orderby session.ScheduledStartUtc
+                          select new { Session = session, AthleteName = user.FullName ?? user.Email })
+                         .ToListAsync(ct);
+        var next = rows.Count > take ? rows[take - 1].Session.ScheduledStartUtc.ToString("O") : null;
+        return Results.Ok(new SessionPage(
+            rows.Take(take).Select(x => x.Session.ToResponse(x.AthleteName)).ToArray(), next));
     }
 
     private static Task<IResult> Upcoming(int limit, AppDbContext db, IClock clock, ClaimsPrincipal principal, CancellationToken ct) =>
@@ -270,7 +279,11 @@ public static class SchedulingEndpoints
     private static async Task<IResult> Detail(Guid id, AppDbContext db, ClaimsPrincipal principal, HttpContext http, CancellationToken ct)
     {
         var session = await OwnedSession(id, db, principal, ct);
-        return session is null ? SchedulingErrors.SessionNotFound.ToProblem(http) : Results.Ok(session.ToResponse());
+        if (session is null) return SchedulingErrors.SessionNotFound.ToProblem(http);
+        var athleteName = await AthleteName(session.AthleteProfileId, db, ct);
+        return athleteName is null
+            ? SchedulingErrors.SessionNotFound.ToProblem(http)
+            : Results.Ok(session.ToResponse(athleteName));
     }
 
     private static async Task<IResult> Cancel(Guid id, CancelSessionRequest request, SchedulingService service,
@@ -278,8 +291,14 @@ public static class SchedulingEndpoints
     {
         var session = await OwnedSession(id, db, principal, ct, tracked: true);
         if (session is null) return SchedulingErrors.SessionNotFound.ToProblem(http);
+
+        // Read the name before cancelling, so an unresolvable athlete is a 404 rather than a
+        // session cancelled in Calendly and then reported as not found.
+        var athleteName = await AthleteName(session.AthleteProfileId, db, ct);
+        if (athleteName is null) return SchedulingErrors.SessionNotFound.ToProblem(http);
+
         var result = await service.CancelAsync(session, request.Reason, ct);
-        return result.IsSuccess ? Results.Ok(session.ToResponse()) : result.Error!.ToProblem(http);
+        return result.IsSuccess ? Results.Ok(session.ToResponse(athleteName)) : result.Error!.ToProblem(http);
     }
 
     private static async Task<IResult> Reschedule(Guid id, AppDbContext db, ClaimsPrincipal principal, HttpContext http, CancellationToken ct)
@@ -307,6 +326,25 @@ public static class SchedulingEndpoints
         scheduler.EnqueueWebhook(db.Entry(db.CalendlyWebhookEvents.Local.Single(x => x.IdempotencyKey == envelope.IdempotencyKey)).Entity.Id);
         return Results.Accepted();
     }
+
+    /// <summary>
+    /// The athlete's display name for a session. Sessions are their own module and cannot see
+    /// users, so the join lives here in the composition root, the same way the catalogue reader
+    /// spans Packages and Athletes.
+    /// <para>
+    /// Falls back to the email address because <c>FullName</c> is null until an athlete completes
+    /// their profile, and a session can exist before that — booking through this API requires a
+    /// name, but a booking made on Calendly's own page does not. The contract promises a non-null
+    /// athleteName, and an email identifies the athlete on a schedule card where a blank would not.
+    /// </para>
+    /// Null means no athlete row matched at all, which no code path produces; callers treat it as
+    /// SESSION_NOT_FOUND rather than inventing a name for an orphaned session.
+    /// </summary>
+    private static Task<string?> AthleteName(Guid athleteProfileId, AppDbContext db, CancellationToken ct) =>
+        (from profile in db.AthleteProfiles
+         join user in db.Users on profile.UserId equals user.Id
+         where profile.Id == athleteProfileId
+         select user.FullName ?? user.Email).SingleOrDefaultAsync(ct);
 
     private static async Task<Session?> OwnedSession(Guid id, AppDbContext db, ClaimsPrincipal principal,
         CancellationToken ct, bool tracked = false)

@@ -1711,7 +1711,10 @@ paths:
         page resumes after - treat it as opaque and pass nextCursor back unchanged.
         A null nextCursor is the last page; a non-null one means at least one more
         session follows, so page until it is null rather than until a short page.
-        An athlete with no profile gets an empty page, not an error.
+        An athlete with no profile gets an empty page, not an error. athleteName is
+        carried on every session so an Admin schedule can be drawn without a second
+        call per row; it is the athlete's full name, or their email address if they
+        have not completed their profile yet.
       operationId: ListSessions
       parameters:
       - name: fromUtc
@@ -2668,6 +2671,7 @@ components:
       required:
       - id
       - athleteProfileId
+      - athleteName
       - startUtc
       - endUtc
       - durationMinutes
@@ -2684,6 +2688,8 @@ components:
         athleteProfileId:
           type: string
           format: uuid
+        athleteName:
+          type: string
         startUtc:
           type: string
           format: date-time
