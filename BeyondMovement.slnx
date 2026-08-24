@@ -5,6 +5,7 @@
     <Project Path="src/BeyondMovement.Modules.Athletes/BeyondMovement.Modules.Athletes.csproj" />
     <Project Path="src/BeyondMovement.Modules.Identity/BeyondMovement.Modules.Identity.csproj" />
     <Project Path="src/BeyondMovement.Modules.Packages/BeyondMovement.Modules.Packages.csproj" />
+    <Project Path="src/BeyondMovement.Modules.Scheduling/BeyondMovement.Modules.Scheduling.csproj" />
     <Project Path="src/BeyondMovement.SharedKernel/BeyondMovement.SharedKernel.csproj" />
   </Folder>
   <Folder Name="/tests/">

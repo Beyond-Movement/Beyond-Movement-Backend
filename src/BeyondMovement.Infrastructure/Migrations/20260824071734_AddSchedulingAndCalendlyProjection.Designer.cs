@@ -3,6 +3,7 @@ using System;
 using BeyondMovement.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace BeyondMovement.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260824071734_AddSchedulingAndCalendlyProjection")]
+    partial class AddSchedulingAndCalendlyProjection
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -432,129 +435,6 @@ namespace BeyondMovement.Infrastructure.Migrations
                     b.ToTable("PackageOptionFeatures", (string)null);
                 });
 
-            modelBuilder.Entity("BeyondMovement.Modules.Scheduling.Domain.BookingOperation", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("AthleteProfileId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("CompletedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("IdempotencyKey")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<Guid?>("SessionId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedAtUtc");
-
-                    b.HasIndex("SessionId");
-
-                    b.HasIndex("AthleteProfileId", "IdempotencyKey")
-                        .IsUnique();
-
-                    b.ToTable("SchedulingBookingOperations", (string)null);
-                });
-
-            modelBuilder.Entity("BeyondMovement.Modules.Scheduling.Domain.CalendlyReconciliationRun", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("CancelledCount")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("CompletedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("CreatedCount")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Error")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<int>("FlaggedCount")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("RemoteCount")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("StartedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("UpdatedCount")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("StartedAtUtc");
-
-                    b.ToTable("CalendlyReconciliationRuns", (string)null);
-                });
-
-            modelBuilder.Entity("BeyondMovement.Modules.Scheduling.Domain.CalendlyUnmatchedBooking", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("AssignedAthleteProfileId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("CalendlyEventTypeUri")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<string>("CalendlyEventUri")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<string>("CalendlyInviteeUri")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<DateTime>("DiscoveredAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("InviteeEmail")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.Property<string>("Reason")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<DateTime?>("ResolvedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CalendlyInviteeUri")
-                        .IsUnique();
-
-                    b.HasIndex("ResolvedAtUtc", "DiscoveredAtUtc");
-
-                    b.ToTable("CalendlyUnmatchedBookings", (string)null);
-                });
-
             modelBuilder.Entity("BeyondMovement.Modules.Scheduling.Domain.CalendlyWebhookEvent", b =>
                 {
                     b.Property<Guid>("Id")
@@ -601,43 +481,6 @@ namespace BeyondMovement.Infrastructure.Migrations
                     b.HasIndex("Status", "ReceivedAtUtc");
 
                     b.ToTable("CalendlyWebhookEvents", (string)null);
-                });
-
-            modelBuilder.Entity("BeyondMovement.Modules.Scheduling.Domain.SchedulingChange", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("DedupKey")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<DateTime>("OccurredAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("PublishedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("SessionId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DedupKey")
-                        .IsUnique();
-
-                    b.HasIndex("SessionId");
-
-                    b.HasIndex("PublishedAtUtc", "OccurredAtUtc");
-
-                    b.ToTable("SchedulingChanges", (string)null);
                 });
 
             modelBuilder.Entity("BeyondMovement.Modules.Scheduling.Domain.Session", b =>
@@ -777,38 +620,6 @@ namespace BeyondMovement.Infrastructure.Migrations
                         .WithMany("_features")
                         .HasForeignKey("PackageOptionId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("BeyondMovement.Modules.Scheduling.Domain.BookingOperation", b =>
-                {
-                    b.HasOne("BeyondMovement.Modules.Athletes.Domain.AthleteProfile", null)
-                        .WithMany()
-                        .HasForeignKey("AthleteProfileId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("BeyondMovement.Modules.Scheduling.Domain.Session", null)
-                        .WithMany()
-                        .HasForeignKey("SessionId")
-                        .OnDelete(DeleteBehavior.SetNull);
-                });
-
-            modelBuilder.Entity("BeyondMovement.Modules.Scheduling.Domain.SchedulingChange", b =>
-                {
-                    b.HasOne("BeyondMovement.Modules.Scheduling.Domain.Session", null)
-                        .WithMany()
-                        .HasForeignKey("SessionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("BeyondMovement.Modules.Scheduling.Domain.Session", b =>
-                {
-                    b.HasOne("BeyondMovement.Modules.Athletes.Domain.AthleteProfile", null)
-                        .WithMany()
-                        .HasForeignKey("AthleteProfileId")
-                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

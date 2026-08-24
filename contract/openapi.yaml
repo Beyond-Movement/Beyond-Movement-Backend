@@ -9,31 +9,33 @@ info:
 servers:
 - url: http://localhost:5229/
 paths:
-  /api/v1/ping:
+  "/api/v1/ping":
     get:
       tags:
       - BeyondMovement.Api
       responses:
         '200':
           description: OK
-  /api/v1/auth/register:
+  "/api/v1/auth/register":
     post:
       tags:
       - Authentication
       summary: Create an account from a validated invitation, and redeem it.
-      description: 'Establishes authentication and nothing else — it does not collect a name. Post the
-        registrationToken from /invitations/validate together with EITHER a password OR a googleIdToken
-        — exactly one, never both. With Google, the account''s verified email must match the invited address
-        or the request is refused with GOOGLE_EMAIL_MISMATCH. Returns the same token pair as login, so
-        the app is signed in immediately, but user.profileCompleted is false and user.fullName is null
-        (or Google''s display name, as a prefill): route to Complete Profile, not Home. The invitation
-        is redeemed only on success, and re-posting the same token afterwards returns INVITATION_USED.'
+      description: 'Establishes authentication and nothing else — it does not collect
+        a name. Post the registrationToken from /invitations/validate together with
+        EITHER a password OR a googleIdToken — exactly one, never both. With Google,
+        the account''s verified email must match the invited address or the request
+        is refused with GOOGLE_EMAIL_MISMATCH. Returns the same token pair as login,
+        so the app is signed in immediately, but user.profileCompleted is false and
+        user.fullName is null (or Google''s display name, as a prefill): route to
+        Complete Profile, not Home. The invitation is redeemed only on success, and
+        re-posting the same token afterwards returns INVITATION_USED.'
       operationId: Register
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RegisterRequest'
+              "$ref": "#/components/schemas/RegisterRequest"
         required: true
       responses:
         '200':
@@ -41,37 +43,38 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthResponse'
+                "$ref": "#/components/schemas/AuthResponse"
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '409':
           description: Conflict
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
-  /api/v1/athletes/me/profile:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+  "/api/v1/athletes/me/profile":
     post:
       tags:
       - Athletes
       summary: Fill in the athlete's own profile after registration.
-      description: Athlete-only, and always scoped to the caller's own profile — the user id comes from
-        the token, never the body. fullName, dateOfBirth, gender and sport are all required and enforced
-        here, not only in the app. Sets profileCompleted to true, after which both /auth/me and every
-        later authentication response report it as true and guarantee a non-null fullName, so the app
-        routes to Home instead of Complete Profile. Safe to call again to edit the details. Profile photo
-        is not accepted yet; it needs file storage, which arrives in phase 13, and the app shows initials
-        until then.
+      description: Athlete-only, and always scoped to the caller's own profile — the
+        user id comes from the token, never the body. fullName, dateOfBirth, gender
+        and sport are all required and enforced here, not only in the app. Sets profileCompleted
+        to true, after which both /auth/me and every later authentication response
+        report it as true and guarantee a non-null fullName, so the app routes to
+        Home instead of Complete Profile. Safe to call again to edit the details.
+        Profile photo is not accepted yet; it needs file storage, which arrives in
+        phase 13, and the app shows initials until then.
       operationId: CompleteAthleteProfile
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CompleteProfileRequest'
+              "$ref": "#/components/schemas/CompleteProfileRequest"
         required: true
       responses:
         '200':
@@ -79,38 +82,40 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AthleteProfileResponse'
+                "$ref": "#/components/schemas/AthleteProfileResponse"
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
-  /api/v1/catalogue:
+  "/api/v1/catalogue":
     get:
       tags:
       - Pricing
       summary: The packages this athlete can buy, at their price.
-      description: Athlete-only, and always the caller's own catalogue - the athlete id comes from the
-        token, never a parameter. Archived options are excluded. priceMinor is the FINAL price for this
-        athlete in piastres, already accounting for a custom price or loyalty; there is deliberately no
-        field saying which applied and no default price to compare against, because the athlete is shown
-        a price rather than the coach's pricing policy. Ordered cheapest first. Do not reproduce the pricing
-        rule on the client - if this number is wrong, it is a backend bug.
+      description: Athlete-only, and always the caller's own catalogue - the athlete
+        id comes from the token, never a parameter. Archived options are excluded.
+        priceMinor is the FINAL price for this athlete in piastres, already accounting
+        for a custom price or loyalty; there is deliberately no field saying which
+        applied and no default price to compare against, because the athlete is shown
+        a price rather than the coach's pricing policy. Ordered cheapest first. Do
+        not reproduce the pricing rule on the client - if this number is wrong, it
+        is a backend bug.
       operationId: AthleteCatalogue
       responses:
         '200':
@@ -120,35 +125,36 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/CatalogueItemResponse'
+                  "$ref": "#/components/schemas/CatalogueItemResponse"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
-  /api/v1/auth/me/preferences:
+  "/api/v1/auth/me/preferences":
     put:
       tags:
       - Authentication
       summary: Save the signed-in user's UI preferences.
-      description: Stored server-side rather than on the device, so the chosen athlete-list sort survives
-        a restart and follows the coach to another device. The saved value also comes back on every authentication
-        response and from /auth/me, so the app can apply it at startup without an extra call.
+      description: Stored server-side rather than on the device, so the chosen athlete-list
+        sort survives a restart and follows the coach to another device. The saved
+        value also comes back on every authentication response and from /auth/me,
+        so the app can apply it at startup without an extra call.
       operationId: UpdatePreferences
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdatePreferencesRequest'
+              "$ref": "#/components/schemas/UpdatePreferencesRequest"
         required: true
       responses:
         '200':
@@ -156,37 +162,45 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PreferencesResponse'
+                "$ref": "#/components/schemas/PreferencesResponse"
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
-  /api/v1/auth/login:
+  "/api/v1/webhooks/calendly":
+    post:
+      tags:
+      - Calendly webhooks
+      responses:
+        '200':
+          description: OK
+  "/api/v1/auth/login":
     post:
       tags:
       - Authentication
       summary: Exchange email and password for an access token and a refresh token.
-      description: 'Returns 401 INVALID_CREDENTIALS for both a wrong password and an unknown address —
-        the two are deliberately indistinguishable. Returns 423 ACCOUNT_LOCKED after five failed attempts,
-        with retryAfterSeconds and a Retry-After header. Returns 403 ACCOUNT_PAUSED when the credentials
-        are correct but the account is paused. user.profileCompleted tells the app where to go next without
+      description: 'Returns 401 INVALID_CREDENTIALS for both a wrong password and
+        an unknown address — the two are deliberately indistinguishable. Returns 423
+        ACCOUNT_LOCKED after five failed attempts, with retryAfterSeconds and a Retry-After
+        header. Returns 403 ACCOUNT_PAUSED when the credentials are correct but the
+        account is paused. user.profileCompleted tells the app where to go next without
         a further call: false means route to Complete Profile rather than Home.'
       operationId: Login
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/LoginRequest'
+              "$ref": "#/components/schemas/LoginRequest"
         required: true
       responses:
         '200':
@@ -194,47 +208,49 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthResponse'
+                "$ref": "#/components/schemas/AuthResponse"
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '423':
           description: Locked
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
-  /api/v1/auth/google:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+  "/api/v1/auth/google":
     post:
       tags:
       - Authentication
-      summary: Sign in with a Google ID token obtained by the native sign-in on the device.
-      description: Authentication only — it never creates an account (BR-01). If the Google account is
-        unknown and no user exists with the same verified email, returns 403 INVITATION_REQUIRED. If a
-        password account already exists for that verified email, the Google identity is linked to it and
-        tokens are returned. Returns 401 INVALID_GOOGLE_TOKEN when the token fails verification or the
+      summary: Sign in with a Google ID token obtained by the native sign-in on the
+        device.
+      description: Authentication only — it never creates an account (BR-01). If the
+        Google account is unknown and no user exists with the same verified email,
+        returns 403 INVITATION_REQUIRED. If a password account already exists for
+        that verified email, the Google identity is linked to it and tokens are returned.
+        Returns 401 INVALID_GOOGLE_TOKEN when the token fails verification or the
         Google email is unverified.
       operationId: GoogleSignIn
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GoogleSignInRequest'
+              "$ref": "#/components/schemas/GoogleSignInRequest"
         required: true
       responses:
         '200':
@@ -242,41 +258,42 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthResponse'
+                "$ref": "#/components/schemas/AuthResponse"
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
-  /api/v1/auth/refresh:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+  "/api/v1/auth/refresh":
     post:
       tags:
       - Authentication
       summary: Rotate a refresh token for a new token pair.
-      description: 'Refresh tokens are single-use. Each call returns a NEW refresh token; store it and
-        discard the old one. Replaying a token that was already spent is treated as theft: every token
-        in that family is revoked and 401 INVALID_REFRESH_TOKEN is returned, so the user must sign in
-        again. An expired or revoked token returns the same 401. Returns 403 ACCOUNT_PAUSED if the account
-        was paused since the token was issued.'
+      description: 'Refresh tokens are single-use. Each call returns a NEW refresh
+        token; store it and discard the old one. Replaying a token that was already
+        spent is treated as theft: every token in that family is revoked and 401 INVALID_REFRESH_TOKEN
+        is returned, so the user must sign in again. An expired or revoked token returns
+        the same 401. Returns 403 ACCOUNT_PAUSED if the account was paused since the
+        token was issued.'
       operationId: Refresh
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RefreshRequest'
+              "$ref": "#/components/schemas/RefreshRequest"
         required: true
       responses:
         '200':
@@ -284,33 +301,33 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthResponse'
+                "$ref": "#/components/schemas/AuthResponse"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
-  /api/v1/auth/logout:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+  "/api/v1/auth/logout":
     post:
       tags:
       - Authentication
       summary: Revoke the presented refresh token.
-      description: Requires a valid access token as well as the refresh token in the body (architecture
-        section 14.1 marks logout as authenticated). Succeeds even if the refresh token is already unknown
-        or revoked, so a retry is safe.
+      description: Requires a valid access token as well as the refresh token in the
+        body (architecture section 14.1 marks logout as authenticated). Succeeds even
+        if the refresh token is already unknown or revoked, so a retry is safe.
       operationId: Logout
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/LogoutRequest'
+              "$ref": "#/components/schemas/LogoutRequest"
         required: true
       responses:
         '204':
@@ -320,36 +337,38 @@ paths:
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
-  /api/v1/auth/forgot-password:
+  "/api/v1/auth/forgot-password":
     post:
       tags:
       - Authentication
       summary: Send a password reset link to the address, if an account exists.
-      description: 'Always returns 200, whether or not the address exists — it cannot be used to discover
-        accounts, so never show a ''no account found'' message. When an account does exist, an email is
-        sent containing a deep link of the form beyondmovement://reset-password?token=<token>. The token
-        is single-use, expires after one hour, and is URL-encoded in the link, so decode it before sending
-        it to /auth/reset-password. Rate-limited on two axes: 3 requests per hour per email address, and
-        10 per hour per IP. Either limit returns 429 TOO_MANY_REQUESTS with retryAfterSeconds in the body
-        and a Retry-After header, both in seconds and both up to 3600 - show minutes, not seconds. The
-        per-email limit counts the address that was submitted, whether or not an account exists, so a
-        429 still reveals nothing about who is registered: treat it exactly like the 200, as ''we have
-        sent a link if that address is known''.'
+      description: 'Always returns 200, whether or not the address exists — it cannot
+        be used to discover accounts, so never show a ''no account found'' message.
+        When an account does exist, an email is sent containing a deep link of the
+        form beyondmovement://reset-password?token=<token>. The token is single-use,
+        expires after one hour, and is URL-encoded in the link, so decode it before
+        sending it to /auth/reset-password. Rate-limited on two axes: 3 requests per
+        hour per email address, and 10 per hour per IP. Either limit returns 429 TOO_MANY_REQUESTS
+        with retryAfterSeconds in the body and a Retry-After header, both in seconds
+        and both up to 3600 - show minutes, not seconds. The per-email limit counts
+        the address that was submitted, whether or not an account exists, so a 429
+        still reveals nothing about who is registered: treat it exactly like the 200,
+        as ''we have sent a link if that address is known''.'
       operationId: ForgotPassword
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ForgotPasswordRequest'
+              "$ref": "#/components/schemas/ForgotPasswordRequest"
         required: true
       responses:
         '200':
@@ -359,29 +378,30 @@ paths:
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '429':
           description: Too Many Requests
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
-  /api/v1/auth/reset-password:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+  "/api/v1/auth/reset-password":
     post:
       tags:
       - Authentication
       summary: Set a new password using the token from the reset email.
-      description: The token is single-use and valid for one hour; a used, unknown or expired token returns
-        400 INVALID_RESET_TOKEN. On success every refresh token for that user is revoked, so any other
-        signed-in device is signed out. Passwords must be at least 8 characters and are rejected if they
-        appear on a common-password list; both arrive as 400 VALIDATION_FAILED with per-field messages
-        in 'errors'.
+      description: The token is single-use and valid for one hour; a used, unknown
+        or expired token returns 400 INVALID_RESET_TOKEN. On success every refresh
+        token for that user is revoked, so any other signed-in device is signed out.
+        Passwords must be at least 8 characters and are rejected if they appear on
+        a common-password list; both arrive as 400 VALIDATION_FAILED with per-field
+        messages in 'errors'.
       operationId: ResetPassword
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ResetPasswordRequest'
+              "$ref": "#/components/schemas/ResetPasswordRequest"
         required: true
       responses:
         '200':
@@ -391,22 +411,23 @@ paths:
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
-  /api/v1/auth/change-password:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+  "/api/v1/auth/change-password":
     post:
       tags:
       - Authentication
       summary: Change the password while signed in.
-      description: Requires the current password. Returns 401 INVALID_CREDENTIALS if it is wrong, and
-        400 PASSWORD_NOT_SET for a Google-only account that has no password yet — those accounts set a
-        first password through Forgot Password. On success every refresh token for the user is revoked,
-        including this device's, so the app must sign in again.
+      description: Requires the current password. Returns 401 INVALID_CREDENTIALS
+        if it is wrong, and 400 PASSWORD_NOT_SET for a Google-only account that has
+        no password yet — those accounts set a first password through Forgot Password.
+        On success every refresh token for the user is revoked, including this device's,
+        so the app must sign in again.
       operationId: ChangePassword
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ChangePasswordRequest'
+              "$ref": "#/components/schemas/ChangePasswordRequest"
         required: true
       responses:
         '200':
@@ -416,31 +437,32 @@ paths:
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
-  /api/v1/auth/me:
+  "/api/v1/auth/me":
     get:
       tags:
       - Authentication
       summary: The signed-in user, for restoring a session on app start.
-      description: Read live from the database, not from the token, so a role or status changed since
-        the token was issued is reflected immediately. Returns 403 ACCOUNT_PAUSED if the account was paused
-        after this access token was issued — treat that as an immediate sign-out. When profileCompleted
-        is false, route the user to Complete Profile rather than Home. minimumSupportedAppVersion drives
-        the forced-upgrade prompt.
+      description: Read live from the database, not from the token, so a role or status
+        changed since the token was issued is reflected immediately. Returns 403 ACCOUNT_PAUSED
+        if the account was paused after this access token was issued — treat that
+        as an immediate sign-out. When profileCompleted is false, route the user to
+        Complete Profile rather than Home. minimumSupportedAppVersion drives the forced-upgrade
+        prompt.
       operationId: CurrentUser
       responses:
         '200':
@@ -448,39 +470,41 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CurrentUserResponse'
+                "$ref": "#/components/schemas/CurrentUserResponse"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
-  /api/v1/invitations/validate:
+  "/api/v1/invitations/validate":
     get:
       tags:
       - Invitations
       summary: Check an emailed invitation code and start account creation.
-      description: 'The code is TEN characters from the alphabet ABCDEFGHJKMNPQRSTWXYZ23456789, emailed
-        formatted as five-dash-five, for example MRPZB-AXZYY. It is normalised before lookup: every non-alphanumeric
-        character is stripped and the rest upper-cased, so the dash is optional, spaces are ignored and
-        case does not matter. mrpzb-axzyy, MRPZBAXZYY and ''mrpzb axzyy'' all resolve to the same invitation.
-        O, I, L, U and V are absent from the alphabet on purpose, because they are misread as 0, 1 and
-        each other when retyped from an email. Does NOT consume the invitation — it is redeemed only when
-        the account is created, so a user may validate, abandon Create Account, and come back. Returns
-        the invited email (show it read-only on Create Account; it is already verified, because only that
-        inbox received the code) and a short-lived registrationToken to post to /auth/register. Failures
-        distinguish INVITATION_INVALID, INVITATION_EXPIRED, INVITATION_USED and INVITATION_REVOKED so
-        the error screen can say something useful. Rate-limited to 10 attempts per hour per IP; exceeding
-        it returns 429 TOO_MANY_REQUESTS with retryAfterSeconds in the body and a Retry-After header,
-        both in seconds.'
+      description: 'The code is TEN characters from the alphabet ABCDEFGHJKMNPQRSTWXYZ23456789,
+        emailed formatted as five-dash-five, for example MRPZB-AXZYY. It is normalised
+        before lookup: every non-alphanumeric character is stripped and the rest upper-cased,
+        so the dash is optional, spaces are ignored and case does not matter. mrpzb-axzyy,
+        MRPZBAXZYY and ''mrpzb axzyy'' all resolve to the same invitation. O, I, L,
+        U and V are absent from the alphabet on purpose, because they are misread
+        as 0, 1 and each other when retyped from an email. Does NOT consume the invitation
+        — it is redeemed only when the account is created, so a user may validate,
+        abandon Create Account, and come back. Returns the invited email (show it
+        read-only on Create Account; it is already verified, because only that inbox
+        received the code) and a short-lived registrationToken to post to /auth/register.
+        Failures distinguish INVITATION_INVALID, INVITATION_EXPIRED, INVITATION_USED
+        and INVITATION_REVOKED so the error screen can say something useful. Rate-limited
+        to 10 attempts per hour per IP; exceeding it returns 429 TOO_MANY_REQUESTS
+        with retryAfterSeconds in the body and a Retry-After header, both in seconds.'
       operationId: ValidateInvitation
       parameters:
       - name: code
@@ -494,34 +518,35 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ValidateInvitationResponse'
+                "$ref": "#/components/schemas/ValidateInvitationResponse"
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '429':
           description: Too Many Requests
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
-  /api/v1/invitations:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+  "/api/v1/invitations":
     post:
       tags:
       - Invitations
       summary: Invite an athlete by email address.
-      description: The backend generates the code and emails it directly to the address — the response
-        never contains it, so the Admin cannot pass it on by another route. Re-inviting an address that
-        already has a pending invitation replaces the old code rather than creating a second one. Returns
-        409 EMAIL_ALREADY_REGISTERED if an account exists.
+      description: The backend generates the code and emails it directly to the address
+        — the response never contains it, so the Admin cannot pass it on by another
+        route. Re-inviting an address that already has a pending invitation replaces
+        the old code rather than creating a second one. Returns 409 EMAIL_ALREADY_REGISTERED
+        if an account exists.
       operationId: CreateInvitation
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateInvitationRequest'
+              "$ref": "#/components/schemas/CreateInvitationRequest"
         required: true
       responses:
         '201':
@@ -529,31 +554,31 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/InvitationResponse'
+                "$ref": "#/components/schemas/InvitationResponse"
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '409':
           description: Conflict
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
     get:
@@ -565,7 +590,7 @@ paths:
       - name: status
         in: query
         schema:
-          $ref: '#/components/schemas/InvitationStatus'
+          "$ref": "#/components/schemas/InvitationStatus"
       responses:
         '200':
           description: OK
@@ -574,27 +599,28 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/InvitationResponse'
+                  "$ref": "#/components/schemas/InvitationResponse"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
-  /api/v1/invitations/{id}/resend:
+  "/api/v1/invitations/{id}/resend":
     post:
       tags:
       - Invitations
       summary: Issue a fresh code and email it again.
-      description: The previous code stops working immediately, so only one code is ever live.
+      description: The previous code stops working immediately, so only one code is
+        ever live.
       operationId: ResendInvitation
       parameters:
       - name: id
@@ -609,34 +635,34 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/InvitationResponse'
+                "$ref": "#/components/schemas/InvitationResponse"
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
-  /api/v1/invitations/{id}:
+  "/api/v1/invitations/{id}":
     delete:
       tags:
       - Invitations
       summary: Cancel a pending invitation.
-      description: An already-redeemed invitation cannot be revoked — deleting the account is a separate
-        action.
+      description: An already-redeemed invitation cannot be revoked — deleting the
+        account is a separate action.
       operationId: RevokeInvitation
       parameters:
       - name: id
@@ -653,36 +679,38 @@ paths:
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
-  /api/v1/athletes:
+  "/api/v1/athletes":
     get:
       tags:
       - Athletes
       summary: The coach's athletes, searchable, filterable and sorted.
-      description: 'search matches full name, email or sport, case-insensitively, on any part of the value,
-        and is trimmed before use. Email is included so an athlete who has not yet completed their profile,
-        and so has no name, is still findable. status filters by ACCOUNT status - whether the athlete
-        can sign in - and is not the same as having an active package, which arrives in phase 4 as a separate
-        parameter. sort accepts NameAsc, NameDesc, Sport, NewestFirst and OldestFirst; Sport places athletes
-        with no sport last, and both name orders place athletes with no name last. page starts at 1 and
-        pageSize is capped at 100 - values outside the range are clamped rather than rejected. Paused
-        athletes are always included: pausing hides an athlete from themselves, never from their coach.
-        Athletes who have registered but not completed their profile are also always included, with fullName
-        null.'
+      description: 'search matches full name, email or sport, case-insensitively,
+        on any part of the value, and is trimmed before use. Email is included so
+        an athlete who has not yet completed their profile, and so has no name, is
+        still findable. status filters by ACCOUNT status - whether the athlete can
+        sign in - and is not the same as having an active package, which arrives in
+        phase 4 as a separate parameter. sort accepts NameAsc, NameDesc, Sport, NewestFirst
+        and OldestFirst; Sport places athletes with no sport last, and both name orders
+        place athletes with no name last. page starts at 1 and pageSize is capped
+        at 100 - values outside the range are clamped rather than rejected. Paused
+        athletes are always included: pausing hides an athlete from themselves, never
+        from their coach. Athletes who have registered but not completed their profile
+        are also always included, with fullName null.'
       operationId: ListAthletes
       parameters:
       - name: search
@@ -693,12 +721,12 @@ paths:
         in: query
         schema:
           default: All
-          $ref: '#/components/schemas/AthleteStatusFilter'
+          "$ref": "#/components/schemas/AthleteStatusFilter"
       - name: sort
         in: query
         schema:
           default: NameAsc
-          $ref: '#/components/schemas/AthleteListSort'
+          "$ref": "#/components/schemas/AthleteListSort"
       - name: page
         in: query
         schema:
@@ -717,30 +745,30 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PagedResultOfAthleteListItem'
+                "$ref": "#/components/schemas/PagedResultOfAthleteListItem"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
-  /api/v1/athletes/{id}:
+  "/api/v1/athletes/{id}":
     get:
       tags:
       - Athletes
       summary: One athlete, read-only.
-      description: Read-only in phase 2 - there is no endpoint to change an athlete's personal details.
-        phone is always null for now, because no screen collects one yet. Profile photo is deferred until
-        file storage exists. An unknown id, another coach's athlete and a deleted athlete all return 404
-        ATHLETE_NOT_FOUND.
+      description: Read-only in phase 2 - there is no endpoint to change an athlete's
+        personal details. phone is always null for now, because no screen collects
+        one yet. Profile photo is deferred until file storage exists. An unknown id,
+        another coach's athlete and a deleted athlete all return 404 ATHLETE_NOT_FOUND.
       operationId: GetAthlete
       parameters:
       - name: id
@@ -755,38 +783,39 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AthleteDetail'
+                "$ref": "#/components/schemas/AthleteDetail"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
-  /api/v1/athletes/{id}/pause:
+  "/api/v1/athletes/{id}/pause":
     post:
       tags:
       - Athletes
       summary: Suspend an athlete's access.
-      description: Sets account status to Paused and revokes every refresh token the athlete holds, so
-        the session cannot be renewed. Their current access token stays valid for its remaining minutes,
-        but each request re-checks status, so the next call returns 403 ACCOUNT_PAUSED - login does the
-        same. The athlete stays visible to the coach and their data is untouched. Pausing an already-paused
-        athlete succeeds and changes nothing, so a retry is safe. Push device tokens are NOT yet revoked;
-        that table arrives with notifications in phase 10.
+      description: Sets account status to Paused and revokes every refresh token the
+        athlete holds, so the session cannot be renewed. Their current access token
+        stays valid for its remaining minutes, but each request re-checks status,
+        so the next call returns 403 ACCOUNT_PAUSED - login does the same. The athlete
+        stays visible to the coach and their data is untouched. Pausing an already-paused
+        athlete succeeds and changes nothing, so a retry is safe. Push device tokens
+        are NOT yet revoked; that table arrives with notifications in phase 10.
       operationId: PauseAthlete
       parameters:
       - name: id
@@ -801,35 +830,35 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AthleteStatusResponse'
+                "$ref": "#/components/schemas/AthleteStatusResponse"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
-  /api/v1/athletes/{id}/reactivate:
+  "/api/v1/athletes/{id}/reactivate":
     post:
       tags:
       - Athletes
       summary: Restore a paused athlete's access.
-      description: Sets account status back to Active. Issues no tokens - the athlete signs in again themselves,
-        since the tokens revoked at pause are gone for good. Reactivating an already-active athlete succeeds
-        and changes nothing.
+      description: Sets account status back to Active. Issues no tokens - the athlete
+        signs in again themselves, since the tokens revoked at pause are gone for
+        good. Reactivating an already-active athlete succeeds and changes nothing.
       operationId: ReactivateAthlete
       parameters:
       - name: id
@@ -844,36 +873,36 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AthleteStatusResponse'
+                "$ref": "#/components/schemas/AthleteStatusResponse"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
-  /api/v1/package-options:
+  "/api/v1/package-options":
     get:
       tags:
       - Package options
       summary: The coach's package options, active by default.
-      description: Pass archived=true for the archive instead. The two lists are separate requests rather
-        than one list the client filters, because the Admin screens show them separately and an athlete
-        must never receive an archived option at all. Ordered by name. Prices are integer piastres - see
-        defaultPriceMinor.
+      description: Pass archived=true for the archive instead. The two lists are separate
+        requests rather than one list the client filters, because the Admin screens
+        show them separately and an athlete must never receive an archived option
+        at all. Ordered by name. Prices are integer piastres - see defaultPriceMinor.
       operationId: ListPackageOptions
       parameters:
       - name: archived
@@ -889,37 +918,39 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/PackageOptionResponse'
+                  "$ref": "#/components/schemas/PackageOptionResponse"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
     post:
       tags:
       - Package options
       summary: Add a package option to the catalogue.
-      description: name is trimmed and must be unique across the WHOLE catalogue, case-insensitively -
-        archived options included, so archiving does not free a name for reuse. sessions is 1-1000. defaultPriceMinor
-        is a non-negative integer number of piastres, 100 to the EGP, never a decimal. features is 1-10
-        non-blank strings of at most 100 characters each, and the order sent is the order stored and returned.
-        A duplicate name returns 409 PACKAGE_NAME_CONFLICT; anything else invalid returns 400 VALIDATION_FAILED
-        with per-field detail in errors.
+      description: name is trimmed and must be unique across the WHOLE catalogue,
+        case-insensitively - archived options included, so archiving does not free
+        a name for reuse. sessions is 1-1000. defaultPriceMinor is a non-negative
+        integer number of piastres, 100 to the EGP, never a decimal. features is 1-10
+        non-blank strings of at most 100 characters each, and the order sent is the
+        order stored and returned. A duplicate name returns 409 PACKAGE_NAME_CONFLICT;
+        anything else invalid returns 400 VALIDATION_FAILED with per-field detail
+        in errors.
       operationId: CreatePackageOption
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SavePackageOptionRequest'
+              "$ref": "#/components/schemas/SavePackageOptionRequest"
         required: true
       responses:
         '201':
@@ -927,41 +958,41 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PackageOptionResponse'
+                "$ref": "#/components/schemas/PackageOptionResponse"
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '409':
           description: Conflict
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
-  /api/v1/package-options/{id}:
+  "/api/v1/package-options/{id}":
     get:
       tags:
       - Package options
       summary: One package option, archived or not.
-      description: An id belonging to another coach returns 404 PACKAGE_OPTION_NOT_FOUND rather than 403,
-        so the API never confirms that an id it will not serve exists. Use the returned version when editing,
-        archiving or restoring.
+      description: An id belonging to another coach returns 404 PACKAGE_OPTION_NOT_FOUND
+        rather than 403, so the API never confirms that an id it will not serve exists.
+        Use the returned version when editing, archiving or restoring.
       operationId: GetPackageOption
       parameters:
       - name: id
@@ -976,37 +1007,38 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PackageOptionResponse'
+                "$ref": "#/components/schemas/PackageOptionResponse"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
     put:
       tags:
       - Package options
       summary: Replace a package option's details.
-      description: 'Every field is replaced, including the whole feature list in the order sent. There
-        is no partial update: a package option is read as one card, and editing it field by field could
-        leave it half-changed. Send the version you last read - a stale version returns 409 CONCURRENCY_CONFLICT
-        rather than overwriting another device''s change, and the version increases on every successful
-        change. An archived option cannot be edited and returns 409 PACKAGE_OPTION_ARCHIVED; restore it
-        first.'
+      description: 'Every field is replaced, including the whole feature list in the
+        order sent. There is no partial update: a package option is read as one card,
+        and editing it field by field could leave it half-changed. Send the version
+        you last read - a stale version returns 409 CONCURRENCY_CONFLICT rather than
+        overwriting another device''s change, and the version increases on every successful
+        change. An archived option cannot be edited and returns 409 PACKAGE_OPTION_ARCHIVED;
+        restore it first.'
       operationId: EditPackageOption
       parameters:
       - name: id
@@ -1019,7 +1051,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EditPackageOptionRequest'
+              "$ref": "#/components/schemas/EditPackageOptionRequest"
         required: true
       responses:
         '200':
@@ -1027,48 +1059,49 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PackageOptionResponse'
+                "$ref": "#/components/schemas/PackageOptionResponse"
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '409':
           description: Conflict
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
-  /api/v1/package-options/{id}/archive:
+  "/api/v1/package-options/{id}/archive":
     post:
       tags:
       - Package options
       summary: Withdraw a package option from the athlete catalogue.
-      description: Package options are never deleted. Archiving hides the option from athletes, leaves
-        it visible to the Admin under archived=true, and does not touch anything an athlete has already
-        bought - a price withdrawn today is still the price somebody paid last week. Archiving an already-archived
-        option returns 409 PACKAGE_OPTION_ARCHIVED.
+      description: Package options are never deleted. Archiving hides the option from
+        athletes, leaves it visible to the Admin under archived=true, and does not
+        touch anything an athlete has already bought - a price withdrawn today is
+        still the price somebody paid last week. Archiving an already-archived option
+        returns 409 PACKAGE_OPTION_ARCHIVED.
       operationId: ArchivePackageOption
       parameters:
       - name: id
@@ -1081,7 +1114,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PackageOptionVersionRequest'
+              "$ref": "#/components/schemas/PackageOptionVersionRequest"
         required: true
       responses:
         '200':
@@ -1089,47 +1122,48 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PackageOptionResponse'
+                "$ref": "#/components/schemas/PackageOptionResponse"
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '409':
           description: Conflict
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
-  /api/v1/package-options/{id}/restore:
+  "/api/v1/package-options/{id}/restore":
     post:
       tags:
       - Package options
       summary: Return an archived package option to the athlete catalogue.
       description: 'Restoring an option that is not archived returns 409 PACKAGE_OPTION_NOT_ARCHIVED.
-        Restore cannot fail on a name collision: names are unique across archived options too, so no other
-        option can have taken this one''s name while it was away.'
+        Restore cannot fail on a name collision: names are unique across archived
+        options too, so no other option can have taken this one''s name while it was
+        away.'
       operationId: RestorePackageOption
       parameters:
       - name: id
@@ -1142,7 +1176,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PackageOptionVersionRequest'
+              "$ref": "#/components/schemas/PackageOptionVersionRequest"
         required: true
       responses:
         '200':
@@ -1150,48 +1184,49 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PackageOptionResponse'
+                "$ref": "#/components/schemas/PackageOptionResponse"
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '409':
           description: Conflict
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
-  /api/v1/athletes/{athleteId}/loyalty:
+  "/api/v1/athletes/{athleteId}/loyalty":
     put:
       tags:
       - Pricing
       summary: Mark an athlete as loyal, or remove it.
-      description: 'Loyalty is athlete-level, not per package: a loyal athlete gets 15% off every package''s
-        default price. It is idempotent - marking an already-loyal athlete loyal changes nothing and does
-        not reset how long they have been loyal. isLoyal also appears on the athlete list and the athlete
-        detail. An athlete belonging to another coach returns 404 ATHLETE_NOT_FOUND rather than 403.'
+      description: 'Loyalty is athlete-level, not per package: a loyal athlete gets
+        15% off every package''s default price. It is idempotent - marking an already-loyal
+        athlete loyal changes nothing and does not reset how long they have been loyal.
+        isLoyal also appears on the athlete list and the athlete detail. An athlete
+        belonging to another coach returns 404 ATHLETE_NOT_FOUND rather than 403.'
       operationId: SetAthleteLoyalty
       parameters:
       - name: athleteId
@@ -1204,7 +1239,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SetLoyaltyRequest'
+              "$ref": "#/components/schemas/SetLoyaltyRequest"
         required: true
       responses:
         '200':
@@ -1212,37 +1247,38 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LoyaltyResponse'
+                "$ref": "#/components/schemas/LoyaltyResponse"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
-  /api/v1/athletes/{athleteId}/custom-prices:
+  "/api/v1/athletes/{athleteId}/custom-prices":
     get:
       tags:
       - Pricing
       summary: Every price override this athlete has.
-      description: Only the overrides, and an empty list is normal - most athletes have none. A package
-        option missing from this list is priced by loyalty or by its default; use the catalogue preview
-        to see what the athlete will actually pay. An unknown athlete, or one belonging to another coach,
-        returns 404 ATHLETE_NOT_FOUND rather than an empty list, so a bad id cannot be mistaken for an
-        athlete who simply has no overrides.
+      description: Only the overrides, and an empty list is normal - most athletes
+        have none. A package option missing from this list is priced by loyalty or
+        by its default; use the catalogue preview to see what the athlete will actually
+        pay. An unknown athlete, or one belonging to another coach, returns 404 ATHLETE_NOT_FOUND
+        rather than an empty list, so a bad id cannot be mistaken for an athlete who
+        simply has no overrides.
       operationId: ListAthleteCustomPrices
       parameters:
       - name: athleteId
@@ -1259,37 +1295,37 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/CustomPriceResponse'
+                  "$ref": "#/components/schemas/CustomPriceResponse"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
-  /api/v1/athletes/{athleteId}/custom-prices/{packageOptionId}:
+  "/api/v1/athletes/{athleteId}/custom-prices/{packageOptionId}":
     put:
       tags:
       - Pricing
       summary: Set this athlete's price for one package option.
-      description: 'PUT, because there is at most one override per athlete and package option: calling
-        it again moves the price rather than adding a second. priceMinor is a non-negative integer number
-        of piastres and is stored exactly as sent - never rounded, and never discounted further, even
-        for a loyal athlete. An override is an agreed price, not a starting point, so it beats loyalty
-        outright.'
+      description: 'PUT, because there is at most one override per athlete and package
+        option: calling it again moves the price rather than adding a second. priceMinor
+        is a non-negative integer number of piastres and is stored exactly as sent
+        - never rounded, and never discounted further, even for a loyal athlete. An
+        override is an agreed price, not a starting point, so it beats loyalty outright.'
       operationId: SetAthleteCustomPrice
       parameters:
       - name: athleteId
@@ -1308,7 +1344,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SetCustomPriceRequest'
+              "$ref": "#/components/schemas/SetCustomPriceRequest"
         required: true
       responses:
         '200':
@@ -1316,39 +1352,40 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CustomPriceResponse'
+                "$ref": "#/components/schemas/CustomPriceResponse"
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
     delete:
       tags:
       - Pricing
       summary: Drop this athlete's price override.
-      description: 'Normal pricing resumes immediately: loyalty if the athlete is loyal, otherwise the
-        package''s default price. Removing an override that does not exist returns 404 CUSTOM_PRICE_NOT_FOUND.'
+      description: 'Normal pricing resumes immediately: loyalty if the athlete is
+        loyal, otherwise the package''s default price. Removing an override that does
+        not exist returns 404 CUSTOM_PRICE_NOT_FOUND.'
       operationId: RemoveAthleteCustomPrice
       parameters:
       - name: athleteId
@@ -1371,30 +1408,31 @@ paths:
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
-  /api/v1/athletes/{athleteId}/catalogue:
+  "/api/v1/athletes/{athleteId}/catalogue":
     get:
       tags:
       - Pricing
       summary: What this athlete sees, priced exactly as they will see it.
-      description: The same calculation the athlete's own catalogue uses, so the coach can check a price
-        without reproducing the precedence rule on the client. An unknown athlete, or one belonging to
-        another coach, returns 404 ATHLETE_NOT_FOUND. An empty list means the coach has no active package
-        options, not that the athlete is unknown.
+      description: The same calculation the athlete's own catalogue uses, so the coach
+        can check a price without reproducing the precedence rule on the client. An
+        unknown athlete, or one belonging to another coach, returns 404 ATHLETE_NOT_FOUND.
+        An empty list means the coach has no active package options, not that the
+        athlete is unknown.
       operationId: PreviewAthleteCatalogue
       parameters:
       - name: athleteId
@@ -1411,25 +1449,201 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/CatalogueItemResponse'
+                  "$ref": "#/components/schemas/CatalogueItemResponse"
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ApiProblemDetails'
+                "$ref": "#/components/schemas/ApiProblemDetails"
+      security:
+      - bearerAuth: []
+  "/api/v1/scheduling/session-types":
+    get:
+      tags:
+      - Scheduling
+      responses:
+        '200':
+          description: OK
+      security:
+      - bearerAuth: []
+  "/api/v1/scheduling/session-types/{eventTypeId}/availability":
+    get:
+      tags:
+      - Scheduling
+      parameters:
+      - name: eventTypeId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: fromUtc
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - name: toUtc
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date-time
+      responses:
+        '200':
+          description: OK
+      security:
+      - bearerAuth: []
+  "/api/v1/scheduling/bookings":
+    post:
+      tags:
+      - Scheduling
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          maxLength: 100
+      requestBody:
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/BookSessionRequest"
+        required: true
+      responses:
+        '201':
+          description: Created
+      security:
+      - bearerAuth: []
+  "/api/v1/scheduling/refresh":
+    post:
+      tags:
+      - Scheduling
+      responses:
+        '202':
+          description: Accepted
+      security:
+      - bearerAuth: []
+  "/api/v1/sessions":
+    get:
+      tags:
+      - Sessions
+      parameters:
+      - name: fromUtc
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: toUtc
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: athleteProfileId
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: status
+        in: query
+        schema:
+          "$ref": "#/components/schemas/SessionStatus"
+      - name: limit
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: cursor
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+      security:
+      - bearerAuth: []
+  "/api/v1/sessions/upcoming":
+    get:
+      tags:
+      - Sessions
+      parameters:
+      - name: limit
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        '200':
+          description: OK
+      security:
+      - bearerAuth: []
+  "/api/v1/sessions/{id}":
+    get:
+      tags:
+      - Sessions
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+      security:
+      - bearerAuth: []
+  "/api/v1/sessions/{id}/cancel":
+    post:
+      tags:
+      - Sessions
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/CancelSessionRequest"
+        required: true
+      responses:
+        '200':
+          description: OK
+      security:
+      - bearerAuth: []
+  "/api/v1/sessions/{id}/reschedule":
+    get:
+      tags:
+      - Sessions
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
       security:
       - bearerAuth: []
 components:
@@ -1535,7 +1749,7 @@ components:
         gender:
           oneOf:
           - type: 'null'
-          - $ref: '#/components/schemas/Gender'
+          - "$ref": "#/components/schemas/Gender"
         sport:
           type:
           - 'null'
@@ -1543,7 +1757,7 @@ components:
         isLoyal:
           type: boolean
         status:
-          $ref: '#/components/schemas/UserStatus'
+          "$ref": "#/components/schemas/UserStatus"
         profileCompleted:
           type: boolean
         createdAtUtc:
@@ -1576,7 +1790,7 @@ components:
         isLoyal:
           type: boolean
         status:
-          $ref: '#/components/schemas/UserStatus'
+          "$ref": "#/components/schemas/UserStatus"
         createdAtUtc:
           type: string
           format: date-time
@@ -1614,7 +1828,7 @@ components:
         gender:
           oneOf:
           - type: 'null'
-          - $ref: '#/components/schemas/Gender'
+          - "$ref": "#/components/schemas/Gender"
         sport:
           type:
           - 'null'
@@ -1636,7 +1850,7 @@ components:
           type: string
           format: uuid
         status:
-          $ref: '#/components/schemas/UserStatus'
+          "$ref": "#/components/schemas/UserStatus"
     AuthResponse:
       required:
       - accessToken
@@ -1657,7 +1871,38 @@ components:
           type: integer
           format: int32
         user:
-          $ref: '#/components/schemas/UserSummary'
+          "$ref": "#/components/schemas/UserSummary"
+    BookSessionRequest:
+      required:
+      - eventTypeId
+      - startUtc
+      - timeZone
+      type: object
+      properties:
+        eventTypeId:
+          type: string
+        startUtc:
+          type: string
+          format: date-time
+        timeZone:
+          type: string
+        locationKind:
+          type:
+          - 'null'
+          - string
+        location:
+          type:
+          - 'null'
+          - string
+    CancelSessionRequest:
+      required:
+      - reason
+      type: object
+      properties:
+        reason:
+          type:
+          - 'null'
+          - string
     CatalogueItemResponse:
       required:
       - id
@@ -1709,7 +1954,7 @@ components:
           type: string
           format: date
         gender:
-          $ref: '#/components/schemas/Gender'
+          "$ref": "#/components/schemas/Gender"
         sport:
           type: string
     CreateInvitationRequest:
@@ -1736,9 +1981,9 @@ components:
           type: string
           format: uuid
         role:
-          $ref: '#/components/schemas/UserRole'
+          "$ref": "#/components/schemas/UserRole"
         status:
-          $ref: '#/components/schemas/UserStatus'
+          "$ref": "#/components/schemas/UserStatus"
         fullName:
           type:
           - 'null'
@@ -1753,7 +1998,7 @@ components:
         athleteListSort:
           oneOf:
           - type: 'null'
-          - $ref: '#/components/schemas/AthleteListSort'
+          - "$ref": "#/components/schemas/AthleteListSort"
         minimumSupportedAppVersion:
           type: string
     CustomPriceResponse:
@@ -1848,7 +2093,7 @@ components:
         email:
           type: string
         status:
-          $ref: '#/components/schemas/InvitationStatus'
+          "$ref": "#/components/schemas/InvitationStatus"
         expiresAtUtc:
           type: string
           format: date-time
@@ -1967,7 +2212,7 @@ components:
         items:
           type: array
           items:
-            $ref: '#/components/schemas/AthleteListItem'
+            "$ref": "#/components/schemas/AthleteListItem"
         page:
           type: integer
           format: int32
@@ -1992,7 +2237,7 @@ components:
         athleteListSort:
           oneOf:
           - type: 'null'
-          - $ref: '#/components/schemas/AthleteListSort'
+          - "$ref": "#/components/schemas/AthleteListSort"
     RefreshRequest:
       required:
       - refreshToken
@@ -2057,6 +2302,11 @@ components:
           items:
             maxLength: 100
             type: string
+    SessionStatus:
+      enum:
+      - Scheduled
+      - Cancelled
+      type: string
     SetCustomPriceRequest:
       required:
       - priceMinor
@@ -2080,7 +2330,7 @@ components:
       type: object
       properties:
         athleteListSort:
-          $ref: '#/components/schemas/AthleteListSort'
+          "$ref": "#/components/schemas/AthleteListSort"
     UserRole:
       enum:
       - Admin
@@ -2105,9 +2355,9 @@ components:
           type: string
           format: uuid
         role:
-          $ref: '#/components/schemas/UserRole'
+          "$ref": "#/components/schemas/UserRole"
         status:
-          $ref: '#/components/schemas/UserStatus'
+          "$ref": "#/components/schemas/UserStatus"
         fullName:
           type:
           - 'null'
@@ -2119,7 +2369,7 @@ components:
         athleteListSort:
           oneOf:
           - type: 'null'
-          - $ref: '#/components/schemas/AthleteListSort'
+          - "$ref": "#/components/schemas/AthleteListSort"
     ValidateInvitationResponse:
       required:
       - email
@@ -2149,5 +2399,8 @@ tags:
 - name: Authentication
 - name: Athletes
 - name: Pricing
+- name: Calendly webhooks
 - name: Invitations
 - name: Package options
+- name: Scheduling
+- name: Sessions

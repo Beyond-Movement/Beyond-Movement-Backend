@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\src\BeyondMovement.SharedKernel\BeyondMovement.SharedKernel.csproj" />
     <ProjectReference Include="..\..\src\BeyondMovement.Modules.Identity\BeyondMovement.Modules.Identity.csproj" />
     <ProjectReference Include="..\..\src\BeyondMovement.Modules.Packages\BeyondMovement.Modules.Packages.csproj" />
+    <ProjectReference Include="..\..\src\BeyondMovement.Modules.Scheduling\BeyondMovement.Modules.Scheduling.csproj" />
     <ProjectReference Include="..\..\src\BeyondMovement.Infrastructure\BeyondMovement.Infrastructure.csproj" />
   </ItemGroup>
 
