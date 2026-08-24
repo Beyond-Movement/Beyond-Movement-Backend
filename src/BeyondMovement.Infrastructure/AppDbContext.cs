@@ -5,12 +5,14 @@ using BeyondMovement.Modules.Identity.Domain;
 using BeyondMovement.Modules.Identity.Persistence;
 using BeyondMovement.Modules.Packages.Domain;
 using BeyondMovement.Modules.Packages.Persistence;
+using BeyondMovement.Modules.Scheduling.Domain;
+using BeyondMovement.Modules.Scheduling.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 namespace BeyondMovement.Infrastructure;
 
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
-    : DbContext(options), IIdentityDbContext, IAthletesDbContext, IPackagesDbContext
+    : DbContext(options), IIdentityDbContext, IAthletesDbContext, IPackagesDbContext, ISchedulingDbContext
 {
     // Identity module
     public DbSet<User> Users => Set<User>();
@@ -26,6 +28,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<PackageOptionFeature> PackageOptionFeatures => Set<PackageOptionFeature>();
     public DbSet<AthletePackagePrice> AthletePackagePrices => Set<AthletePackagePrice>();
 
+    // Scheduling module
+    public DbSet<Session> Sessions => Set<Session>();
+    public DbSet<CalendlyWebhookEvent> CalendlyWebhookEvents => Set<CalendlyWebhookEvent>();
+    public DbSet<BookingOperation> BookingOperations => Set<BookingOperation>();
+    public DbSet<SchedulingChange> SchedulingChanges => Set<SchedulingChange>();
+    public DbSet<CalendlyUnmatchedBooking> CalendlyUnmatchedBookings => Set<CalendlyUnmatchedBooking>();
+    public DbSet<CalendlyReconciliationRun> CalendlyReconciliationRuns => Set<CalendlyReconciliationRun>();
+
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -39,5 +49,15 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(User).Assembly);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AthleteProfile).Assembly);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(PackageOption).Assembly);
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(Session).Assembly);
+
+        modelBuilder.Entity<Session>().HasOne<AthleteProfile>().WithMany()
+            .HasForeignKey(x => x.AthleteProfileId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<BookingOperation>().HasOne<AthleteProfile>().WithMany()
+            .HasForeignKey(x => x.AthleteProfileId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<BookingOperation>().HasOne<Session>().WithMany()
+            .HasForeignKey(x => x.SessionId).OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<SchedulingChange>().HasOne<Session>().WithMany()
+            .HasForeignKey(x => x.SessionId).OnDelete(DeleteBehavior.Cascade);
     }
 }

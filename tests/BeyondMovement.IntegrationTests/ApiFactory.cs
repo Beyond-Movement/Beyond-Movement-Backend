@@ -80,6 +80,7 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
                 ["App:PasswordResetUrlTemplate"] = "beyondmovement://reset-password?token={token}",
                 ["App:MinimumSupportedAppVersion"] = "1.0.0",
                 ["Google:ClientId:Web"] = "test-web-client-id.apps.googleusercontent.com",
+                ["Jobs:Enabled"] = "false",
 
                 // Every test shares one source address, so the production limit would have
                 // the suite throttling itself. RateLimitTests asserts the limit separately.

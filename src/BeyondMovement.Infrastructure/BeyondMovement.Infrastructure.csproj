@@ -5,10 +5,12 @@
     <ProjectReference Include="..\BeyondMovement.Modules.Identity\BeyondMovement.Modules.Identity.csproj" />
     <ProjectReference Include="..\BeyondMovement.Modules.Athletes\BeyondMovement.Modules.Athletes.csproj" />
     <ProjectReference Include="..\BeyondMovement.Modules.Packages\BeyondMovement.Modules.Packages.csproj" />
+    <ProjectReference Include="..\BeyondMovement.Modules.Scheduling\BeyondMovement.Modules.Scheduling.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Google.Apis.Auth" Version="1.75.0" />
+    <PackageReference Include="Hangfire.Core" Version="1.8.24" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.11" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
   </ItemGroup>

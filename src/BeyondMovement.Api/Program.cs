@@ -17,6 +17,7 @@ using BeyondMovement.Infrastructure;
 using BeyondMovement.Infrastructure.Auditing;
 using BeyondMovement.Infrastructure.Email;
 using BeyondMovement.Infrastructure.Google;
+using BeyondMovement.Infrastructure.Calendly;
 using BeyondMovement.Modules.Identity.Domain;
 using BeyondMovement.Modules.Identity.Features.ChangePassword;
 using BeyondMovement.Modules.Identity.Features.CurrentUser;
@@ -28,6 +29,9 @@ using BeyondMovement.Modules.Identity.Features.Refresh;
 using BeyondMovement.Modules.Identity.Features.ResetPassword;
 using BeyondMovement.Modules.Identity.Persistence;
 using BeyondMovement.Modules.Identity.Services;
+using BeyondMovement.Modules.Scheduling.Calendly;
+using BeyondMovement.Modules.Scheduling.Features;
+using BeyondMovement.Modules.Scheduling.Persistence;
 using BeyondMovement.SharedKernel;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -39,6 +43,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Scalar.AspNetCore;
 using Serilog;
+using Hangfire;
+using Hangfire.PostgreSql;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -156,8 +162,36 @@ builder.Services.AddScoped<SetLoyaltyHandler>();
 // Spans Packages and Athletes, so it lives in the composition root and reads only.
 builder.Services.AddScoped<CatalogueReader>();
 
+// --- scheduling / Calendly ----------------------------------------------
+builder.Services.AddOptions<CalendlyOptions>()
+    .Bind(builder.Configuration.GetSection(CalendlyOptions.SectionName));
+builder.Services.AddScoped<ISchedulingDbContext>(sp => sp.GetRequiredService<AppDbContext>());
+builder.Services.AddScoped<SchedulingService>();
+builder.Services.AddSingleton<ICalendlyWebhookVerifier, CalendlyWebhookVerifier>();
+builder.Services.AddSingleton<ICalendlyWebhookParser, CalendlyWebhookParser>();
+builder.Services.AddHttpClient<ICalendlyClient, CalendlyClient>((sp, client) =>
+{
+    var configured = sp.GetRequiredService<IOptions<CalendlyOptions>>().Value;
+    client.BaseAddress = new Uri(configured.BaseUrl);
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
+var jobsEnabled = builder.Configuration.GetValue("Jobs:Enabled", true);
+if (jobsEnabled)
+{
+    builder.Services.AddHangfire(configuration => configuration
+        .UseSimpleAssemblyNameTypeSerializer()
+        .UseRecommendedSerializerSettings()
+        .UsePostgreSqlStorage(options => options.UseNpgsqlConnection(
+            builder.Configuration.GetConnectionString("Postgres"))));
+    builder.Services.AddHangfireServer(options => options.Queues = ["default", "calendly"]);
+    builder.Services.AddSingleton<ISchedulingJobScheduler, HangfireSchedulingJobScheduler>();
+}
+else builder.Services.AddSingleton<ISchedulingJobScheduler, DisabledSchedulingJobScheduler>();
+builder.Services.AddScoped<CalendlySynchronizationJobs>();
+
 builder.Services.AddValidatorsFromAssemblyContaining<LoginValidator>();
 builder.Services.AddValidatorsFromAssemblyContaining<SavePackageOptionValidator>();
+builder.Services.AddValidatorsFromAssemblyContaining<BookSessionValidator>();
 
 builder.Services.AddApiRateLimiting();
 
@@ -194,6 +228,15 @@ builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<JsonExceptionHandler>();
 
 var app = builder.Build();
+
+var recurringJobs = app.Services.GetService<IRecurringJobManager>();
+if (app.Configuration.GetValue("Jobs:Enabled", true) && recurringJobs is not null)
+{
+    recurringJobs.AddOrUpdate<CalendlySynchronizationJobs>(
+        "calendly-reconciliation",
+        job => job.ReconcileAsync(CancellationToken.None),
+        $"*/{Math.Clamp(builder.Configuration.GetValue("Calendly:ReconciliationMinutes", 15), 5, 60)} * * * *");
+}
 
 // --- pipeline ------------------------------------------------------------
 app.UseSerilogRequestLogging();
@@ -233,6 +276,7 @@ app.MapAthleteEndpoints();
 app.MapPackageOptionEndpoints();
 app.MapPricingEndpoints();
 app.MapPreferenceEndpoints();
+app.MapSchedulingEndpoints();
 
 if (app.Environment.IsDevelopment())
 {

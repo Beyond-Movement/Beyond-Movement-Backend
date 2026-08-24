@@ -6,10 +6,13 @@
     <ProjectReference Include="..\BeyondMovement.Modules.Identity\BeyondMovement.Modules.Identity.csproj" />
     <ProjectReference Include="..\BeyondMovement.Modules.Athletes\BeyondMovement.Modules.Athletes.csproj" />
     <ProjectReference Include="..\BeyondMovement.Modules.Packages\BeyondMovement.Modules.Packages.csproj" />
+    <ProjectReference Include="..\BeyondMovement.Modules.Scheduling\BeyondMovement.Modules.Scheduling.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
+    <PackageReference Include="Hangfire.AspNetCore" Version="1.8.24" />
+    <PackageReference Include="Hangfire.PostgreSql" Version="1.21.1" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11">

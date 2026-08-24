@@ -760,3 +760,27 @@ accounts are created by invitation only, and Google sign-in does not bypass that
 **Security scheme:** `bearerAuth` (HTTP bearer, JWT). Send the `accessToken` from
 `/auth/login` as `Authorization: Bearer <token>`. Access tokens last 15 minutes;
 refresh tokens last 30 days.
+# Phase 5 — Scheduling & Calendly
+
+Added the backend-first native Calendly scheduling contract:
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/api/v1/scheduling/session-types` | Athlete | Explicitly mapped bookable event types |
+| `GET` | `/api/v1/scheduling/session-types/{eventTypeId}/availability` | Athlete | Normalized UTC Calendly slots (maximum 31-day range) |
+| `POST` | `/api/v1/scheduling/bookings` | Athlete | Native booking; identity comes from the bearer token |
+| `GET` | `/api/v1/sessions` | Both | Ownership-scoped, cursor-paginated schedule |
+| `GET` | `/api/v1/sessions/upcoming` | Both | Upcoming scheduled sessions |
+| `GET` | `/api/v1/sessions/{id}` | Both | Ownership-scoped session details |
+| `POST` | `/api/v1/sessions/{id}/cancel` | Both | Native Calendly cancellation, retained in history |
+| `GET` | `/api/v1/sessions/{id}/reschedule` | Both | Calendly reschedule-flow URL |
+| `POST` | `/api/v1/webhooks/calendly` | Signed anonymous | Fast, idempotent raw webhook receipt |
+| `POST` | `/api/v1/scheduling/refresh` | Admin | Enqueue an on-demand reconciliation run |
+
+Calendly provider DTOs and credentials are not part of the mobile contract. Dates are UTC.
+Booking requires an `Idempotency-Key` request header and never alters package balance; attendance remains
+Phase 6. New stable scheduling errors include `CALENDLY_UNAVAILABLE`, `EVENT_TYPE_INVALID`,
+`SLOT_UNAVAILABLE`, `BOOKING_IN_PROGRESS`, `CALENDLY_RATE_LIMITED`, location/time-zone validation,
+and `SESSION_NOT_FOUND`.
+
+---
