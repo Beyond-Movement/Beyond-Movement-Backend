@@ -28,6 +28,13 @@ namespace BeyondMovement.Api.OpenApi;
 /// request that requires it. The null member is dropped and the type stated as string;
 /// per-property nullability is already carried by the property not being required.
 /// </item>
+/// <item>
+/// An enum that is never used nullably is emitted with its values but no <c>type</c> at all,
+/// so two enums that behave identically — <c>SessionStatus</c> and <c>DeliveryType</c> — would
+/// read differently in the contract purely because one happens to be a nullable query
+/// parameter somewhere. Every enum here is serialised by name, so string is stated on all of
+/// them.
+/// </item>
 /// </list>
 /// </summary>
 public sealed class SchemaNormalizingTransformer : IOpenApiSchemaTransformer
@@ -123,6 +130,11 @@ public sealed class SchemaNormalizingTransformer : IOpenApiSchemaTransformer
         if (schema.Enum is not { Count: > 0 } values)
             return;
 
+        // JsonStringEnumConverter is registered for the whole app, so every enum travels as its
+        // name. Said on all of them, not only the ones a null was removed from, or the contract
+        // types one enum and leaves the next untyped for no reason a reader could guess.
+        schema.Type = JsonSchemaType.String;
+
         var withoutNull = values
             .Where(value => value is not null && value.GetValueKind() != System.Text.Json.JsonValueKind.Null)
             .ToList();
@@ -131,7 +143,6 @@ public sealed class SchemaNormalizingTransformer : IOpenApiSchemaTransformer
             return;
 
         schema.Enum = withoutNull;
-        schema.Type = JsonSchemaType.String;
     }
 
     private static void CollapseNumericUnion(OpenApiSchema schema)

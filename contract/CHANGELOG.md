@@ -7,6 +7,172 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ---
 
+## Phase 5 — Scheduling, Calendly and sessions
+
+Booking runs on Calendly. This API owns the athlete's side of it: which session types can be
+booked, which times are free, and the sessions that came out of it. The first two are asked of
+Calendly live on every call, so nothing is served stale; the sessions themselves are stored here
+and kept in step by webhooks and a background reconciliation.
+
+### Every Phase 5 response now has a schema
+
+These endpoints shipped with their successful responses described as `OK` and nothing more,
+which left the app to guess the payload. Each one now names a type:
+
+| Endpoint | Success | Body |
+|---|---|---|
+| `GET /api/v1/scheduling/session-types` | 200 | `BookableSessionType[]` |
+| `GET /api/v1/scheduling/session-types/{eventTypeId}/availability` | 200 | `AvailableSlot[]` |
+| `POST /api/v1/scheduling/bookings` | 201 | `SessionResponse` |
+| `POST /api/v1/scheduling/refresh` | 202 | *empty — deliberately* |
+| `GET /api/v1/sessions` | 200 | `SessionPage` |
+| `GET /api/v1/sessions/upcoming` | 200 | `SessionPage` |
+| `GET /api/v1/sessions/{id}` | 200 | `SessionResponse` |
+| `POST /api/v1/sessions/{id}/cancel` | 200 | `SessionResponse` |
+| `GET /api/v1/sessions/{id}/reschedule` | 200 | `RescheduleUrlResponse` |
+
+Every failure is the same `ApiProblemDetails` in `application/problem+json` the rest of the API
+uses, and each endpoint now declares the statuses it can actually produce rather than leaving
+them to be discovered.
+
+### Availability is asked for a week at a time
+
+`fromUtc` and `toUtc` must be UTC, in the future, in order, and **at most 7 days apart**. Wider
+is `400 AVAILABILITY_RANGE_INVALID`.
+
+Seven is Calendly's limit on an availability query, not a preference of ours, which is why the
+API refuses rather than clamps: a clamped range would quietly return a week of slots for a month
+that was asked for, and the calendar would look empty from the eighth day on. To fill a month,
+make four or five calls and cache them — the slot list is a snapshot in any case, since a time
+can be taken between reading it and booking it.
+
+### The shapes
+
+| Schema | Fields |
+|---|---|
+| `BookableSessionType` | `id`, `name`, `durationMinutes`, `deliveryType`, `locations[]` |
+| `BookableLocation` | `kind`, `location` (nullable) |
+| `AvailableSlot` | `startUtc`, `endUtc` |
+| `SessionResponse` | `id`, `athleteProfileId`, `startUtc`, `endUtc`, `durationMinutes`, `deliveryType`, `status`, `locationOrPlatform`, `meetingUrl`, `rescheduleUrl` |
+| `SessionPage` | `items[]`, `nextCursor` |
+| `RescheduleUrlResponse` | `url` |
+
+A nullable field is still in the schema's `required` list, as everywhere else in this contract:
+the key is always present, and the value may be `null`. The client handles a null, never a
+missing key.
+
+`deliveryType` is `Online | FaceToFace | Observation`; `status` is `Scheduled | Cancelled`.
+`meetingUrl` is filled in for an online session and null otherwise, `locationOrPlatform` is
+whatever Calendly recorded, and `rescheduleUrl` is the same link `GET /sessions/{id}/reschedule`
+returns.
+
+`id` on `BookableSessionType` is the Calendly event type's trailing identifier, not a database
+id. It is what `/availability` and `POST /bookings` take, and it changes if the event type is
+renamed in a way that changes its slug.
+
+### `GET /sessions/{id}/reschedule` returns a named object
+
+It was returning an anonymous `{ "url": ... }`, which no contract could name. It is now
+`RescheduleUrlResponse`. **The JSON is byte-for-byte what it was** — one `url` property — but
+there is now a schema to generate a model from. It stays an object rather than a bare string so
+a second field can be added later without breaking the client.
+
+### Booking: `Idempotency-Key` is a declared parameter
+
+The header was read by the endpoint without appearing in the contract. It is now part of the
+operation: `in: header`, `required: true`, `maxLength: 100`, which is exactly what the handler
+enforces. Missing, blank or over-long is `400 IDEMPOTENCY_KEY_REQUIRED`.
+
+The key is remembered per athlete. Replaying it returns the session that key already created
+rather than booking a second one; while the first attempt is still in flight the replay is
+`409 BOOKING_IN_PROGRESS` with `retryAfterSeconds`. Generate one key per booking attempt and
+keep it across retries — a new key per retry defeats the whole mechanism.
+
+`locationKind` and `location` remain optional on `BookSessionRequest`, and the record now
+declares them with defaults so a regeneration keeps them that way instead of silently promoting
+them into `required`. Whether a location is needed at all is a fact about the Calendly event
+type, not something the schema can state: send `locationKind` when `locations` has more than one
+entry, and expect `400 LOCATION_REQUIRED` or `400 LOCATION_INVALID` to say so if it is wrong.
+
+### `POST /scheduling/refresh` is 202 with an empty body
+
+Admin-only, and an operational escape hatch for a missed webhook rather than something the
+athlete app calls. It queues background work, so there is nothing for the response to say and
+no model for the client to write: **202 means queued, not done.** Re-read `/sessions` afterwards
+to see the result.
+
+### Paging `/sessions`
+
+Ordered by start time, earliest first. `limit` is clamped to 1–100 and `0` means 30 (10 on
+`/upcoming`). When `nextCursor` is non-null there is at least one more session — pass it back
+unchanged as `cursor` and page until it is null, rather than stopping on a short page.
+
+An athlete sees only their own sessions and `athleteProfileId` is ignored for them; an Admin
+sees the coach's sessions and can narrow to one athlete with it. An athlete with no profile gets
+an empty page, not an error. `/sessions/upcoming` is exactly `/sessions` with `fromUtc` set to
+now and `status` set to `Scheduled`.
+
+### Cancelling returns the session
+
+`POST /sessions/{id}/cancel` cancels in Calendly first and only then here, so the two cannot
+disagree: if Calendly refuses, the session is left scheduled and the call is `503` with nothing
+changed. On success the updated session comes back with `status: "Cancelled"`, so the client can
+replace its copy from the response without re-reading. Cancelling an already-cancelled session
+succeeds and returns it unchanged, which makes a repeated tap safe.
+
+### Error codes added
+
+| Code | Status | Meaning |
+|---|---|---|
+| `AVAILABILITY_RANGE_INVALID` | 400 | Range is not UTC, not in the future, out of order, or spans more than 7 days |
+| `TIME_ZONE_INVALID` | 400 | `timeZone` is not a recognised IANA name |
+| `LOCATION_REQUIRED` | 400 | The session type needs a location choice and none was sent |
+| `LOCATION_INVALID` | 400 | `locationKind` is not one this session type offers |
+| `IDEMPOTENCY_KEY_REQUIRED` | 400 | Header missing, blank, or over 100 characters |
+| `EVENT_TYPE_INVALID` | 404 | Unknown or unmapped `eventTypeId` |
+| `SESSION_NOT_FOUND` | 404 | No such session, **or it belongs to another athlete** |
+| `SLOT_UNAVAILABLE` | 409 | The time is no longer free, or was never a bookable start |
+| `BOOKING_IN_PROGRESS` | 409 | The same key is still being processed; carries `retryAfterSeconds` |
+| `CALENDLY_UNAVAILABLE` | 503 | Calendly is not configured or is not answering |
+| `CALENDLY_RATE_LIMITED` | 503 | Calendly rate-limited us; carries `retryAfterSeconds` |
+| `CALENDLY_SIGNATURE_INVALID` | 401 | Webhook endpoint only; never reaches the app |
+
+All of these were already being returned; none of them were in `errorCode` in the contract, so a
+generated client had no case for them. `DUPLICATE_BOOKING` is also in the list but is not
+returned by any endpoint today — treat it as reserved.
+
+A 503 from any of these is transient. An empty session-type list because Calendly is down must
+not be shown as "no sessions available"; that condition is the 503, not an empty array.
+
+### Enums now carry `type: string`
+
+`UserRole`, `UserStatus`, `InvitationStatus`, `AthleteStatusFilter` and the new `DeliveryType`
+and `SessionStatus` were emitted as a list of values with no `type`, purely because none of them
+happened to be used nullably anywhere — `Gender` and `AthleteListSort`, which are, already said
+`type: string`. Every enum in this API is serialised by name, so all of them say so now. Additive
+only: no value changed.
+
+### Known gaps
+
+- **`limit` is a required query parameter** on `/sessions` and `/sessions/upcoming`. Send it
+  explicitly; `0` selects the default rather than being rejected.
+- **`nextCursor` is a start time, compared strictly.** Two sessions with the identical start
+  time can fall either side of a page boundary and one be skipped. Not reachable with one
+  athlete's own sessions; possible on an Admin's coach-wide list.
+- **`packageId` is not exposed.** A session is stored with the package it belongs to, but
+  nothing in `SessionResponse` reports it — remaining-session counting is later payment work.
+- **`POST /api/v1/webhooks/calendly` is Calendly-facing.** It is in the contract because it is a
+  route, not because the app should ever call it.
+- **A change made inside Calendly can take up to 15 minutes to show here.** Webhooks are a paid
+  Calendly feature (Standard and above); until the account is on one, `Calendly:WebhookSigningKeys`
+  is empty, nothing calls the webhook route, and the background reconciliation sweep is the only
+  thing that notices a reschedule or cancellation made on Calendly's own pages. Anything done
+  through *this* API — booking, cancelling — is immediate and comes back in the response. This
+  affects freshness, not correctness: re-read the session after sending the athlete to
+  `rescheduleUrl` rather than assuming the new time is already stored.
+
+---
+
 ## Phase 4 — Package options, loyalty and custom pricing
 
 The catalogue only. **Purchasing, InstaPay, pending purchases, payment confirmation, package

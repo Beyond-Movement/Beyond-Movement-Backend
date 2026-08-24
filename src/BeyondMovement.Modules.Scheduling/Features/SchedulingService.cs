@@ -34,8 +34,9 @@ public sealed class SchedulingService(
     {
         var mapping = _options.FindById(eventTypeId);
         if (mapping is null) return Result<IReadOnlyList<AvailableSlot>>.Failure(SchedulingErrors.EventTypeInvalid);
-        if (fromUtc.Kind != DateTimeKind.Utc || toUtc.Kind != DateTimeKind.Utc || fromUtc < clock.UtcNow || fromUtc >= toUtc || toUtc - fromUtc > TimeSpan.FromDays(31))
-            return Result<IReadOnlyList<AvailableSlot>>.Failure(new Error("AVAILABILITY_RANGE_INVALID", "Use a future UTC range of at most 31 days.", 400));
+        if (fromUtc.Kind != DateTimeKind.Utc || toUtc.Kind != DateTimeKind.Utc || fromUtc < clock.UtcNow || fromUtc >= toUtc
+            || toUtc - fromUtc > TimeSpan.FromDays(SchedulingErrors.MaxAvailabilityDays))
+            return Result<IReadOnlyList<AvailableSlot>>.Failure(SchedulingErrors.AvailabilityRangeInvalid);
         try
         {
             var eventType = await calendly.GetEventTypeAsync(mapping.Uri, ct);

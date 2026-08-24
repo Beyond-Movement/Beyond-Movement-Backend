@@ -11,6 +11,16 @@ public static class SchedulingErrors
         "EVENT_TYPE_INVALID", "IDEMPOTENCY_KEY_REQUIRED", "LOCATION_INVALID",
         "LOCATION_REQUIRED", "SESSION_NOT_FOUND", "SLOT_UNAVAILABLE", "TIME_ZONE_INVALID"
     ];
+    /// <summary>
+    /// Calendly's event_type_available_times refuses a window wider than seven days, so the same
+    /// bound is enforced before the call rather than after. Passing a wider range straight through
+    /// comes back as a Calendly 400, which maps to SLOT_UNAVAILABLE — telling an athlete a time is
+    /// taken when what actually happened is that the app asked for too much at once.
+    /// </summary>
+    public const int MaxAvailabilityDays = 7;
+
+    public static readonly Error AvailabilityRangeInvalid = new("AVAILABILITY_RANGE_INVALID",
+        $"Use a future UTC range of at most {MaxAvailabilityDays} days.", 400);
     public static readonly Error CalendlyUnavailable = new("CALENDLY_UNAVAILABLE", "Scheduling is temporarily unavailable.", 503);
     public static readonly Error EventTypeInvalid = new("EVENT_TYPE_INVALID", "This session type is unavailable.", 404);
     public static readonly Error SlotUnavailable = new("SLOT_UNAVAILABLE", "That time is no longer available.", 409);

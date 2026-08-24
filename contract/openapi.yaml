@@ -1474,15 +1474,62 @@ paths:
     get:
       tags:
       - Scheduling
+      summary: The session types the athlete may book.
+      description: 'Read live from Calendly on every call, and filtered twice: the
+        event type must be active in Calendly and mapped in this API''s configuration,
+        so a paused or unmapped type never reaches the app. id is the Calendly event
+        type''s trailing identifier and is what /availability and POST /bookings take
+        - it is not a database id. locations is what Calendly offers for that type:
+        empty means there is no location choice to make, one entry means it is fixed,
+        and more than one means the athlete must choose and send the chosen kind as
+        locationKind when booking. Returns 503 CALENDLY_UNAVAILABLE when Calendly
+        is not configured or is not answering - that is a transient failure, not an
+        empty catalogue, and must not be shown as ''no sessions available''.'
+      operationId: GetBookableSessionTypes
       responses:
         '200':
           description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/BookableSessionType"
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '503':
+          description: Service Unavailable
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
   "/api/v1/scheduling/session-types/{eventTypeId}/availability":
     get:
       tags:
       - Scheduling
+      summary: Bookable start times for one session type, in a UTC window.
+      description: 'fromUtc and toUtc are both required, must both carry a UTC offset
+        (Z), must be in the future and in order, and may span at most 7 days - anything
+        else is 400 AVAILABILITY_RANGE_INVALID rather than a silently clamped range.
+        Seven is Calendly''s own limit on an availability query, not a choice made
+        here: ask for a month a week at a time. Each slot carries startUtc and endUtc,
+        the end computed from the session type''s duration, so the client never has
+        to add the minutes itself. The list is a snapshot: a slot can be taken between
+        this call and the booking, which is why POST /bookings re-checks and can still
+        answer 409 SLOT_UNAVAILABLE. An unknown or unmapped eventTypeId is 404 EVENT_TYPE_INVALID.'
+      operationId: GetSessionTypeAvailability
       parameters:
       - name: eventTypeId
         in: path
@@ -1504,19 +1551,75 @@ paths:
       responses:
         '200':
           description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/AvailableSlot"
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '503':
+          description: Service Unavailable
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
   "/api/v1/scheduling/bookings":
     post:
       tags:
       - Scheduling
+      summary: Book one available slot for the calling athlete.
+      description: 'Always books for the caller''s own athlete profile - there is
+        no athlete id in the body and an Admin cannot book on someone''s behalf here.
+        Idempotency-Key is required and is remembered per athlete: replaying the same
+        key returns the session that key already created rather than booking a second
+        one, and returns 409 BOOKING_IN_PROGRESS with Retry-After while the first
+        attempt is still in flight. Generate the key once per booking attempt and
+        keep it across retries. startUtc must be UTC, in the future, and match an
+        available slot exactly; timeZone is an IANA name such as Africa/Cairo and
+        is what the Calendly invitation is written in. locationKind is required only
+        when the session type offers a choice - 400 LOCATION_REQUIRED and LOCATION_INVALID
+        say which. Returns 201 with the created session, including meetingUrl for
+        an online session and the rescheduleUrl the app opens later.'
+      operationId: BookSession
       parameters:
       - name: Idempotency-Key
         in: header
         required: true
         schema:
-          type: string
           maxLength: 100
+          type: string
       requestBody:
         content:
           application/json:
@@ -1526,21 +1629,90 @@ paths:
       responses:
         '201':
           description: Created
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SessionResponse"
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '503':
+          description: Service Unavailable
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
   "/api/v1/scheduling/refresh":
     post:
       tags:
       - Scheduling
+      summary: Queue a reconciliation of this API's sessions against Calendly.
+      description: 'An Admin-only operational escape hatch for a missed webhook, not
+        something the athlete app calls. Returns 202 with an empty body and no schema
+        deliberately: the work is queued and runs in the background, so the response
+        cannot say what changed and there is nothing for the client to model. Read
+        the sessions endpoints again afterwards to see the result.'
+      operationId: RefreshScheduling
       responses:
         '202':
           description: Accepted
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
   "/api/v1/sessions":
     get:
       tags:
       - Sessions
+      summary: The caller's sessions, earliest start first, one page at a time.
+      description: An athlete sees only their own sessions and athleteProfileId is
+        ignored for them; an Admin sees the coach's sessions and may narrow to one
+        athlete with it. fromUtc is inclusive and toUtc exclusive, both UTC. limit
+        is clamped to 1-100, and 0 means 30. cursor carries the start time the next
+        page resumes after - treat it as opaque and pass nextCursor back unchanged.
+        A null nextCursor is the last page; a non-null one means at least one more
+        session follows, so page until it is null rather than until a short page.
+        An athlete with no profile gets an empty page, not an error.
+      operationId: ListSessions
       parameters:
       - name: fromUtc
         in: query
@@ -1574,12 +1746,29 @@ paths:
       responses:
         '200':
           description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SessionPage"
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
   "/api/v1/sessions/upcoming":
     get:
       tags:
       - Sessions
+      summary: The caller's next scheduled sessions, for the home screen.
+      description: The same page shape as /sessions, and exactly equivalent to it
+        with fromUtc set to now and status set to Scheduled, so a cancelled session
+        never appears here. limit is clamped to 1-100 and 0 means 10. nextCursor is
+        filled in on the same terms as /sessions; to walk the whole list, continue
+        with /sessions rather than paging this endpoint.
+      operationId: GetUpcomingSessions
       parameters:
       - name: limit
         in: query
@@ -1590,12 +1779,28 @@ paths:
       responses:
         '200':
           description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SessionPage"
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
   "/api/v1/sessions/{id}":
     get:
       tags:
       - Sessions
+      summary: One session, if it belongs to the caller.
+      description: The same object the list returns, so one model serves both. A session
+        that does not exist and a session belonging to another athlete are both 404
+        SESSION_NOT_FOUND - deliberately indistinguishable, so an id cannot be probed
+        for existence.
+      operationId: GetSession
       parameters:
       - name: id
         in: path
@@ -1606,12 +1811,36 @@ paths:
       responses:
         '200':
           description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SessionResponse"
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
   "/api/v1/sessions/{id}/cancel":
     post:
       tags:
       - Sessions
+      summary: Cancel a session, in Calendly and here.
+      description: 'Cancels in Calendly first and only then locally, so the two cannot
+        disagree: if Calendly refuses, the session is left scheduled and the call
+        is 503 with nothing changed. Returns the updated session with status Cancelled,
+        so the client can replace its copy from the response without re-reading. Cancelling
+        an already-cancelled session succeeds and returns it unchanged, which makes
+        a repeated tap safe. reason is optional and is passed on to Calendly.'
+      operationId: CancelSession
       parameters:
       - name: id
         in: path
@@ -1628,12 +1857,41 @@ paths:
       responses:
         '200':
           description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SessionResponse"
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '503':
+          description: Service Unavailable
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
   "/api/v1/sessions/{id}/reschedule":
     get:
       tags:
       - Sessions
+      summary: The Calendly reschedule link for a session.
+      description: Open url in a browser or web view; rescheduling itself happens
+        in Calendly, not here, and reaches this API as a webhook, so re-read the session
+        afterwards rather than assuming the new time. 404 SESSION_NOT_FOUND covers
+        all three of an unknown id, someone else's session, and a session Calendly
+        gave no reschedule link for.
+      operationId: GetSessionRescheduleUrl
       parameters:
       - name: id
         in: path
@@ -1644,6 +1902,22 @@ paths:
       responses:
         '200':
           description: OK
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/RescheduleUrlResponse"
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                "$ref": "#/components/schemas/ApiProblemDetails"
       security:
       - bearerAuth: []
 components:
@@ -1674,10 +1948,18 @@ components:
           - ACCOUNT_LOCKED
           - ACCOUNT_PAUSED
           - ATHLETE_NOT_FOUND
+          - AVAILABILITY_RANGE_INVALID
+          - BOOKING_IN_PROGRESS
+          - CALENDLY_RATE_LIMITED
+          - CALENDLY_SIGNATURE_INVALID
+          - CALENDLY_UNAVAILABLE
           - CONCURRENCY_CONFLICT
           - CUSTOM_PRICE_NOT_FOUND
+          - DUPLICATE_BOOKING
           - EMAIL_ALREADY_REGISTERED
+          - EVENT_TYPE_INVALID
           - GOOGLE_EMAIL_MISMATCH
+          - IDEMPOTENCY_KEY_REQUIRED
           - INVALID_CREDENTIALS
           - INVALID_GOOGLE_TOKEN
           - INVALID_REFRESH_TOKEN
@@ -1688,6 +1970,8 @@ components:
           - INVITATION_REQUIRED
           - INVITATION_REVOKED
           - INVITATION_USED
+          - LOCATION_INVALID
+          - LOCATION_REQUIRED
           - PACKAGE_NAME_CONFLICT
           - PACKAGE_OPTION_ARCHIVED
           - PACKAGE_OPTION_NOT_ARCHIVED
@@ -1695,6 +1979,9 @@ components:
           - PASSWORD_NOT_SET
           - PROFILE_ALREADY_COMPLETED
           - REGISTRATION_TOKEN_INVALID
+          - SESSION_NOT_FOUND
+          - SLOT_UNAVAILABLE
+          - TIME_ZONE_INVALID
           - TOO_MANY_REQUESTS
           - VALIDATION_FAILED
           type: string
@@ -1840,6 +2127,7 @@ components:
       - All
       - Active
       - Paused
+      type: string
     AthleteStatusResponse:
       required:
       - id
@@ -1872,6 +2160,52 @@ components:
           format: int32
         user:
           "$ref": "#/components/schemas/UserSummary"
+    AvailableSlot:
+      required:
+      - startUtc
+      - endUtc
+      type: object
+      properties:
+        startUtc:
+          type: string
+          format: date-time
+        endUtc:
+          type: string
+          format: date-time
+    BookableLocation:
+      required:
+      - kind
+      - location
+      type: object
+      properties:
+        kind:
+          type: string
+        location:
+          type:
+          - 'null'
+          - string
+    BookableSessionType:
+      required:
+      - id
+      - name
+      - durationMinutes
+      - deliveryType
+      - locations
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        durationMinutes:
+          type: integer
+          format: int32
+        deliveryType:
+          "$ref": "#/components/schemas/DeliveryType"
+        locations:
+          type: array
+          items:
+            "$ref": "#/components/schemas/BookableLocation"
     BookSessionRequest:
       required:
       - eventTypeId
@@ -2020,6 +2354,12 @@ components:
           format: int64
         currency:
           type: string
+    DeliveryType:
+      enum:
+      - Online
+      - FaceToFace
+      - Observation
+      type: string
     EditPackageOptionRequest:
       required:
       - name
@@ -2113,6 +2453,7 @@ components:
       - Pending
       - Redeemed
       - Revoked
+      type: string
     LoginRequest:
       required:
       - email
@@ -2264,6 +2605,13 @@ components:
           type:
           - 'null'
           - string
+    RescheduleUrlResponse:
+      required:
+      - url
+      type: object
+      properties:
+        url:
+          type: string
     ResetPasswordRequest:
       required:
       - token
@@ -2302,6 +2650,65 @@ components:
           items:
             maxLength: 100
             type: string
+    SessionPage:
+      required:
+      - items
+      - nextCursor
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            "$ref": "#/components/schemas/SessionResponse"
+        nextCursor:
+          type:
+          - 'null'
+          - string
+    SessionResponse:
+      required:
+      - id
+      - athleteProfileId
+      - startUtc
+      - endUtc
+      - durationMinutes
+      - deliveryType
+      - status
+      - locationOrPlatform
+      - meetingUrl
+      - rescheduleUrl
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        athleteProfileId:
+          type: string
+          format: uuid
+        startUtc:
+          type: string
+          format: date-time
+        endUtc:
+          type: string
+          format: date-time
+        durationMinutes:
+          type: integer
+          format: int32
+        deliveryType:
+          "$ref": "#/components/schemas/DeliveryType"
+        status:
+          "$ref": "#/components/schemas/SessionStatus"
+        locationOrPlatform:
+          type:
+          - 'null'
+          - string
+        meetingUrl:
+          type:
+          - 'null'
+          - string
+        rescheduleUrl:
+          type:
+          - 'null'
+          - string
     SessionStatus:
       enum:
       - Scheduled
@@ -2335,11 +2742,13 @@ components:
       enum:
       - Admin
       - Athlete
+      type: string
     UserStatus:
       enum:
       - Active
       - Paused
       - Deleted
+      type: string
     UserSummary:
       required:
       - id
