@@ -46,6 +46,12 @@ RUN dotnet publish src/BeyondMovement.Api/BeyondMovement.Api.csproj \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 
+USER root
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
+    && rm -rf /var/lib/apt/lists/*
+
 # The .NET images define APP_UID as a pre-created non-root user. Running as root
 # in a container is a habit worth not having.
 USER $APP_UID
