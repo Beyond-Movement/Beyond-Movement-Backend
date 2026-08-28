@@ -32,8 +32,8 @@ public sealed class AthleteDirectory(AppDbContext db)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(x => new AthleteListItem(
-                x.User.Id, x.User.FullName, x.User.Email, x.Profile.Sport, x.Profile.IsLoyal,
-                x.User.Status, x.User.CreatedAtUtc))
+                x.User.Id, x.Profile.Id, x.User.FullName, x.User.Email, x.Profile.Sport,
+                x.Profile.IsLoyal, x.User.Status, x.User.CreatedAtUtc))
             .ToListAsync(ct);
 
         return new PagedResult<AthleteListItem>(items, page, pageSize, total);

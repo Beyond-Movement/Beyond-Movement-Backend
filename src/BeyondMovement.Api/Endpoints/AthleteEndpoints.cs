@@ -66,7 +66,11 @@ public static class AthleteEndpoints
             "at 1 and pageSize is capped at 100 - values outside the range are clamped rather " +
             "than rejected. Paused athletes are always included: pausing hides an athlete from " +
             "themselves, never from their coach. Athletes who have registered but not completed " +
-            "their profile are also always included, with fullName null.")
+            "their profile are also always included, with fullName null. " +
+            "Each row carries two ids and they are not interchangeable: id is the athlete's " +
+            "USER id, which every /athletes/{athleteId} path takes, while athleteProfileId is " +
+            "the PROFILE id that sessions and purchased packages are keyed by - it is what " +
+            "POST /sessions/observations wants in its body. Both are always present.")
         .Produces<PagedResult<AthleteListItem>>()
         .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
         .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson);

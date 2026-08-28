@@ -38,18 +38,59 @@ public sealed class AttendanceTests
     }
 
     [Theory]
-    [InlineData(30, 0)]
-    [InlineData(59, 0)]
-    [InlineData(60, 0)]    // BR-07 says LONGER than an hour; an hour exactly is not longer
-    [InlineData(61, 1)]
-    [InlineData(120, 1)]
-    public void Observation_consumes_one_only_when_it_runs_longer_than_an_hour(int minutes, int expected)
+    [InlineData(30, true, 1)]
+    [InlineData(30, false, 0)]
+    [InlineData(60, true, 1)]     // the old rule said 0 here; the Admin's choice now decides
+    [InlineData(90, false, 0)]    // and 1 here
+    [InlineData(240, true, 1)]
+    public void Observation_consumes_what_the_Admin_chose_whatever_its_duration(
+        int minutes, bool deducts, int expected)
     {
+        // BR-07. Every pair below crosses the old hour threshold in one direction or the other,
+        // which is the point: duration no longer has a vote.
         var session = Session.CreateObservation(
-            Guid.NewGuid(), Guid.NewGuid(), Now, Now.AddMinutes(minutes), "Regional final", Now);
+            Guid.NewGuid(), Guid.NewGuid(), Now, Now.AddMinutes(minutes), "Regional final",
+            deductsSession: deducts, Now);
 
         Assert.Equal(DeliveryType.Observation, session.DeliveryType);
+        Assert.Equal(deducts, session.ObservationDeductsSession);
         Assert.Equal(expected, session.ConsumptionFor(SessionStatus.Attended, noShowDeducts: false));
+    }
+
+    [Fact]
+    public void Recording_an_observation_that_will_deduct_still_deducts_nothing_yet()
+    {
+        var session = Session.CreateObservation(
+            Guid.NewGuid(), Guid.NewGuid(), Now, Now.AddMinutes(90), "Regional final",
+            deductsSession: true, Now);
+
+        // BR-04 outranks the choice: the decision is recorded, not applied. Only Resolve applies it.
+        Assert.Equal(SessionStatus.Scheduled, session.Status);
+        Assert.Equal(0, session.ConsumedSessionCount);
+        Assert.True(session.ObservationDeductsSession);
+    }
+
+    [Fact]
+    public void An_observation_may_be_recorded_for_a_date_still_to_come()
+    {
+        var future = Now.AddDays(4);
+
+        var session = Session.CreateObservation(
+            Guid.NewGuid(), Guid.NewGuid(), future, future.AddMinutes(90), "Tournament venue",
+            deductsSession: true, Now);
+
+        // An observation is arranged directly with the athlete, so it may be recorded before it
+        // happens. Nothing in the domain treats a future start differently.
+        Assert.Equal(future, session.ScheduledStartUtc);
+        Assert.Equal(SessionStatus.Scheduled, session.Status);
+        Assert.Equal(1, session.ConsumptionFor(SessionStatus.Attended, noShowDeducts: false));
+    }
+
+    [Fact]
+    public void An_ordinary_session_records_no_observation_choice()
+    {
+        // Null is what tells the app this session follows BR-05 and has no choice to show.
+        Assert.Null(Booked(60).ObservationDeductsSession);
     }
 
     [Theory]
@@ -146,7 +187,8 @@ public sealed class AttendanceTests
     public void An_observation_carries_no_Calendly_identity()
     {
         var session = Session.CreateObservation(
-            Guid.NewGuid(), Guid.NewGuid(), Now, Now.AddMinutes(90), "Club championship", Now);
+            Guid.NewGuid(), Guid.NewGuid(), Now, Now.AddMinutes(90), "Club championship",
+            deductsSession: true, Now);
 
         Assert.Null(session.CalendlyEventUri);
         Assert.Null(session.CalendlyInviteeUri);

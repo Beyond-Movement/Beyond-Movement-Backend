@@ -9,14 +9,14 @@ info:
 servers:
 - url: http://localhost:5229/
 paths:
-  "/api/v1/ping":
+  /api/v1/ping:
     get:
       tags:
       - BeyondMovement.Api
       responses:
         '200':
           description: OK
-  "/api/v1/auth/register":
+  /api/v1/auth/register:
     post:
       tags:
       - Authentication
@@ -35,7 +35,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/RegisterRequest"
+              $ref: '#/components/schemas/RegisterRequest'
         required: true
       responses:
         '200':
@@ -43,20 +43,20 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/AuthResponse"
+                $ref: '#/components/schemas/AuthResponse'
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '409':
           description: Conflict
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
-  "/api/v1/athletes/me/profile":
+                $ref: '#/components/schemas/ApiProblemDetails'
+  /api/v1/athletes/me/profile:
     post:
       tags:
       - Athletes
@@ -74,7 +74,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/CompleteProfileRequest"
+              $ref: '#/components/schemas/CompleteProfileRequest'
         required: true
       responses:
         '200':
@@ -82,28 +82,28 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/AthleteProfileResponse"
+                $ref: '#/components/schemas/AthleteProfileResponse'
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/catalogue":
+  /api/v1/catalogue:
     get:
       tags:
       - Pricing
@@ -125,22 +125,22 @@ paths:
               schema:
                 type: array
                 items:
-                  "$ref": "#/components/schemas/CatalogueItemResponse"
+                  $ref: '#/components/schemas/CatalogueItemResponse'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/auth/me/preferences":
+  /api/v1/auth/me/preferences:
     put:
       tags:
       - Authentication
@@ -154,7 +154,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/UpdatePreferencesRequest"
+              $ref: '#/components/schemas/UpdatePreferencesRequest'
         required: true
       responses:
         '200':
@@ -162,29 +162,29 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/PreferencesResponse"
+                $ref: '#/components/schemas/PreferencesResponse'
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/webhooks/calendly":
+  /api/v1/webhooks/calendly:
     post:
       tags:
       - Calendly webhooks
       responses:
         '200':
           description: OK
-  "/api/v1/me/package":
+  /api/v1/me/package:
     get:
       tags:
       - Packages
@@ -199,28 +199,28 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/PurchasedPackageResponse"
+                $ref: '#/components/schemas/PurchasedPackageResponse'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/auth/login":
+  /api/v1/auth/login:
     post:
       tags:
       - Authentication
@@ -236,7 +236,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/LoginRequest"
+              $ref: '#/components/schemas/LoginRequest'
         required: true
       responses:
         '200':
@@ -244,32 +244,32 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/AuthResponse"
+                $ref: '#/components/schemas/AuthResponse'
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '423':
           description: Locked
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
-  "/api/v1/auth/google":
+                $ref: '#/components/schemas/ApiProblemDetails'
+  /api/v1/auth/google:
     post:
       tags:
       - Authentication
@@ -286,7 +286,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/GoogleSignInRequest"
+              $ref: '#/components/schemas/GoogleSignInRequest'
         required: true
       responses:
         '200':
@@ -294,26 +294,26 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/AuthResponse"
+                $ref: '#/components/schemas/AuthResponse'
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
-  "/api/v1/auth/refresh":
+                $ref: '#/components/schemas/ApiProblemDetails'
+  /api/v1/auth/refresh:
     post:
       tags:
       - Authentication
@@ -329,7 +329,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/RefreshRequest"
+              $ref: '#/components/schemas/RefreshRequest'
         required: true
       responses:
         '200':
@@ -337,20 +337,20 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/AuthResponse"
+                $ref: '#/components/schemas/AuthResponse'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
-  "/api/v1/auth/logout":
+                $ref: '#/components/schemas/ApiProblemDetails'
+  /api/v1/auth/logout:
     post:
       tags:
       - Authentication
@@ -363,7 +363,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/LogoutRequest"
+              $ref: '#/components/schemas/LogoutRequest'
         required: true
       responses:
         '204':
@@ -373,16 +373,16 @@ paths:
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/auth/forgot-password":
+  /api/v1/auth/forgot-password:
     post:
       tags:
       - Authentication
@@ -404,7 +404,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/ForgotPasswordRequest"
+              $ref: '#/components/schemas/ForgotPasswordRequest'
         required: true
       responses:
         '200':
@@ -414,14 +414,14 @@ paths:
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '429':
           description: Too Many Requests
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
-  "/api/v1/auth/reset-password":
+                $ref: '#/components/schemas/ApiProblemDetails'
+  /api/v1/auth/reset-password:
     post:
       tags:
       - Authentication
@@ -437,7 +437,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/ResetPasswordRequest"
+              $ref: '#/components/schemas/ResetPasswordRequest'
         required: true
       responses:
         '200':
@@ -447,8 +447,8 @@ paths:
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
-  "/api/v1/auth/change-password":
+                $ref: '#/components/schemas/ApiProblemDetails'
+  /api/v1/auth/change-password:
     post:
       tags:
       - Authentication
@@ -463,7 +463,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/ChangePasswordRequest"
+              $ref: '#/components/schemas/ChangePasswordRequest'
         required: true
       responses:
         '200':
@@ -473,22 +473,22 @@ paths:
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/auth/me":
+  /api/v1/auth/me:
     get:
       tags:
       - Authentication
@@ -506,22 +506,22 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/CurrentUserResponse"
+                $ref: '#/components/schemas/CurrentUserResponse'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/invitations/validate":
+  /api/v1/invitations/validate:
     get:
       tags:
       - Invitations
@@ -554,20 +554,20 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/ValidateInvitationResponse"
+                $ref: '#/components/schemas/ValidateInvitationResponse'
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '429':
           description: Too Many Requests
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
-  "/api/v1/invitations":
+                $ref: '#/components/schemas/ApiProblemDetails'
+  /api/v1/invitations:
     post:
       tags:
       - Invitations
@@ -582,7 +582,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/CreateInvitationRequest"
+              $ref: '#/components/schemas/CreateInvitationRequest'
         required: true
       responses:
         '201':
@@ -590,31 +590,31 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/InvitationResponse"
+                $ref: '#/components/schemas/InvitationResponse'
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '409':
           description: Conflict
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
     get:
@@ -626,7 +626,7 @@ paths:
       - name: status
         in: query
         schema:
-          "$ref": "#/components/schemas/InvitationStatus"
+          $ref: '#/components/schemas/InvitationStatus'
       responses:
         '200':
           description: OK
@@ -635,22 +635,22 @@ paths:
               schema:
                 type: array
                 items:
-                  "$ref": "#/components/schemas/InvitationResponse"
+                  $ref: '#/components/schemas/InvitationResponse'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/invitations/{id}/resend":
+  /api/v1/invitations/{id}/resend:
     post:
       tags:
       - Invitations
@@ -671,28 +671,28 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/InvitationResponse"
+                $ref: '#/components/schemas/InvitationResponse'
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/invitations/{id}":
+  /api/v1/invitations/{id}:
     delete:
       tags:
       - Invitations
@@ -715,22 +715,22 @@ paths:
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/athletes":
+  /api/v1/athletes:
     get:
       tags:
       - Athletes
@@ -746,7 +746,11 @@ paths:
         at 100 - values outside the range are clamped rather than rejected. Paused
         athletes are always included: pausing hides an athlete from themselves, never
         from their coach. Athletes who have registered but not completed their profile
-        are also always included, with fullName null.'
+        are also always included, with fullName null. Each row carries two ids and
+        they are not interchangeable: id is the athlete''s USER id, which every /athletes/{athleteId}
+        path takes, while athleteProfileId is the PROFILE id that sessions and purchased
+        packages are keyed by - it is what POST /sessions/observations wants in its
+        body. Both are always present.'
       operationId: ListAthletes
       parameters:
       - name: search
@@ -757,12 +761,12 @@ paths:
         in: query
         schema:
           default: All
-          "$ref": "#/components/schemas/AthleteStatusFilter"
+          $ref: '#/components/schemas/AthleteStatusFilter'
       - name: sort
         in: query
         schema:
           default: NameAsc
-          "$ref": "#/components/schemas/AthleteListSort"
+          $ref: '#/components/schemas/AthleteListSort'
       - name: page
         in: query
         schema:
@@ -781,22 +785,22 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/PagedResultOfAthleteListItem"
+                $ref: '#/components/schemas/PagedResultOfAthleteListItem'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/athletes/{id}":
+  /api/v1/athletes/{id}:
     get:
       tags:
       - Athletes
@@ -819,28 +823,28 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/AthleteDetail"
+                $ref: '#/components/schemas/AthleteDetail'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/athletes/{id}/pause":
+  /api/v1/athletes/{id}/pause:
     post:
       tags:
       - Athletes
@@ -866,28 +870,28 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/AthleteStatusResponse"
+                $ref: '#/components/schemas/AthleteStatusResponse'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/athletes/{id}/reactivate":
+  /api/v1/athletes/{id}/reactivate:
     post:
       tags:
       - Athletes
@@ -909,28 +913,28 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/AthleteStatusResponse"
+                $ref: '#/components/schemas/AthleteStatusResponse'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/package-options":
+  /api/v1/package-options:
     get:
       tags:
       - Package options
@@ -954,19 +958,19 @@ paths:
               schema:
                 type: array
                 items:
-                  "$ref": "#/components/schemas/PackageOptionResponse"
+                  $ref: '#/components/schemas/PackageOptionResponse'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
     post:
@@ -986,7 +990,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/SavePackageOptionRequest"
+              $ref: '#/components/schemas/SavePackageOptionRequest'
         required: true
       responses:
         '201':
@@ -994,34 +998,34 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/PackageOptionResponse"
+                $ref: '#/components/schemas/PackageOptionResponse'
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '409':
           description: Conflict
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/package-options/{id}":
+  /api/v1/package-options/{id}:
     get:
       tags:
       - Package options
@@ -1043,25 +1047,25 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/PackageOptionResponse"
+                $ref: '#/components/schemas/PackageOptionResponse'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
     put:
@@ -1087,7 +1091,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/EditPackageOptionRequest"
+              $ref: '#/components/schemas/EditPackageOptionRequest'
         required: true
       responses:
         '200':
@@ -1095,40 +1099,40 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/PackageOptionResponse"
+                $ref: '#/components/schemas/PackageOptionResponse'
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '409':
           description: Conflict
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/package-options/{id}/archive":
+  /api/v1/package-options/{id}/archive:
     post:
       tags:
       - Package options
@@ -1150,7 +1154,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/PackageOptionVersionRequest"
+              $ref: '#/components/schemas/PackageOptionVersionRequest'
         required: true
       responses:
         '200':
@@ -1158,40 +1162,40 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/PackageOptionResponse"
+                $ref: '#/components/schemas/PackageOptionResponse'
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '409':
           description: Conflict
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/package-options/{id}/restore":
+  /api/v1/package-options/{id}/restore:
     post:
       tags:
       - Package options
@@ -1212,7 +1216,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/PackageOptionVersionRequest"
+              $ref: '#/components/schemas/PackageOptionVersionRequest'
         required: true
       responses:
         '200':
@@ -1220,40 +1224,40 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/PackageOptionResponse"
+                $ref: '#/components/schemas/PackageOptionResponse'
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '409':
           description: Conflict
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/athletes/{athleteId}/loyalty":
+  /api/v1/athletes/{athleteId}/loyalty:
     put:
       tags:
       - Pricing
@@ -1275,7 +1279,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/SetLoyaltyRequest"
+              $ref: '#/components/schemas/SetLoyaltyRequest'
         required: true
       responses:
         '200':
@@ -1283,28 +1287,28 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/LoyaltyResponse"
+                $ref: '#/components/schemas/LoyaltyResponse'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/athletes/{athleteId}/custom-prices":
+  /api/v1/athletes/{athleteId}/custom-prices:
     get:
       tags:
       - Pricing
@@ -1331,28 +1335,28 @@ paths:
               schema:
                 type: array
                 items:
-                  "$ref": "#/components/schemas/CustomPriceResponse"
+                  $ref: '#/components/schemas/CustomPriceResponse'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/athletes/{athleteId}/custom-prices/{packageOptionId}":
+  /api/v1/athletes/{athleteId}/custom-prices/{packageOptionId}:
     put:
       tags:
       - Pricing
@@ -1380,7 +1384,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/SetCustomPriceRequest"
+              $ref: '#/components/schemas/SetCustomPriceRequest'
         required: true
       responses:
         '200':
@@ -1388,31 +1392,31 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/CustomPriceResponse"
+                $ref: '#/components/schemas/CustomPriceResponse'
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
     delete:
@@ -1444,22 +1448,22 @@ paths:
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/athletes/{athleteId}/catalogue":
+  /api/v1/athletes/{athleteId}/catalogue:
     get:
       tags:
       - Pricing
@@ -1485,28 +1489,28 @@ paths:
               schema:
                 type: array
                 items:
-                  "$ref": "#/components/schemas/CatalogueItemResponse"
+                  $ref: '#/components/schemas/CatalogueItemResponse'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/scheduling/session-types":
+  /api/v1/scheduling/session-types:
     get:
       tags:
       - Scheduling
@@ -1530,28 +1534,28 @@ paths:
               schema:
                 type: array
                 items:
-                  "$ref": "#/components/schemas/BookableSessionType"
+                  $ref: '#/components/schemas/BookableSessionType'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '503':
           description: Service Unavailable
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/scheduling/session-types/{eventTypeId}/availability":
+  /api/v1/scheduling/session-types/{eventTypeId}/availability:
     get:
       tags:
       - Scheduling
@@ -1592,46 +1596,46 @@ paths:
               schema:
                 type: array
                 items:
-                  "$ref": "#/components/schemas/AvailableSlot"
+                  $ref: '#/components/schemas/AvailableSlot'
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '409':
           description: Conflict
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '503':
           description: Service Unavailable
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/scheduling/bookings":
+  /api/v1/scheduling/bookings:
     post:
       tags:
       - Scheduling
@@ -1660,7 +1664,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/BookSessionRequest"
+              $ref: '#/components/schemas/BookSessionRequest'
         required: true
       responses:
         '201':
@@ -1668,46 +1672,46 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/SessionResponse"
+                $ref: '#/components/schemas/SessionResponse'
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '409':
           description: Conflict
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '503':
           description: Service Unavailable
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/scheduling/refresh":
+  /api/v1/scheduling/refresh:
     post:
       tags:
       - Scheduling
@@ -1726,16 +1730,16 @@ paths:
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/sessions":
+  /api/v1/sessions:
     get:
       tags:
       - Sessions
@@ -1771,7 +1775,7 @@ paths:
       - name: status
         in: query
         schema:
-          "$ref": "#/components/schemas/SessionStatus"
+          $ref: '#/components/schemas/SessionStatus'
       - name: limit
         in: query
         required: true
@@ -1788,16 +1792,16 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/SessionPage"
+                $ref: '#/components/schemas/SessionPage'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/sessions/upcoming":
+  /api/v1/sessions/upcoming:
     get:
       tags:
       - Sessions
@@ -1821,16 +1825,16 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/SessionPage"
+                $ref: '#/components/schemas/SessionPage'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/sessions/{id}":
+  /api/v1/sessions/{id}:
     get:
       tags:
       - Sessions
@@ -1853,22 +1857,22 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/SessionResponse"
+                $ref: '#/components/schemas/SessionResponse'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/sessions/{id}/cancel":
+  /api/v1/sessions/{id}/cancel:
     post:
       tags:
       - Sessions
@@ -1891,7 +1895,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/CancelSessionRequest"
+              $ref: '#/components/schemas/CancelSessionRequest'
         required: true
       responses:
         '200':
@@ -1899,28 +1903,28 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/SessionResponse"
+                $ref: '#/components/schemas/SessionResponse'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '503':
           description: Service Unavailable
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/sessions/{id}/reschedule":
+  /api/v1/sessions/{id}/reschedule:
     get:
       tags:
       - Sessions
@@ -1944,22 +1948,22 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/RescheduleUrlResponse"
+                $ref: '#/components/schemas/RescheduleUrlResponse'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/athletes/{athleteId}/packages":
+  /api/v1/athletes/{athleteId}/packages:
     post:
       tags:
       - Packages
@@ -1985,7 +1989,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/PurchasePackageRequest"
+              $ref: '#/components/schemas/PurchasePackageRequest'
         required: true
       responses:
         '201':
@@ -1993,37 +1997,37 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/PurchasedPackageResponse"
+                $ref: '#/components/schemas/PurchasedPackageResponse'
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '409':
           description: Conflict
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
     get:
@@ -2050,28 +2054,28 @@ paths:
               schema:
                 type: array
                 items:
-                  "$ref": "#/components/schemas/PurchasedPackageResponse"
+                  $ref: '#/components/schemas/PurchasedPackageResponse'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/athletes/{athleteId}/packages/active":
+  /api/v1/athletes/{athleteId}/packages/active:
     get:
       tags:
       - Packages
@@ -2096,28 +2100,28 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/PurchasedPackageResponse"
+                $ref: '#/components/schemas/PurchasedPackageResponse'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/packages/{id}":
+  /api/v1/packages/{id}:
     get:
       tags:
       - Packages
@@ -2138,28 +2142,28 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/PurchasedPackageResponse"
+                $ref: '#/components/schemas/PurchasedPackageResponse'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/packages/{id}/close":
+  /api/v1/packages/{id}/close:
     post:
       tags:
       - Packages
@@ -2182,56 +2186,60 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/PurchasedPackageResponse"
+                $ref: '#/components/schemas/PurchasedPackageResponse'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '409':
           description: Conflict
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/sessions/{id}/attend":
+  /api/v1/sessions/{id}/attend:
     post:
       tags:
       - Attendance
       summary: Mark a session attended or a no-show, deducting once.
       description: 'The only endpoint that moves a package balance. outcome is Attended
-        or NoShow and defaults to Attended; Cancelled is not accepted here because
-        cancelling also has to reach Calendly and has its own endpoint. How much it
-        deducts is decided server-side and returned as consumedSessionCount: one for
-        an ordinary attended session (BR-05), one for an attended observation only
-        if it ran longer than an hour (BR-07), and for a no-show whatever this deployment''s
-        policy says - which is nothing by default. The response carries the session
-        and the package as they now stand, both changed in one transaction, so the
-        client can replace its copies without re-reading and without ever showing
-        a balance that did not exist. package and progress are null when the session
-        consumed nothing and the athlete has no active package. Marking a session
-        that is already Attended is 409 SESSION_ALREADY_ATTENDED, already a no-show
-        is 409 SESSION_ALREADY_RESOLVED, and cancelled is 409 SESSION_CANCELLED (BR-06).
-        Those are not failures to retry past - they mean the deduction has already
-        happened exactly once, or must never happen. A session that would deduct from
-        an athlete with no active package is 409 ACTIVE_PACKAGE_NOT_FOUND, and one
-        whose package is exhausted is 409 NO_SESSIONS_REMAINING. Two requests racing
-        produce one success and one 409 CONCURRENCY_CONFLICT, never two deductions.'
+        or NoShow and defaults to Attended. NoShow requires deductSession: true consumes
+        exactly one package session and false consumes none. deductSession must be
+        omitted for Attended. Cancelled is not accepted here because cancelling also
+        has to reach Calendly and has its own endpoint. How much it deducts is decided
+        server-side and returned as consumedSessionCount: one for an ordinary attended
+        session (BR-05), for an attended observation the deductSession choice the
+        Admin made when recording it (BR-07), and for a no-show the explicit deductSession
+        choice in this request. Note that those are two different fields: the one
+        on this request decides a no-show here and now, while an observation''s was
+        decided at creation and is reported as observationDeductsSession. The response
+        carries the session and the package as they now stand, both changed in one
+        transaction, so the client can replace its copies without re-reading and without
+        ever showing a balance that did not exist. package and progress are null when
+        the session consumed nothing and the athlete has no active package. Marking
+        a session that is already Attended is 409 SESSION_ALREADY_ATTENDED, already
+        a no-show is 409 SESSION_ALREADY_RESOLVED, and cancelled is 409 SESSION_CANCELLED
+        (BR-06). Those are not failures to retry past - they mean the deduction has
+        already happened exactly once, or must never happen. A session that would
+        deduct from an athlete with no active package is 409 ACTIVE_PACKAGE_NOT_FOUND,
+        and one whose package is exhausted is 409 NO_SESSIONS_REMAINING. Two requests
+        racing produce one success and one 409 CONCURRENCY_CONFLICT, never two deductions.'
       operationId: MarkSessionAttendance
       parameters:
       - name: id
@@ -2244,7 +2252,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/MarkAttendanceRequest"
+              $ref: '#/components/schemas/MarkAttendanceRequest'
         required: true
       responses:
         '200':
@@ -2252,40 +2260,40 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/AttendanceResponse"
+                $ref: '#/components/schemas/AttendanceResponse'
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '409':
           description: Conflict
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/sessions/{id}/package-progress":
+  /api/v1/sessions/{id}/package-progress:
     get:
       tags:
       - Attendance
@@ -2295,10 +2303,11 @@ paths:
         is the session's own position once it has been attended, and the position
         it would take if it has not been resolved yet, which is what Session Details
         shows before the coach taps Mark as Attended. It is null when no position
-        exists to state - a cancelled session, or a short observation that will never
-        consume one. 404 SESSION_NOT_FOUND covers an unknown session and someone else's
-        alike; an athlete with no package at all gets 404 PACKAGE_NOT_FOUND, which
-        is a normal state and not an error worth surfacing as one.
+        exists to state - a cancelled session, or an observation the Admin chose not
+        to deduct, neither of which will ever consume one. 404 SESSION_NOT_FOUND covers
+        an unknown session and someone else's alike; an athlete with no package at
+        all gets 404 PACKAGE_NOT_FOUND, which is a normal state and not an error worth
+        surfacing as one.
       operationId: GetSessionPackageProgress
       parameters:
       - name: id
@@ -2313,41 +2322,45 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/SessionPackageProgress"
+                $ref: '#/components/schemas/SessionPackageProgress'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/sessions/observations":
+  /api/v1/sessions/observations:
     post:
       tags:
       - Attendance
       summary: Record an observation the coach carried out.
-      description: The one kind of session this API creates itself. Observations are
-        arranged in person and never appear on a Calendly booking page, so the coach
-        records one after the fact; everything else is projected from Calendly and
-        cannot be created here. The session is created Scheduled and deducts nothing
-        yet - a booking never deducts (BR-04) - and is then marked attended like any
-        other, at which point it consumes one session only if it ran longer than an
-        hour (BR-07). startUtc and endUtc must both be UTC and in order, and may not
-        span more than a day. athleteProfileId is the profile id carried on every
-        session, not the athlete's user id.
+      description: 'The one kind of session this API creates itself. Observations
+        are arranged in person and never appear on a Calendly booking page, so the
+        coach records one directly; everything else is projected from Calendly and
+        cannot be created here. The dates may be in the past or the future - an observation
+        already carried out, or one agreed for next week. deductSession is required
+        and is the Admin''s explicit choice about whether attending this observation
+        consumes one package session (BR-07): true consumes exactly one, false consumes
+        none, and duration has no bearing on it. Creating the observation deducts
+        nothing whichever is chosen - the session is created Scheduled and a booking
+        never deducts (BR-04). The choice is stored, returned as observationDeductsSession,
+        and applied when the session is marked attended. startUtc and endUtc must
+        both be UTC and in order, and may not span more than a day. athleteProfileId
+        is the profile id carried on every session, not the athlete''s user id.'
       operationId: CreateObservation
       requestBody:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/CreateObservationRequest"
+              $ref: '#/components/schemas/CreateObservationRequest'
         required: true
       responses:
         '201':
@@ -2355,34 +2368,34 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/SessionResponse"
+                $ref: '#/components/schemas/SessionResponse'
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/sessions/{sessionId}/notes":
+  /api/v1/sessions/{sessionId}/notes:
     get:
       tags:
       - Session notes
@@ -2406,25 +2419,25 @@ paths:
               schema:
                 type: array
                 items:
-                  "$ref": "#/components/schemas/SessionNoteResponse"
+                  $ref: '#/components/schemas/SessionNoteResponse'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
     post:
@@ -2449,7 +2462,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/SaveSessionNoteRequest"
+              $ref: '#/components/schemas/SaveSessionNoteRequest'
         required: true
       responses:
         '201':
@@ -2457,34 +2470,34 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/SessionNoteResponse"
+                $ref: '#/components/schemas/SessionNoteResponse'
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
-  "/api/v1/sessions/{sessionId}/notes/{noteId}":
+  /api/v1/sessions/{sessionId}/notes/{noteId}:
     put:
       tags:
       - Session notes
@@ -2511,7 +2524,7 @@ paths:
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/SaveSessionNoteRequest"
+              $ref: '#/components/schemas/SaveSessionNoteRequest'
         required: true
       responses:
         '200':
@@ -2519,31 +2532,31 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/SessionNoteResponse"
+                $ref: '#/components/schemas/SessionNoteResponse'
         '400':
           description: Bad Request
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '401':
           description: Unauthorized
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
     delete:
@@ -2575,19 +2588,19 @@ paths:
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '403':
           description: Forbidden
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
           content:
             application/problem+json:
               schema:
-                "$ref": "#/components/schemas/ApiProblemDetails"
+                $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
 components:
@@ -2717,7 +2730,7 @@ components:
         gender:
           oneOf:
           - type: 'null'
-          - "$ref": "#/components/schemas/Gender"
+          - $ref: '#/components/schemas/Gender'
         sport:
           type:
           - 'null'
@@ -2725,7 +2738,7 @@ components:
         isLoyal:
           type: boolean
         status:
-          "$ref": "#/components/schemas/UserStatus"
+          $ref: '#/components/schemas/UserStatus'
         profileCompleted:
           type: boolean
         createdAtUtc:
@@ -2734,6 +2747,7 @@ components:
     AthleteListItem:
       required:
       - id
+      - athleteProfileId
       - fullName
       - email
       - sport
@@ -2743,6 +2757,9 @@ components:
       type: object
       properties:
         id:
+          type: string
+          format: uuid
+        athleteProfileId:
           type: string
           format: uuid
         fullName:
@@ -2758,7 +2775,7 @@ components:
         isLoyal:
           type: boolean
         status:
-          "$ref": "#/components/schemas/UserStatus"
+          $ref: '#/components/schemas/UserStatus'
         createdAtUtc:
           type: string
           format: date-time
@@ -2796,7 +2813,7 @@ components:
         gender:
           oneOf:
           - type: 'null'
-          - "$ref": "#/components/schemas/Gender"
+          - $ref: '#/components/schemas/Gender'
         sport:
           type:
           - 'null'
@@ -2819,7 +2836,12 @@ components:
           type: string
           format: uuid
         status:
-          "$ref": "#/components/schemas/UserStatus"
+          $ref: '#/components/schemas/UserStatus'
+    AttendanceOutcome:
+      enum:
+      - Attended
+      - NoShow
+      type: string
     AttendanceResponse:
       required:
       - session
@@ -2829,18 +2851,18 @@ components:
       type: object
       properties:
         session:
-          "$ref": "#/components/schemas/SessionResponse"
+          $ref: '#/components/schemas/SessionResponse'
         consumedSessionCount:
           type: integer
           format: int32
         package:
           oneOf:
           - type: 'null'
-          - "$ref": "#/components/schemas/PurchasedPackageResponse"
+          - $ref: '#/components/schemas/PurchasedPackageResponse'
         progress:
           oneOf:
           - type: 'null'
-          - "$ref": "#/components/schemas/SessionPackageProgress"
+          - $ref: '#/components/schemas/SessionPackageProgress'
     AuthResponse:
       required:
       - accessToken
@@ -2861,7 +2883,7 @@ components:
           type: integer
           format: int32
         user:
-          "$ref": "#/components/schemas/UserSummary"
+          $ref: '#/components/schemas/UserSummary'
     AvailableSlot:
       required:
       - startUtc
@@ -2903,11 +2925,11 @@ components:
           type: integer
           format: int32
         deliveryType:
-          "$ref": "#/components/schemas/DeliveryType"
+          $ref: '#/components/schemas/DeliveryType'
         locations:
           type: array
           items:
-            "$ref": "#/components/schemas/BookableLocation"
+            $ref: '#/components/schemas/BookableLocation'
     BookSessionRequest:
       required:
       - eventTypeId
@@ -2990,7 +3012,7 @@ components:
           type: string
           format: date
         gender:
-          "$ref": "#/components/schemas/Gender"
+          $ref: '#/components/schemas/Gender'
         sport:
           type: string
     CreateInvitationRequest:
@@ -3005,6 +3027,7 @@ components:
       - athleteProfileId
       - startUtc
       - endUtc
+      - deductSession
       type: object
       properties:
         athleteProfileId:
@@ -3016,6 +3039,17 @@ components:
         endUtc:
           type: string
           format: date-time
+        deductSession:
+          type:
+          - 'null'
+          - boolean
+          description: 'Required. The Admin''s explicit choice about whether attending
+            this observation consumes one package session (BR-07): true consumes exactly
+            one, false consumes none, and duration has no bearing on it. Nothing is
+            deducted when the observation is created - the choice is stored and applied
+            when it is marked attended. Nullable here only so that an omitted field
+            and an explicit null are both rejected with 400 rather than silently becoming
+            false; null is never a valid value to send.'
         locationOrPlatform:
           type:
           - 'null'
@@ -3037,9 +3071,9 @@ components:
           type: string
           format: uuid
         role:
-          "$ref": "#/components/schemas/UserRole"
+          $ref: '#/components/schemas/UserRole'
         status:
-          "$ref": "#/components/schemas/UserStatus"
+          $ref: '#/components/schemas/UserStatus'
         fullName:
           type:
           - 'null'
@@ -3054,7 +3088,7 @@ components:
         athleteListSort:
           oneOf:
           - type: 'null'
-          - "$ref": "#/components/schemas/AthleteListSort"
+          - $ref: '#/components/schemas/AthleteListSort'
         minimumSupportedAppVersion:
           type: string
     CustomPriceResponse:
@@ -3155,7 +3189,7 @@ components:
         email:
           type: string
         status:
-          "$ref": "#/components/schemas/InvitationStatus"
+          $ref: '#/components/schemas/InvitationStatus'
         expiresAtUtc:
           type: string
           format: date-time
@@ -3212,7 +3246,11 @@ components:
       type: object
       properties:
         outcome:
-          "$ref": "#/components/schemas/SessionStatus"
+          $ref: '#/components/schemas/AttendanceOutcome'
+        deductSession:
+          type:
+          - 'null'
+          - boolean
     PackageOptionResponse:
       required:
       - id
@@ -3280,7 +3318,7 @@ components:
         items:
           type: array
           items:
-            "$ref": "#/components/schemas/AthleteListItem"
+            $ref: '#/components/schemas/AthleteListItem'
         page:
           type: integer
           format: int32
@@ -3305,7 +3343,7 @@ components:
         athleteListSort:
           oneOf:
           - type: 'null'
-          - "$ref": "#/components/schemas/AthleteListSort"
+          - $ref: '#/components/schemas/AthleteListSort'
     PurchasedPackageResponse:
       required:
       - id
@@ -3361,7 +3399,7 @@ components:
           - string
           format: date
         status:
-          "$ref": "#/components/schemas/PurchasedPackageStatus"
+          $ref: '#/components/schemas/PurchasedPackageStatus'
         notes:
           type:
           - 'null'
@@ -3543,7 +3581,7 @@ components:
         items:
           type: array
           items:
-            "$ref": "#/components/schemas/SessionResponse"
+            $ref: '#/components/schemas/SessionResponse'
         nextCursor:
           type:
           - 'null'
@@ -3561,6 +3599,7 @@ components:
       - locationOrPlatform
       - meetingUrl
       - rescheduleUrl
+      - observationDeductsSession
       type: object
       properties:
         id:
@@ -3581,9 +3620,9 @@ components:
           type: integer
           format: int32
         deliveryType:
-          "$ref": "#/components/schemas/DeliveryType"
+          $ref: '#/components/schemas/DeliveryType'
         status:
-          "$ref": "#/components/schemas/SessionStatus"
+          $ref: '#/components/schemas/SessionStatus'
         locationOrPlatform:
           type:
           - 'null'
@@ -3596,6 +3635,17 @@ components:
           type:
           - 'null'
           - string
+        observationDeductsSession:
+          type:
+          - 'null'
+          - boolean
+          description: 'Whether marking this session Attended will consume a package
+            session - the Admin''s explicit choice, made when the observation was
+            recorded (BR-07). A boolean on every session whose deliveryType is Observation,
+            and null on Online and FaceToFace sessions, which follow BR-05 and have
+            no such choice to report. The schema cannot express that condition, so
+            it is stated here: a null on an Observation is a contract violation, not
+            a "no".'
     SessionStatus:
       enum:
       - Scheduled
@@ -3626,7 +3676,7 @@ components:
       type: object
       properties:
         athleteListSort:
-          "$ref": "#/components/schemas/AthleteListSort"
+          $ref: '#/components/schemas/AthleteListSort'
     UserRole:
       enum:
       - Admin
@@ -3653,9 +3703,9 @@ components:
           type: string
           format: uuid
         role:
-          "$ref": "#/components/schemas/UserRole"
+          $ref: '#/components/schemas/UserRole'
         status:
-          "$ref": "#/components/schemas/UserStatus"
+          $ref: '#/components/schemas/UserStatus'
         fullName:
           type:
           - 'null'
@@ -3667,7 +3717,7 @@ components:
         athleteListSort:
           oneOf:
           - type: 'null'
-          - "$ref": "#/components/schemas/AthleteListSort"
+          - $ref: '#/components/schemas/AthleteListSort'
     ValidateInvitationResponse:
       required:
       - email

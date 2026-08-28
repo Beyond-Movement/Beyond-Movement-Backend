@@ -29,6 +29,14 @@ public sealed class CreateObservationValidator : AbstractValidator<CreateObserva
     {
         RuleFor(x => x.AthleteProfileId).NotEmpty();
 
+        // BR-07. NotNull rather than NotEmpty: NotEmpty on a bool? treats false as empty, and
+        // false is the answer the Admin most often means to give.
+        RuleFor(x => x.DeductSession).NotNull()
+            .WithName("deductSession")
+            .WithMessage("deductSession is required: choose whether this observation consumes a session.");
+
+        // Deliberately no rule against a start in the future. An observation may be recorded
+        // ahead of time, and only the range below constrains how far apart the two dates sit.
         RuleFor(x => x.StartUtc).Must(x => x.Kind == DateTimeKind.Utc)
             .WithMessage("StartUtc must be UTC.");
 

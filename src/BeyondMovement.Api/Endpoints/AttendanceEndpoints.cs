@@ -32,12 +32,17 @@ public static class AttendanceEndpoints
             .WithSummary("Mark a session attended or a no-show, deducting once.")
             .WithDescription(
                 "The only endpoint that moves a package balance. outcome is Attended or NoShow " +
-                "and defaults to Attended; Cancelled is not accepted here because cancelling also " +
+                "and defaults to Attended. NoShow requires deductSession: true consumes exactly " +
+                "one package session and false consumes none. deductSession must be omitted for " +
+                "Attended. Cancelled is not accepted here because cancelling also " +
                 "has to reach Calendly and has its own endpoint. " +
                 "How much it deducts is decided server-side and returned as consumedSessionCount: " +
-                "one for an ordinary attended session (BR-05), one for an attended observation " +
-                "only if it ran longer than an hour (BR-07), and for a no-show whatever this " +
-                "deployment's policy says - which is nothing by default. " +
+                "one for an ordinary attended session (BR-05), for an attended observation the " +
+                "deductSession choice the Admin made when recording it (BR-07), and for a no-show " +
+                "the explicit deductSession choice in this request. Note that those are two " +
+                "different fields: the one on this request decides a no-show here and now, while " +
+                "an observation's was decided at creation and is reported as " +
+                "observationDeductsSession. " +
                 "The response carries the session and the package as they now stand, both changed " +
                 "in one transaction, so the client can replace its copies without re-reading and " +
                 "without ever showing a balance that did not exist. package and progress are null " +
@@ -66,8 +71,8 @@ public static class AttendanceEndpoints
                 "sessionNumber is the session's own position once it has been attended, and the " +
                 "position it would take if it has not been resolved yet, which is what Session " +
                 "Details shows before the coach taps Mark as Attended. It is null when no " +
-                "position exists to state - a cancelled session, or a short observation that will " +
-                "never consume one. " +
+                "position exists to state - a cancelled session, or an observation the Admin chose " +
+                "not to deduct, neither of which will ever consume one. " +
                 "404 SESSION_NOT_FOUND covers an unknown session and someone else's alike; an " +
                 "athlete with no package at all gets 404 PACKAGE_NOT_FOUND, which is a normal " +
                 "state and not an error worth surfacing as one.")
@@ -82,10 +87,15 @@ public static class AttendanceEndpoints
             .WithDescription(
                 "The one kind of session this API creates itself. Observations are arranged in " +
                 "person and never appear on a Calendly booking page, so the coach records one " +
-                "after the fact; everything else is projected from Calendly and cannot be created " +
-                "here. The session is created Scheduled and deducts nothing yet - a booking never " +
-                "deducts (BR-04) - and is then marked attended like any other, at which point it " +
-                "consumes one session only if it ran longer than an hour (BR-07). " +
+                "directly; everything else is projected from Calendly and cannot be created " +
+                "here. The dates may be in the past or the future - an observation already " +
+                "carried out, or one agreed for next week. " +
+                "deductSession is required and is the Admin's explicit choice about whether " +
+                "attending this observation consumes one package session (BR-07): true consumes " +
+                "exactly one, false consumes none, and duration has no bearing on it. Creating " +
+                "the observation deducts nothing whichever is chosen - the session is created " +
+                "Scheduled and a booking never deducts (BR-04). The choice is stored, returned " +
+                "as observationDeductsSession, and applied when the session is marked attended. " +
                 "startUtc and endUtc must both be UTC and in order, and may not span more than a " +
                 "day. athleteProfileId is the profile id carried on every session, not the " +
                 "athlete's user id.")
@@ -105,12 +115,20 @@ public static class AttendanceEndpoints
         // Validated inline rather than with a validator: the only rule is that the outcome is one
         // of two enum values, and an unmapped value has to be rejected before it reaches the
         // domain, which treats it as a caller bug and throws.
-        if (request.Outcome is not (SessionStatus.Attended or SessionStatus.NoShow))
+        if (request.Outcome is not (AttendanceOutcome.Attended or AttendanceOutcome.NoShow))
             return OutcomeInvalid.ToProblem(http);
+
+        if (request.Outcome == AttendanceOutcome.NoShow
+            && (!request.HasDeductSession || request.DeductSession is null))
+            return DeductSessionRequired.ToProblem(http);
+
+        if (request.Outcome == AttendanceOutcome.Attended && request.HasDeductSession)
+            return DeductSessionNotAllowed.ToProblem(http);
 
         if (!principal.TryGetIdentity(out var actorUserId, out var coachId)) return Results.Unauthorized();
 
-        var result = await service.ResolveAsync(coachId, actorUserId, id, request.Outcome, ct);
+        var result = await service.ResolveAsync(
+            coachId, actorUserId, id, request.Outcome, request.DeductSession, ct);
 
         return result.IsSuccess ? Results.Ok(result.Value) : result.Error!.ToProblem(http);
     }
@@ -157,8 +175,11 @@ public static class AttendanceEndpoints
 
         if (athlete is null) return PricingErrors.AthleteNotFound.ToProblem(http);
 
+        // Validation guarantees DeductSession is present; the domain takes a plain bool so the
+        // choice cannot go missing between here and the database.
         var session = Session.CreateObservation(coachId, request.AthleteProfileId,
-            request.StartUtc, request.EndUtc, request.LocationOrPlatform, clock.UtcNow);
+            request.StartUtc, request.EndUtc, request.LocationOrPlatform,
+            request.DeductSession!.Value, clock.UtcNow);
 
         db.Sessions.Add(session);
         await db.SaveChangesAsync(ct);
@@ -168,4 +189,10 @@ public static class AttendanceEndpoints
 
     private static readonly Error OutcomeInvalid = new(ApiErrorCodes.ValidationFailed,
         "outcome must be Attended or NoShow.", StatusCodes.Status400BadRequest);
+
+    private static readonly Error DeductSessionRequired = new(ApiErrorCodes.ValidationFailed,
+        "deductSession is required when outcome is NoShow.", StatusCodes.Status400BadRequest);
+
+    private static readonly Error DeductSessionNotAllowed = new(ApiErrorCodes.ValidationFailed,
+        "deductSession must be omitted when outcome is Attended.", StatusCodes.Status400BadRequest);
 }

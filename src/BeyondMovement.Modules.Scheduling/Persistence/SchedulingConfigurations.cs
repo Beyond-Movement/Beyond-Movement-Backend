@@ -19,6 +19,13 @@ public sealed class SessionConfiguration : IEntityTypeConfiguration<Session>
             // actually happened may record having consumed one.
             t.HasCheckConstraint("CK_Sessions_ConsumedOnlyWhenResolved",
                 "\"ConsumedSessionCount\" = 0 OR \"Status\" IN ('Attended', 'NoShow')");
+
+            // BR-07. The Admin's deduction choice belongs to observations and only to them, so
+            // the column is non-null exactly when the session is one. Stated here because the
+            // generated schema cannot express "required for this delivery type"; the database
+            // can, and it is the one place the rule cannot be forgotten.
+            t.HasCheckConstraint("CK_Sessions_ObservationDeductsSession",
+                "(\"DeliveryType\" = 'Observation') = (\"ObservationDeductsSession\" IS NOT NULL)");
         });
         b.HasKey(x => x.Id);
         // Nullable since Phase 6: an Observation is recorded by the Admin and has no Calendly

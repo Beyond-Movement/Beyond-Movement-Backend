@@ -382,7 +382,7 @@ Give the coach a clear snapshot of practice activity and items needing attention
 
 - Cancelled sessions do not count as delivered sessions.
 
-- Observation records longer than one hour consume one session.
+- An observation consumes one session when the Admin chose that when recording it (BR-07).
 
 **Primary screens**
 
@@ -566,7 +566,7 @@ Keep the current Calendly workflow while showing bookings inside the platform.
 
 - No-show deduction remains configurable; Version 1 default is no deduction unless the Admin marks the session attended or explicitly overrides according to business policy.
 
-- Observations longer than one hour consume one session.
+- An observation consumes one session when the Admin chose that when recording it (BR-07).
 
 **Primary screens**
 
@@ -1033,7 +1033,7 @@ The following entities describe the information the system must store. This is n
 | **BR-04** | A booking never deducts a package session.                                  |
 | **BR-05** | A session is deducted only after the Admin marks it Attended.               |
 | **BR-06** | Cancelled sessions do not consume a session.                                |
-| **BR-07** | Observation work longer than one hour consumes one session.                 |
+| **BR-07** | An observation consumes one session when the Admin chose that when recording it. |
 | **BR-08** | The athlete is notified at one remaining session.                           |
 | **BR-09** | The athlete is notified again when the package reaches zero.                |
 | **BR-10** | Paused athletes cannot log in.                                              |

@@ -6,7 +6,6 @@ using BeyondMovement.Modules.Scheduling.Contracts;
 using BeyondMovement.Modules.Scheduling.Domain;
 using BeyondMovement.SharedKernel;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 
 namespace BeyondMovement.Api.Attendance;
 
@@ -35,11 +34,11 @@ namespace BeyondMovement.Api.Attendance;
 /// double-tapped button is the better answer anyway.
 /// </para>
 /// </summary>
-public sealed class AttendanceService(
-    AppDbContext db, IClock clock, IAuditLogger audit, IOptionsSnapshot<FeatureOptions> features)
+public sealed class AttendanceService(AppDbContext db, IClock clock, IAuditLogger audit)
 {
     public async Task<Result<AttendanceResponse>> ResolveAsync(
-        Guid coachId, Guid actorUserId, Guid sessionId, SessionStatus outcome, CancellationToken ct)
+        Guid coachId, Guid actorUserId, Guid sessionId, AttendanceOutcome outcome,
+        bool? deductSession, CancellationToken ct)
     {
         var session = await db.Sessions.FirstOrDefaultAsync(x => x.Id == sessionId && x.CoachId == coachId, ct);
 
@@ -51,10 +50,37 @@ public sealed class AttendanceService(
         if (athleteName is null)
             return Result<AttendanceResponse>.Failure(SchedulingErrors.SessionNotFound);
 
-        var consumed = session.ConsumptionFor(outcome, features.Value.NoShowDeducts);
+        // Resolve rejects these states too, but this guard must run before package lookup. If the
+        // first request consumed the package's final session, a retry still reports that the
+        // session was already resolved rather than incorrectly claiming there is no package.
+        var alreadyResolved = session.Status switch
+        {
+            SessionStatus.Attended => SchedulingErrors.SessionAlreadyAttended,
+            SessionStatus.NoShow => SchedulingErrors.SessionAlreadyResolved,
+            SessionStatus.Cancelled => SchedulingErrors.SessionCancelled,
+            _ => null
+        };
+
+        if (alreadyResolved is not null)
+            return Result<AttendanceResponse>.Failure(alreadyResolved);
+
+        var sessionOutcome = outcome switch
+        {
+            AttendanceOutcome.Attended => SessionStatus.Attended,
+            AttendanceOutcome.NoShow => SessionStatus.NoShow,
+            _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "Unknown attendance outcome.")
+        };
+
+        // Attended defers to the session: one for an ordinary session (BR-05), and for an
+        // observation the choice the Admin recorded when creating it (BR-07). A no-show is the
+        // coach's explicit decision for this one session; endpoint validation guarantees it is
+        // present. Two different deductSession fields, deliberately: one decided then, one now.
+        var consumed = outcome == AttendanceOutcome.NoShow
+            ? deductSession == true ? 1 : 0
+            : session.ConsumptionFor(SessionStatus.Attended, noShowDeducts: false);
 
         // The package is only fetched when something is actually going to be taken off it. A
-        // short observation and a non-deducting no-show are recorded for an athlete who has no
+        // non-deducting observation and a non-deducting no-show are recorded for an athlete who has no
         // package at all, which is a real situation and not an error.
         PurchasedPackage? package = null;
 
@@ -73,7 +99,7 @@ public sealed class AttendanceService(
         // marked attended against a balance that never moved is the failure this prevents.
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
-        var resolved = session.Resolve(outcome, consumed, actorUserId, clock.UtcNow);
+        var resolved = session.Resolve(sessionOutcome, consumed, actorUserId, clock.UtcNow);
 
         if (resolved.IsFailure)
             return Result<AttendanceResponse>.Failure(resolved.Error!);
@@ -95,7 +121,7 @@ public sealed class AttendanceService(
             // Consumed value moving is exactly what the audit log exists for. Inside the
             // transaction, so a rolled-back deduction cannot leave behind a log entry claiming
             // it happened.
-            await audit.WriteAsync($"Session{outcome}", actorUserId,
+            await audit.WriteAsync($"Session{sessionOutcome}", actorUserId,
                 $"session={session.Id} athleteProfile={session.AthleteProfileId} consumed={consumed}" +
                 (package is null ? string.Empty : $" package={package.Id} remaining={package.RemainingSessions}"), ct);
 
@@ -148,7 +174,7 @@ public sealed class AttendanceService(
         else
         {
             // Not resolved yet, or resolved without consuming. Only the first has a position to
-            // predict; a short observation never takes one, and saying "Session 7 of 12" about
+            // predict; a non-deducting observation never takes one, and saying "Session 7 of 12" about
             // it would be wrong in a way nobody would catch.
             number = session.Status == SessionStatus.Scheduled && package.RemainingSessions > 0
                 ? package.UsedSessions + 1

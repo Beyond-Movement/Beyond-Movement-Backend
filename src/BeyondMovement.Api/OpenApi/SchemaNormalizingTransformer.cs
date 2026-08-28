@@ -5,6 +5,7 @@ using BeyondMovement.Modules.Packages;
 using BeyondMovement.Modules.Packages.Contracts;
 using BeyondMovement.Modules.Packages.Domain;
 using BeyondMovement.Modules.Scheduling;
+using BeyondMovement.Modules.Scheduling.Contracts;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.OpenApi;
 
@@ -57,8 +58,45 @@ public sealed class SchemaNormalizingTransformer : IOpenApiSchemaTransformer
             DeclareErrorCodeValues(schema);
 
         DeclareLimits(schema, context.JsonTypeInfo.Type);
+        DeclareConditionalFields(schema, context.JsonTypeInfo.Type);
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Two fields whose rule the schema itself cannot state, written into the contract so a
+    /// reader is not left to infer it from a bare nullable boolean.
+    /// <para>
+    /// OpenAPI has no way to say "required when deliveryType is Observation, null otherwise"
+    /// short of splitting <c>SessionResponse</c> into one schema per delivery type, which would
+    /// be a far larger change to the app's read path than the rule is worth. The condition is
+    /// stated in prose here instead, on the property it governs, so it travels with the field
+    /// rather than living only in the endpoint description.
+    /// </para>
+    /// </summary>
+    private static void DeclareConditionalFields(OpenApiSchema schema, Type type)
+    {
+        if (type == typeof(CreateObservationRequest))
+        {
+            Limit(schema, "deductSession", s => s.Description =
+                "Required. The Admin's explicit choice about whether attending this observation " +
+                "consumes one package session (BR-07): true consumes exactly one, false consumes " +
+                "none, and duration has no bearing on it. Nothing is deducted when the " +
+                "observation is created - the choice is stored and applied when it is marked " +
+                "attended. Nullable here only so that an omitted field and an explicit null are " +
+                "both rejected with 400 rather than silently becoming false; null is never a " +
+                "valid value to send.");
+        }
+        else if (type == typeof(SessionResponse))
+        {
+            Limit(schema, "observationDeductsSession", s => s.Description =
+                "Whether marking this session Attended will consume a package session - the " +
+                "Admin's explicit choice, made when the observation was recorded (BR-07). A " +
+                "boolean on every session whose deliveryType is Observation, and null on Online " +
+                "and FaceToFace sessions, which follow BR-05 and have no such choice to report. " +
+                "The schema cannot express that condition, so it is stated here: a null on an " +
+                "Observation is a contract violation, not a \"no\".");
+        }
     }
 
     /// <summary>

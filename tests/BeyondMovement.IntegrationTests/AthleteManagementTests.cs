@@ -124,6 +124,36 @@ public sealed class AthleteManagementTests(AthleteApiFactory factory) : IClassFi
     }
 
     [Fact]
+    public async Task Every_row_carries_both_the_user_id_and_the_profile_id()
+    {
+        var admin = await AdminClientAsync();
+
+        var page = await ListAsync(admin, "?search=alex@nowhere");
+        var athlete = Assert.Single(page.GetProperty("items").EnumerateArray().ToList());
+
+        var userId = athlete.GetProperty("id").GetGuid();
+        var profileId = athlete.GetProperty("athleteProfileId").GetGuid();
+
+        Assert.NotEqual(Guid.Empty, profileId);
+
+        // The two are different ids for different things, and the whole reason the row carries
+        // both: /athletes/{athleteId} takes the user id, while sessions and packages are keyed
+        // by the profile id. Asserting they differ is what would catch the wrong one being
+        // mapped — a bug that would otherwise only surface as a 404 in the mobile app.
+        Assert.NotEqual(userId, profileId);
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var expected = await db.AthleteProfiles.AsNoTracking()
+            .Where(x => x.UserId == userId)
+            .Select(x => x.Id)
+            .SingleAsync();
+
+        Assert.Equal(expected, profileId);
+    }
+
+    [Fact]
     public async Task Every_row_carries_an_email_even_when_it_has_no_name()
     {
         var admin = await AdminClientAsync();

@@ -115,7 +115,7 @@ public sealed class PurchasedPackage
         ArgumentOutOfRangeException.ThrowIfNegative(count);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(count, 1);
 
-        // A short observation is attended and consumes nothing (BR-07). It is not a failure and
+        // A non-deducting observation is attended and consumes nothing (BR-07). It is not a failure and
         // must not touch the balance, the status or the row version.
         if (count == 0)
             return Result.Success();

@@ -36,10 +36,23 @@ public sealed class Session
     /// What this session actually took off a package — <c>0</c> or <c>1</c>, and the anchor of
     /// exactly-once deduction. Because the session records what it consumed, the deduction is
     /// verifiable after the fact rather than being inferred from a balance, and a reversal knows
-    /// exactly how much to give back. A short observation (BR-07) and a non-deducting no-show
-    /// (A-04) both record <c>0</c>.
+    /// exactly how much to give back. An observation the Admin chose not to deduct (BR-07) and a
+    /// non-deducting no-show (A-04) both record <c>0</c>.
     /// </summary>
     public int ConsumedSessionCount { get; private set; }
+
+    /// <summary>
+    /// The Admin's explicit answer, given when the observation was recorded, to whether attending
+    /// it consumes a package session (BR-07). Non-null exactly when <see cref="DeliveryType"/> is
+    /// Observation, and null for everything Calendly books, which follows BR-05 instead.
+    /// <para>
+    /// Stored rather than derived, because the decision is made at creation and applied at Attend
+    /// — and because the rule it replaced read <see cref="DurationMinutes"/>, a value a Calendly
+    /// reschedule can move under a session. What the Admin chose has to outlive that.
+    /// </para>
+    /// </summary>
+    public bool? ObservationDeductsSession { get; private set; }
+
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
     public uint Version { get; private set; }
@@ -118,19 +131,21 @@ public sealed class Session
     }
 
     /// <summary>
-    /// BR-07 — observation work <b>longer than</b> one hour consumes a session. Strictly longer:
-    /// an hour exactly is not longer than an hour, and a rule about a threshold is worth being
-    /// unambiguous about, since a 60-minute observation is the common case.
-    /// </summary>
-    public const int ObservationDeductionThresholdMinutes = 60;
-
-    /// <summary>
     /// A session this API created rather than Calendly. Observations are the only such sessions
     /// (A-03): they are arranged in person and never appear on a booking page, so the Admin
-    /// records one after the fact and the same Mark as Attended action deducts it.
+    /// records one directly — for a date already past, or one still to come — and the same Mark
+    /// as Attended action later applies <paramref name="deductsSession"/>.
+    /// <para>
+    /// Creating one deducts nothing whatever <paramref name="deductsSession"/> says: the session
+    /// starts Scheduled, and a scheduled session has never taken anything (BR-04).
+    /// </para>
     /// </summary>
+    /// <param name="deductsSession">
+    /// The Admin's explicit choice, recorded now and applied at Attend. Required — there is no
+    /// default, because inferring one is exactly what BR-07 used to do.
+    /// </param>
     public static Session CreateObservation(Guid coachId, Guid athleteProfileId, DateTime startUtc,
-        DateTime endUtc, string? locationOrPlatform, DateTime nowUtc) => new()
+        DateTime endUtc, string? locationOrPlatform, bool deductsSession, DateTime nowUtc) => new()
         {
             CoachId = coachId,
             AthleteProfileId = athleteProfileId,
@@ -139,6 +154,7 @@ public sealed class Session
             DurationMinutes = checked((int)(EnsureUtc(endUtc) - EnsureUtc(startUtc)).TotalMinutes),
             DeliveryType = DeliveryType.Observation,
             LocationOrPlatform = locationOrPlatform,
+            ObservationDeductsSession = deductsSession,
             CreatedAtUtc = nowUtc,
             UpdatedAtUtc = nowUtc
         };
@@ -149,7 +165,8 @@ public sealed class Session
     /// deduction rules meet, so no caller has to remember any of them:
     /// <list type="bullet">
     /// <item>An ordinary attended session consumes one (BR-05).</item>
-    /// <item>An attended <b>observation</b> consumes one only if it ran longer than an hour (BR-07).</item>
+    /// <item>An attended <b>observation</b> consumes one exactly when the Admin said it should
+    /// when recording it (BR-07). Duration has nothing to do with it.</item>
     /// <item>A no-show consumes what the deployment's policy says, which defaults to nothing (A-04).</item>
     /// </list>
     /// Cancelled and scheduled sessions consume nothing — a booking never deducts (BR-04) and a
@@ -157,8 +174,10 @@ public sealed class Session
     /// </summary>
     public int ConsumptionFor(SessionStatus outcome, bool noShowDeducts) => outcome switch
     {
+        // == true, not ?? throw: the column is only null on a row that predates the choice, and
+        // an observation whose decision was never recorded must not invent one and deduct.
         SessionStatus.Attended when DeliveryType == DeliveryType.Observation =>
-            DurationMinutes > ObservationDeductionThresholdMinutes ? 1 : 0,
+            ObservationDeductsSession == true ? 1 : 0,
         SessionStatus.Attended => 1,
         SessionStatus.NoShow => noShowDeducts ? 1 : 0,
         _ => 0

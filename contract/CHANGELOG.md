@@ -7,7 +7,137 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ---
 
+## Phase 6E — An observation's deduction becomes the Admin's explicit choice
+
+**Breaking, in both directions.** `CreateObservationRequest` gains a required field,
+`SessionResponse` gains one, and `AthleteListItem` gains one. Regenerate the Flutter client
+before building against this.
+
+### `AthleteListItem` now carries `athleteProfileId`
+
+`GET /api/v1/athletes` previously returned only `id`, the athlete's **user** id. Creating an
+observation needs the **profile** id, so the app had no way to get from "coach picked an athlete"
+to `POST /sessions/observations` without a second lookup it should never have needed.
+
+Every row now carries both:
+
+```json
+{
+  "id": "…",                 // user id — what /athletes/{athleteId} paths take
+  "athleteProfileId": "…"    // profile id — what sessions and packages are keyed by
+}
+```
+
+`athleteProfileId` is a required, non-null UUID on every row. It cannot be absent: the list is a
+join over `AthleteProfiles`, so a row without one cannot exist.
+
+**They are different ids and are not interchangeable.** Posting `id` where `athleteProfileId` is
+wanted returns 404 — the athlete is looked up by profile, so a user id simply does not match
+anything. That is asserted in the integration suite in both directions, because the failure is
+otherwise a runtime 404 in the app rather than anything a type checker would catch.
+
+Recording an observation now asks the Admin a question instead of inferring the answer from the
+clock. **This replaces the BR-07 duration rule entirely** — how long an observation ran no longer
+has any bearing on what it deducts.
+
+### The request
+
+```json
+{
+  "athleteProfileId": "…",
+  "startUtc": "2026-08-30T08:00:00Z",
+  "endUtc": "2026-08-30T09:30:00Z",
+  "locationOrPlatform": "Tournament venue",
+  "deductSession": true
+}
+```
+
+`deductSession` is **required** and has no default. Omitting it or sending null is 400
+`VALIDATION_FAILED` — an unanswered question must not quietly become "no", which is exactly the
+failure mode the old duration rule had.
+
+**Creating an observation still deducts nothing**, whichever way the flag is set. The session is
+created `Scheduled`, a booking never deducts (BR-04), and the choice is stored and applied later.
+
+**The dates may be in the past or the future.** An observation is arranged directly with the
+athlete, so the Admin may record one already carried out or one agreed for next week. This was
+always accepted by the validator; it is now guaranteed and under test, and the wording that
+described observations as recorded "after the fact" has been corrected throughout.
+
+`startUtc`/`endUtc` validation is otherwise unchanged: both UTC, in order, and no more than
+24 hours apart.
+
+### The response
+
+`SessionResponse` gains `observationDeductsSession`:
+
+```json
+{ "observationDeductsSession": true }
+```
+
+A boolean on every session whose `deliveryType` is `Observation`, and **null** on `Online` and
+`FaceToFace`, which follow BR-05 and have no such choice to report. OpenAPI cannot express
+"required for this delivery type", so it is nullable in the schema — but a null on an Observation
+is a contract violation, not a "no". Surface it rather than guessing.
+
+### What it deducts now
+
+| Case | Consumes | Rule |
+|---|---|---|
+| Ordinary session, attended | 1 | BR-05, unchanged |
+| Observation attended, created with `deductSession: true` | 1 | BR-07, as chosen |
+| Observation attended, created with `deductSession: false` | 0 | BR-07, as chosen |
+| Observation created, past or future date | 0 | BR-04 — creating never deducts |
+| No-show, `deductSession: true` | 1 | Explicit coach decision, unchanged |
+| No-show, `deductSession: false` | 0 | Explicit coach decision, unchanged |
+| Booking, and cancellation before attendance | 0 | BR-04, BR-06 |
+
+`consumedSessionCount` is still decided server-side and is still authoritative. The app must not
+compute it.
+
+### Two fields named `deductSession`
+
+They are not the same field, they are not interchangeable, and neither overrides the other. One
+stores an **intent**; the other makes an **immediate decision**:
+
+| Field | What it is | Decided | Applies |
+|---|---|---|---|
+| `CreateObservationRequest.deductSession` | The observation's stored deduction **intent** | When the observation is recorded | Only if that observation is later marked **Attended** |
+| `MarkAttendanceRequest.deductSession` | An **immediate** deduction decision | At the moment of marking | When marking **any** session `NoShow` — observation or not |
+
+So an observation created with `deductSession: false` **can still consume one** if it is
+subsequently marked `NoShow` with `deductSession: true`. That is not a conflict being resolved:
+the stored intent is scoped to Attended, the observation was never attended, and so the intent is
+simply not the question being answered. The stored value is left unchanged by the no-show and is
+still reported as `observationDeductsSession: false` afterwards.
+
+Both directions are covered by named integration tests, so neither can be quietly broken.
+
+### One widened error surface
+
+A short observation can now deduct, so marking one attended can now return 409
+`ACTIVE_PACKAGE_NOT_FOUND` or 409 `NO_SESSIONS_REMAINING` — outcomes an observation of 60 minutes
+or less could never previously produce. Everything else about attendance is untouched: the same
+single transaction, the same exactly-once guarantee, the same `CONCURRENCY_CONFLICT` on a race,
+and an unchanged `AttendanceResponse`.
+
+### Migration
+
+`AddObservationDeductsSession` adds a nullable `ObservationDeductsSession` column to `Sessions`,
+backfills existing observations from the rule that was in force when they were recorded
+(`DurationMinutes > 60`), and then adds a check constraint holding the column non-null exactly
+when `DeliveryType = 'Observation'`. The backfill runs **before** the constraint on purpose, and
+it is what keeps already-attended observations agreeing with the package balance they actually
+moved.
+
+---
+
 ## Phase 6 — Attendance, session notes and purchased packages
+
+> **Superseded in part by Phase 6E above.** The observation duration rule described in this
+> section no longer applies; an observation deducts according to the Admin's explicit choice.
+> `SessionResponse` and `CreateObservationRequest` have each gained a field since this was
+> written, so read Phase 6E for their current shape.
 
 Marking a session attended is the only thing in this product that consumes something the athlete
 paid for, so this phase is mostly about making that happen **exactly once**. Everything else here
@@ -59,9 +189,24 @@ which values it takes is still open decision C-01.
 
 ### Mark as Attended
 
-`POST /api/v1/sessions/{id}/attend` — Admin only. `{"outcome": "Attended"}` or
-`{"outcome": "NoShow"}`; `outcome` defaults to `Attended`. `Cancelled` is not accepted here,
-because cancelling also has to reach Calendly and has its own endpoint.
+`POST /api/v1/sessions/{id}/attend` — Admin only. The request now uses the dedicated
+`AttendanceOutcome` enum (`Attended | NoShow`) rather than the broader `SessionStatus` enum.
+`outcome` still defaults to `Attended`; `Cancelled` is not representable in this request because
+cancelling also has to reach Calendly and has its own endpoint.
+
+No-show deduction is now an explicit per-session decision:
+
+```json
+{ "outcome": "NoShow", "deductSession": true }
+```
+
+`deductSession` is required and must be a boolean for `NoShow`; `true` consumes exactly one
+session and `false` consumes none. It must be omitted for `Attended`, whose deduction remains a
+server-side consequence of the ordinary-session and observation-duration rules. Supplying it for
+`Attended`, omitting it for `NoShow`, or sending it as null returns 400 `VALIDATION_FAILED`.
+
+> Since Phase 6E, an attended **observation** follows the `deductSession` choice made when it was
+> recorded, not a duration rule. An ordinary attended session still follows BR-05.
 
 The response carries the session **and** the package, both as they now stand after one
 transaction:
@@ -86,9 +231,10 @@ must not compute it:
 | Case | Consumes | Rule |
 |---|---|---|
 | Ordinary session, attended | 1 | BR-05 |
-| Observation attended, ran **longer than** 60 minutes | 1 | BR-07 |
-| Observation attended, 60 minutes or less | 0 | BR-07 — an hour exactly is not longer than an hour |
-| No-show | 0 by default | A-04, `Features__NoShowDeducts` |
+| Observation attended, created with `deductSession: true` | 1 | BR-07 — see Phase 6E |
+| Observation attended, created with `deductSession: false` | 0 | BR-07 — see Phase 6E |
+| No-show, `deductSession: true` | 1 | Explicit coach decision for this session |
+| No-show, `deductSession: false` | 0 | Explicit coach decision for this session |
 | Booking, and cancellation before attendance | 0 | BR-04, BR-06 |
 
 **Exactly-once is what the error codes are for.** These are not failures to retry past:
@@ -126,12 +272,15 @@ which is a normal state.
 
 `POST /api/v1/sessions/observations` — Admin only. The one kind of session this API creates
 itself. Observations are arranged in person and never appear on a Calendly booking page, so the
-coach records one after the fact (architecture A-03). Everything else still comes from Calendly
+coach records one directly (architecture A-03). Everything else still comes from Calendly
 and cannot be created here.
 
 It is created `Scheduled` and deducts nothing yet — a booking never deducts (BR-04) — then marked
 attended like any other session, at which point BR-07 decides. `startUtc` and `endUtc` must both
 be UTC and in order and may not span more than a day. `athleteProfileId` is the **profile** id.
+
+> Phase 6E added the required `deductSession` field to this request and
+> `observationDeductsSession` to the response, and confirmed that the dates may be in the future.
 
 ### Session notes
 
@@ -162,10 +311,9 @@ catalogue. They are different screens and the codes are kept apart on purpose.
 
 ### Configuration
 
-`Features__NoShowDeducts` — whether a no-show consumes a session. **False by default**, which is
-the specified default (A-04): the athlete who did not turn up has not had coaching, and charging
-them for it is a decision the coach makes deliberately rather than one the software assumes. It is
-a single deployment-wide setting, not per athlete.
+`Features__NoShowDeducts` remains in configuration as a possible future/default preference, but
+the attendance endpoint no longer reads it. Mobile must send the coach's explicit
+`deductSession` choice for each no-show.
 
 ---
 
