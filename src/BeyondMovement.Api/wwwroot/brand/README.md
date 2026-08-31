@@ -32,3 +32,41 @@ most recipients while looking correct in local testing.
 - **Under about 100 KB.** Some clients clip large messages, and a heavy image delays rendering.
 - Square. The template reserves a square area and sets explicit `width` and `height`, which
   stops Outlook reflowing the masthead before the image loads.
+
+---
+
+## instapay-qr.png — needed for the athlete Pay screen
+
+Save the coach's InstaPay QR code here as **`instapay-qr.png`**, then point the payment
+configuration at it:
+
+```bash
+# local
+dotnet user-secrets set "Payments:InstaPay:QrImageUrl" "http://localhost:5229/brand/instapay-qr.png" --project src/BeyondMovement.Api
+
+# deployed - must be the public HTTPS address of the API
+Payments__InstaPay__QrImageUrl=https://api.yourdomain.com/brand/instapay-qr.png
+```
+
+`GET /api/v1/payments/instapay-instructions` returns this URL to the app, which renders it beside
+the payment link. It is served from this folder, so it is reachable **without a bearer token** -
+that is deliberate and required, because the app fetches it with an ordinary image request and an
+`<img>` cannot carry an Authorization header.
+
+Nothing here is a secret. A payment QR code is meant to be shown to whoever is paying.
+
+### What the file should be
+
+- **PNG**, square, with the code's quiet zone (the white margin) intact - scanners need it.
+- **At least 512x512.** It is displayed large enough to be scanned off the screen by a second
+  phone, which is the common case: the athlete opens InstaPay on the same device, or a parent
+  scans it from the athlete's screen.
+- **Do not crop the "Powered by InstaPay" strip or the handle underneath** if the exported image
+  includes them. They are how the athlete confirms they are paying the right account before
+  sending money.
+
+### If the coach's InstaPay account changes
+
+Replace this file and update `Payments:InstaPay:PaymentUrl` and `RecipientHandle` together. They
+are shown side by side, and a QR code that disagrees with the handle printed next to it reads as
+a scam rather than a typo.

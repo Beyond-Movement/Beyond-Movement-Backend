@@ -1,5 +1,6 @@
 using BeyondMovement.Api.Attendance;
 using System.Text.Json.Nodes;
+using BeyondMovement.Modules.Finance;
 using BeyondMovement.Modules.Identity.Contracts;
 using BeyondMovement.Modules.Packages;
 using BeyondMovement.Modules.Packages.Contracts;
@@ -213,7 +214,8 @@ public sealed class SchemaNormalizingTransformer : IOpenApiSchemaTransformer
         // all of them - modules may not reference one another. A code missing from this list is
         // a code the generated client has no case for.
         string[] all =
-            [.. ApiErrorCodes.All, .. PackageErrorCodes.All, .. SchedulingErrors.AllCodes, .. AttendanceErrors.AllCodes];
+            [.. ApiErrorCodes.All, .. PackageErrorCodes.All, .. SchedulingErrors.AllCodes,
+             .. AttendanceErrors.AllCodes, .. FinanceErrorCodes.All];
 
         if (errorCode is OpenApiSchema property)
             property.Enum = [.. all.Order(StringComparer.Ordinal).Select(code => JsonValue.Create(code)! as JsonNode)];

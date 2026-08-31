@@ -2,7 +2,7 @@
 
 Context file for Claude Code. Read this before doing anything in this repository.
 
-**Last updated:** phases 0–6 backend complete. See section 8 for exactly where we are.
+**Last updated:** phases 0–6 and 8 backend complete; phase 7 deferred. See section 8.
 
 ---
 
@@ -94,6 +94,7 @@ Api  ──────────────► Modules ──────►
 |---|---|---|
 | `AthleteDirectory` | Identity (`Users`) + Athletes (`AthleteProfiles`) | `Api/Athletes/` |
 | `CatalogueReader` | Athletes (loyalty) + Packages (options, overrides) | `Api/Packages/` |
+| `PurchaseCheckoutService` | Finance + Packages + Athletes (**writes**) | `Api/Finance/` |
 
 These are **read-only**. A cross-module *write* is orchestrated in an endpoint inside one transaction — see `RegistrationEndpoints`, which creates a user and an athlete profile together.
 
@@ -107,8 +108,8 @@ These are **read-only**. A cross-module *write* is orchestrated in an endpoint i
 | `Modules.Athletes` | Athlete profiles, complete profile, loyalty flag | **Built** |
 | `Modules.Packages` | Package options, features, per-athlete price overrides, pricing rule, purchased packages | **Built** |
 | `Modules.Scheduling` | Sessions, Calendly, attendance, session notes | **Built** |
-| `Modules.ToDos` | To-dos, overdue job | Phase 7 |
-| `Modules.Finance` | Payments, expenses | Phase 8 |
+| `Modules.ToDos` | To-dos, overdue job | Phase 7 — **deferred**, not started |
+| `Modules.Finance` | Package purchases, payment status, InstaPay configuration | **Built** (Phase 8). Expenses removed from scope |
 | `Modules.Reporting` | Dashboard aggregates — read-only, may query across module tables | Phase 9, 11 |
 | `Modules.Notifications` | Push, email, reminders | Phase 10 |
 | `Modules.Chat`, `Modules.Files` | SignalR, uploads | Phase 13 |
@@ -211,8 +212,8 @@ Transport is chosen at startup: **Postmark → SMTP → console**. The startup l
 | 4 | **Package catalogue** | ✅ Done | Options, features, archive/restore, loyalty, per-athlete overrides, athlete catalogue |
 | 5 | Scheduling & Calendly | ✅ Done | Calendly projection, webhooks, reconciliation, sessions |
 | 6 | **Attendance & Notes** | ✅ Done | Mark attended/no-show, exactly-once deduction, observations, session notes, **purchased packages** |
-| 7 | To-Dos | ▶ **Next** | |
-| 8 | Finance | Not started | Payment status on a package is still unbuilt — see C-01 |
+| 7 | To-Dos | **Deferred** | Skipped by the client; Phase 8 was built first |
+| 8 | **Purchase & payment** | ✅ Done | Pending/Paid purchases, price snapshot, idempotent confirmation, InstaPay config. **C-01 closed.** Expenses removed from scope |
 | 9–14 | Dashboard → Release | Not started | |
 
 **A phase is not *done* until the Flutter screens are connected and tested end to end.** By that definition phases 1–6 are backend-complete and awaiting mobile integration.
@@ -224,12 +225,17 @@ The client **split Phase 4 in two**, and the source documents have **not** been 
 | | Phase 4 | Built in Phase 6 | Still deferred |
 |---|---|---|---|
 | What | A **catalogue** of reusable package options the coach sells | A **purchased package** an athlete owns | The money around it |
-| Includes | Name, sessions, default price, ordered features, archive/restore, loyalty, per-athlete overrides | Purchase, price copied as paid, remaining sessions, history, close | InstaPay, pending purchases, payment confirmation, package payment status |
+| Includes | Name, sessions, default price, ordered features, archive/restore, loyalty, per-athlete overrides | Purchase, price copied as paid, remaining sessions, history, close | ~~InstaPay, pending purchases, payment confirmation~~ — **all shipped in Phase 8** |
 | Invariants | Unique names, one override per athlete/option | **BR-03** one active package per athlete | — |
 
 **The purchase model was pulled forward into Phase 6**, because attendance has nothing to deduct
-from without it. What is still missing is only the payment half: a package carries no payment
-status, there is no endpoint to edit its price, and both wait on Phase 8 and on **C-01**.
+from without it. The payment half shipped in **Phase 8**: pending purchases, a snapshotted price,
+manual confirmation and configurable InstaPay details.
+
+A package still carries **no payment status and no endpoint to edit its price**, and that is now
+a decision rather than a gap. C-01 resolved to `Pending | Paid` on the *purchase*; a package is
+created only when its purchase turns `Paid`, so a `paymentStatus` column on it would read `Paid`
+on every row that could exist. **Do not add one.** See `contract/CHANGELOG.md` → "Phase 8".
 
 So `product-specification.md` §4.5, `software-architecture.md` §14.3 and `development-roadmap.md` Phase 4 describe work that is now **partly built** — read `contract/CHANGELOG.md` → "Phase 6" for what actually shipped.
 
@@ -242,7 +248,7 @@ So `product-specification.md` §4.5, `software-architecture.md` §14.3 and `deve
 | ID | Question | Blocks |
 |---|---|---|
 | A-01 | Does the Calendly plan include webhooks? | **Phase 5 — the next phase** |
-| C-01 | Payment statuses: Unpaid/PartiallyPaid/Paid (spec) or Paid/Pending (UI doc)? | Purchase phase, 8 |
+| — | C-01 Payment statuses. **Decided: `Pending` and `Paid` only.** No partial payments, no cancellation, and a paid purchase never returns to Pending. Carried on the purchase, not the package | Closed |
 | C-02 | What does the Admin Home "New Session" quick action do? | Phase 6 |
 | A-02 | Where does session duration come from for the hours report? | Phase 5 |
 | — | A-03 Observation creation. **Decided:** Admin creates them manually via `POST /sessions/observations`; the >1h rule (BR-07) is evaluated on Mark as Attended | Closed |

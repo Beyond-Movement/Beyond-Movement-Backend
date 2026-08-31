@@ -220,6 +220,43 @@ paths:
                 $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
+  /api/v1/payments/instapay-instructions:
+    get:
+      tags:
+      - Purchases
+      summary: The configured InstaPay QR code, payment link and instructions.
+      description: 'Every value is configuration supplied by the coach - none of it
+        is hard-coded, and the destination can change without an app release, so the
+        app must read it here rather than embedding it. qrImageUrl is an absolute
+        URL served without authentication, because an image request cannot carry a
+        bearer token. The platform never proxies InstaPay, never sees a transaction
+        and never verifies one automatically (BR-14): the app opens paymentUrl, and
+        the Admin confirms receipt afterwards. 503 INSTAPAY_NOT_CONFIGURED until real
+        values are supplied - the feature exists but has no destination yet, so show
+        a "contact your coach" state and keep the Pay button rather than hiding it
+        for good.'
+      operationId: GetInstaPayInstructions
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentInstructionsResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '503':
+          description: Service Unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
   /api/v1/auth/login:
     post:
       tags:
@@ -2213,6 +2250,273 @@ paths:
                 $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
+  /api/v1/me/purchases:
+    post:
+      tags:
+      - Purchases
+      summary: Select a package to buy, creating a pending purchase request.
+      description: 'Send only the packageOptionId. The name, session count, features,
+        price and currency are resolved server-side and snapshotted onto the purchase
+        - the price from the same rule that produced the number in GET /api/v1/catalogue,
+        so the app never calculates loyalty, custom pricing, discounts or rounding,
+        and a later edit to the option or to this athlete''s pricing cannot change
+        a purchase that already exists. The purchase starts Pending; no package exists
+        yet and an athlete can never activate one. Show the athlete GET /api/v1/payments/instapay-instructions
+        next. An athlete may have only ONE pending purchase: posting a different option
+        while one is pending REPLACES the selection on it and returns 200 with the
+        same purchase id, re-priced at today''s rules. A new request returns 201.
+        There is no cancel - replacing is how a wrong choice is corrected. 409 ACTIVE_PACKAGE_EXISTS
+        when the athlete still has an active package: they cannot buy the next one
+        until it is closed or runs out.'
+      operationId: CreatePurchase
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePurchaseRequest'
+        required: true
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackagePurchaseResponse'
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackagePurchaseResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/me/purchases/current:
+    get:
+      tags:
+      - Purchases
+      summary: The athlete's pending purchase, or their most recent one.
+      description: Always the caller's own - there is no athlete id, and an athlete
+        can never read another's purchase. Returns the pending request if there is
+        one, otherwise the most recently created purchase, so the screen can show
+        either "waiting for confirmation" or the last receipt. 404 PURCHASE_NOT_FOUND
+        when the athlete has never bought anything, which is a normal state and not
+        a failure to report.
+      operationId: GetMyCurrentPurchase
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackagePurchaseResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/purchases:
+    get:
+      tags:
+      - Purchases
+      summary: Every purchase, newest first, filterable by status and athlete.
+      description: The Admin payments screen. Omit status to see pending and paid
+        together; pass status=Pending for the queue of athletes waiting to be confirmed,
+        or status=Paid for the payment history. athleteId is the athlete's USER id,
+        matching every other /athletes/{athleteId} route. An unknown athlete id returns
+        404 ATHLETE_NOT_FOUND rather than an empty list, because an empty list is
+        a real answer - most athletes have no purchases yet - and a bad id must not
+        be mistaken for one.
+      operationId: ListPurchases
+      parameters:
+      - name: status
+        in: query
+        schema:
+          $ref: '#/components/schemas/PurchasePaymentStatus'
+      - name: athleteId
+        in: query
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PackagePurchaseResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/purchases/{id}:
+    get:
+      tags:
+      - Purchases
+      summary: One purchase.
+      description: A purchase belonging to another coach is 404 PURCHASE_NOT_FOUND,
+        the same as one that does not exist, so an id cannot be probed for existence.
+      operationId: GetPurchase
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackagePurchaseResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/purchases/{id}/mark-paid:
+    post:
+      tags:
+      - Purchases
+      summary: Confirm the money arrived, creating the athlete's package.
+      description: 'The only status transition this API has: Pending to Paid. There
+        is no cancel, no partial payment, and a paid purchase never returns to Pending
+        - corrections and refunds are outside this scope. In one transaction this
+        records who confirmed and when, creates the purchased package from the STORED
+        SNAPSHOT rather than from the catalogue, and links the two. The response carries
+        the purchase and the package as they both stand afterwards, so the app does
+        not have to re-read them separately. It is IDEMPOTENT: repeating it returns
+        200 with the same purchase and the same package id and alreadyPaid: true.
+        It never produces a second package, however many times or however concurrently
+        it is called - safe to retry after a timeout. 409 ACTIVE_PACKAGE_EXISTS if
+        the athlete has acquired an active package since selecting (BR-03); the purchase
+        is LEFT PENDING and can be confirmed once that package is closed.'
+      operationId: MarkPurchasePaid
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarkPurchasePaidResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
   /api/v1/sessions/{id}/attend:
     post:
       tags:
@@ -2645,6 +2949,7 @@ components:
           - EVENT_TYPE_INVALID
           - GOOGLE_EMAIL_MISMATCH
           - IDEMPOTENCY_KEY_REQUIRED
+          - INSTAPAY_NOT_CONFIGURED
           - INVALID_CREDENTIALS
           - INVALID_GOOGLE_TOKEN
           - INVALID_REFRESH_TOKEN
@@ -2668,6 +2973,7 @@ components:
           - PACKAGE_OPTION_NOT_FOUND
           - PASSWORD_NOT_SET
           - PROFILE_ALREADY_COMPLETED
+          - PURCHASE_NOT_FOUND
           - REGISTRATION_TOKEN_INVALID
           - SESSION_ALREADY_ATTENDED
           - SESSION_ALREADY_RESOLVED
@@ -3054,6 +3360,14 @@ components:
           type:
           - 'null'
           - string
+    CreatePurchaseRequest:
+      required:
+      - packageOptionId
+      type: object
+      properties:
+        packageOptionId:
+          type: string
+          format: uuid
     CurrentUserResponse:
       required:
       - id
@@ -3251,6 +3565,19 @@ components:
           type:
           - 'null'
           - boolean
+    MarkPurchasePaidResponse:
+      required:
+      - purchase
+      - package
+      - alreadyPaid
+      type: object
+      properties:
+        purchase:
+          $ref: '#/components/schemas/PackagePurchaseResponse'
+        package:
+          $ref: '#/components/schemas/PurchasedPackageResponse'
+        alreadyPaid:
+          type: boolean
     PackageOptionResponse:
       required:
       - id
@@ -3307,6 +3634,79 @@ components:
         version:
           type: integer
           format: int32
+    PackagePurchaseResponse:
+      required:
+      - id
+      - athleteUserId
+      - athleteProfileId
+      - packageOptionId
+      - packageName
+      - sessionCount
+      - features
+      - priceMinor
+      - currency
+      - status
+      - origin
+      - createdAtUtc
+      - updatedAtUtc
+      - paidAtUtc
+      - paidByUserId
+      - purchasedPackageId
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        athleteUserId:
+          type: string
+          format: uuid
+        athleteProfileId:
+          type: string
+          format: uuid
+        packageOptionId:
+          type:
+          - 'null'
+          - string
+          format: uuid
+        packageName:
+          type: string
+        sessionCount:
+          type: integer
+          format: int32
+        features:
+          type: array
+          items:
+            type: string
+        priceMinor:
+          type: integer
+          format: int64
+        currency:
+          type: string
+        status:
+          $ref: '#/components/schemas/PurchasePaymentStatus'
+        origin:
+          $ref: '#/components/schemas/PurchaseOrigin'
+        createdAtUtc:
+          type: string
+          format: date-time
+        updatedAtUtc:
+          type: string
+          format: date-time
+        paidAtUtc:
+          type:
+          - 'null'
+          - string
+          format: date-time
+        paidByUserId:
+          type:
+          - 'null'
+          - string
+          format: uuid
+        purchasedPackageId:
+          type:
+          - 'null'
+          - string
+          format: uuid
     PagedResultOfAthleteListItem:
       required:
       - items
@@ -3335,6 +3735,35 @@ components:
           type: boolean
         hasPreviousPage:
           type: boolean
+    PaymentInstructionsResponse:
+      required:
+      - qrImageUrl
+      - paymentUrl
+      - recipientName
+      - recipientHandle
+      - instructions
+      type: object
+      properties:
+        qrImageUrl:
+          type:
+          - 'null'
+          - string
+        paymentUrl:
+          type:
+          - 'null'
+          - string
+        recipientName:
+          type:
+          - 'null'
+          - string
+        recipientHandle:
+          type:
+          - 'null'
+          - string
+        instructions:
+          type: array
+          items:
+            type: string
     PreferencesResponse:
       required:
       - athleteListSort
@@ -3416,6 +3845,11 @@ components:
       - Completed
       - Closed
       type: string
+    PurchaseOrigin:
+      enum:
+      - Athlete
+      - AdminDirect
+      type: string
     PurchasePackageRequest:
       required:
       - packageOptionId
@@ -3438,6 +3872,11 @@ components:
           type:
           - 'null'
           - string
+    PurchasePaymentStatus:
+      enum:
+      - Pending
+      - Paid
+      type: string
     RefreshRequest:
       required:
       - refreshToken
@@ -3749,6 +4188,7 @@ tags:
 - name: Pricing
 - name: Calendly webhooks
 - name: Packages
+- name: Purchases
 - name: Invitations
 - name: Package options
 - name: Scheduling

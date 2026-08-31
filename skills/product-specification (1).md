@@ -668,11 +668,16 @@ Provide simple financial tracking without building a full payment gateway in Ver
 
 - Admin manually marks a package payment as Paid after receiving it.
 
-- Admin can mark payment as Unpaid, Partially Paid, or Paid.
+- Admin can move a purchase from **Pending** to **Paid**. **(C-01, resolved by the client: two
+  statuses only. `Unpaid` and `Partially Paid` do not exist — partial payments were ruled out of
+  scope. There is also no cancel action and no cancelled status, and a paid purchase cannot
+  return to Pending.)**
 
-- Admin records expenses with amount, date, category, and note.
+- Admin records expenses with amount, date, category, and note. **(Removed from Phase 8 scope by
+  the client; not built.)**
 
-- Dashboard shows paid/unpaid athletes and total expenses.
+- Dashboard shows paid/unpaid athletes and total expenses. **(Deferred with the dashboard phase;
+  expenses are not built.)**
 
 - Payment reminder notifications can be sent to athletes.
 
@@ -694,7 +699,14 @@ Payment Details, InstaPay Redirect / Instructions, Record Payment, Expenses List
 
 - Admin status changes appear immediately in the athlete package view if payment status is shown there.
 
-- Dashboard figures match recorded entries.
+- Dashboard figures match recorded entries. **(Deferred; see above.)**
+
+**As built in Phase 8** — see `contract/CHANGELOG.md` → "Phase 8", which is the authoritative
+record. The athlete selects a package option and gets a **Pending** purchase carrying a
+server-resolved price snapshot; the app never calculates a price. The Admin confirms with a
+single idempotent action that creates the purchased package from that snapshot. One pending
+purchase per athlete, and selecting a different option replaces it — that is how a wrong choice
+is corrected, since there is no cancel.
 
 ## 4.10 Notifications
 
@@ -1040,7 +1052,7 @@ The following entities describe the information the system must store. This is n
 | **BR-11** | Paused athlete data remains available to the Admin.                         |
 | **BR-12** | Data is retained until deleted by the Admin, subject to legal requirements. |
 | **BR-13** | Calendly Standard is the approved booking solution for Version 1.           |
-| **BR-14** | InstaPay payment is confirmed manually by the Admin.                        |
+| **BR-14** | InstaPay payment is confirmed manually by the Admin. The platform never proxies InstaPay, never sees a transaction, and never verifies one automatically. |
 | **BR-15** | Whiteboard or notes links may be shared with the athlete.                   |
 | **BR-16** | Chat is one-to-one between the Admin and an athlete.                        |
 | **BR-17** | Text and voice notes are required; images are optional if feasible.         |

@@ -184,8 +184,11 @@ Split out of the original Phase 4. Nothing here is built.
 A purchased package must record the price **as paid**, independent of the catalogue: repricing or
 archiving an option can never alter what somebody already bought.
 
-**Blocked on C-01** — payment statuses are `Unpaid/PartiallyPaid/Paid` in the Product
-Specification and `Paid/Pending` in the UI document. Settle that before modelling.
+**C-01 is closed.** The client ruled for the UI document's pair: `Pending | Paid`, and nothing
+else. Partial payments are out of scope. **Built in Phase 8** — the purchase model, InstaPay
+instructions and manual confirmation all shipped there; see `contract/CHANGELOG.md` → "Phase 8".
+The purchase half of this section (creating a purchased package, BR-03, remaining sessions,
+history, close) shipped earlier, in Phase 6.
 
 **CHECK:** Architecture: Packages module, database invariants. Product Spec: Packages + BR-03.
 
@@ -216,7 +219,7 @@ Specification and `Paid/Pending` in the UI document. Settle that before modellin
 
 **CHECK:** Architecture: Attendance Transaction + Scheduling/Packages domain rules. Product Spec: BR-04 to BR-07.
 
-# PHASE 7 — To-Dos
+# PHASE 7 — To-Dos (DEFERRED — Phase 8 was built first)
 
 | **BACKEND**                                   | **FLUTTER / MOBILE**                                             |
 |-----------------------------------------------|------------------------------------------------------------------|
@@ -228,17 +231,28 @@ Specification and `Paid/Pending` in the UI document. Settle that before modellin
 
 **CHECK:** Architecture: ToDos module. Product Spec: To-Dos.
 
-# PHASE 8 — Finance — Payments & Expenses
+# PHASE 8 — Finance — Package purchase & manual payment ✅ BACKEND DONE
 
-| **BACKEND**                                  | **FLUTTER / MOBILE**                                                           |
-|----------------------------------------------|--------------------------------------------------------------------------------|
-| • Payment records linked to athlete/package. | • Admin payment screens once UI/UX is ready.                                   |
-| • Manual payment confirmation.               | • Admin expense screens once UI/UX is ready.                                   |
-| • Payment status calculation.                | • Do not block backend data model/API work if final screen styling is pending. |
-| • Expense create/edit/list.                  |                                                                                |
-| • Date/category data needed for reports.     |                                                                                |
+**Expenses were removed from this phase by the client**, and **Phase 7 (To-Dos) was deferred** —
+Phase 8 was built before it.
 
-**CHECK:** Architecture: Finance module + Payments/Expenses entities. Product Spec: Payments & Expenses.
+| **BACKEND**                                                   | **FLUTTER / MOBILE**                                                           |
+|---------------------------------------------------------------|--------------------------------------------------------------------------------|
+| ✅ Athlete purchase request against a Phase 4 option.          | • Athlete package selection and Pay screen.                                    |
+| ✅ Server-resolved price, snapshotted onto the purchase.       | • Display only. **Never calculate a price, discount or rounding.**             |
+| ✅ `Pending → Paid`, the only transition, idempotent.          | • Admin payment screens once UI/UX is ready.                                   |
+| ✅ Confirmation creates the purchased package atomically.      | • Retry `mark-paid` safely on timeout; use `alreadyPaid`.                       |
+| ✅ One pending purchase per athlete; re-selecting replaces it. | • No cancel affordance — there is no such endpoint.                            |
+| ✅ BR-03 re-checked at payment; conflict leaves it Pending.    | • Prompt "close the current package first" on 409.                             |
+| ✅ Configurable InstaPay QR, link, recipient, instructions.    | • Read them from the API; never embed. Handle 503.                             |
+| ✅ Admin-recorded packages get a `Paid` purchase; backfilled.  |                                                                                |
+| ❌ Expenses — **removed from scope**, not built.               |                                                                                |
+
+**C-01 closed:** `Pending | Paid` only. No `Unpaid`, no `PartiallyPaid`, no cancellation.
+
+**CHECK:** `contract/CHANGELOG.md` → "Phase 8" — authoritative. The architecture's `Payments`
+entity and its `/payments` endpoint rows describe a model this phase replaced; §6.2 and §14.7
+have been amended.
 
 # PHASE 9 — Admin Dashboard
 

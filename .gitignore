@@ -483,3 +483,13 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# ---------------------------------------------------------------------------
+# TEMPORARY - remove once the InstaPay QR code is confirmed final
+# ---------------------------------------------------------------------------
+# The QR is served publicly and is not a secret, so it BELONGS in the repository:
+# without it a deployed API returns 404 for the image the Pay screen renders.
+# It is held back only until the coach confirms this is the final account, so a
+# superseded QR cannot reach an athlete and take a payment to the wrong place.
+# Delete this block and commit the file once it is confirmed.
+src/BeyondMovement.Api/wwwroot/brand/instapay-qr.png

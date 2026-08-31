@@ -44,7 +44,7 @@ These are not gaps — they are places where the two sources disagree. Each need
 
 | # | Conflict | Product Spec says | UI/UX doc says | Implemented as | Why |
 |---|---|---|---|---|---|
-| C-01 | **Payment status values** | Unpaid, Partially Paid, Paid (§4.9) | Paid, Pending (Athlete Profile) | The spec's three values are stored; the profile screen may render "Pending" as the label for both Unpaid and Partially Paid | Narrowing the stored set to two would make partial payments unrepresentable and break §4.9's acceptance criteria. Widening a label is free; widening a database enum later is a migration. |
+| C-01 | **Payment status values** | Unpaid, Partially Paid, Paid (§4.9) | Paid, Pending (Athlete Profile) | **RESOLVED by the client (Phase 8): two values, `Pending` and `Paid`.** The UI document's pair, stored as written. `PartiallyPaid` does not exist and cannot be represented; there is no cancelled state either | The earlier reasoning assumed partial payments were a requirement. The client has since ruled them out of scope entirely: with no way to record a part payment and no gateway to produce one, a third value would never be written. It is carried on the **purchase**, not the package - see §6.2 |
 | C-02 | **Manual session creation** | Admin may book "optional on behalf of athlete" (permission matrix) | Admin Home has a **New Session** quick action, but the Schedule screen states sessions are *not* manually created and the + button must be removed | No general manual booking in v1 (A-08). The **New Session** quick action is mapped to creating an **Observation** record (A-03), which is the one session type Calendly does not produce | This resolves both the internal contradiction in the UI doc and the missing Observation creation flow at once. Needs client confirmation. |
 | C-03 | **Session statuses** | Scheduled, Attended, No-show, Cancelled (§4.6) | Scheduled, Attended, Cancelled (No-show absent) | All four stored; No-show is Admin-only and defaults to no deduction (A-04) | Dropping No-show would lose a status the spec requires for reporting. |
 | C-04 | **Zero remaining sessions** | Notify athlete to renew (BR-09) | Display **"New sessions pending"** instead of "0 sessions remaining" | Balance stays `0` in the data model; the *presentation layer* substitutes the phrase | A display rule must never become a stored state — otherwise reports and deduction logic would have to special-case it. |
@@ -719,7 +719,9 @@ A paused athlete may still hold an active package, and an unpaused athlete may h
 `AthleteProfiles` also gains `IsLoyal · LoyalSinceUtc`. Prices are **integer piastres**, 100 to the EGP — never a decimal, because a decimal in JSON becomes a Dart `double` and loses precision once summed. Unique indexes: `(CoachId, lower(Name))` across archived options too, `(PackageOptionId, Position)`, and `(AthleteUserId, PackageOptionId)`. `Version` is an explicit integer bumped on every change, not `RowVersion`.
 
 **Packages (purchased)** — **not built**, deferred with §14.3.
-`Id · AthleteProfileId · Name · TotalSessions · UsedSessions · Price · Currency · StartDate · EndDate (nullable) · Status (Active|Completed|Closed) · PaymentStatus (Unpaid|PartiallyPaid|Paid) · Notes · CreatedAt · UpdatedAt · RowVersion`
+`Id · CoachId · AthleteProfileId · PackageOptionId (nullable) · Name · TotalSessions · UsedSessions · PricePaidMinor · Currency · StartDate · EndDate (nullable) · Status (Active|Completed|Closed) · Notes · CreatedAt · UpdatedAt · RowVersion`
+
+> **Built in Phase 6, and there is deliberately no `PaymentStatus` column** (C-01, resolved). A package is created only when its purchase turns `Paid`, so the field would read `Paid` on every row that could exist. Payment status lives on `PackagePurchase` below.
 
 `RemainingSessions` is **computed** (`TotalSessions − UsedSessions`), never stored, so it cannot drift. `RowVersion` provides optimistic concurrency on the deduction path. When this is built it must record the price **as paid**, copied from the option, so repricing or archiving a `PackageOption` can never alter a completed purchase.
 
@@ -731,10 +733,19 @@ A paused athlete may still hold an active package, and an unpaused athlete may h
 **SessionNotes** — coach notes per session, feeding the Whiteboard & Notes history.
 `Id · SessionId · AuthorUserId · Content · CreatedAt · UpdatedAt`
 
-**Payments**
-`Id · AthleteProfileId · PackageId · Amount · Currency · Status (Pending|Confirmed) · Method (InstaPay|Cash|Other) · PaidOn · ConfirmedByUserId · ConfirmedAt · ConfirmationNote · CreatedAt`
+**PackagePurchases** — built in Phase 8. This replaces the `Payments` table sketched here previously.
+`Id · CoachId · AthleteProfileId · AthleteUserId · PackageOptionId (nullable) · PackageName · SessionCount · Features (ordered array) · PriceMinor · Currency · Status (Pending|Paid) · Origin (Athlete|AdminDirect) · CreatedAt · UpdatedAt · PaidAt (nullable) · PaidByUserId (nullable) · PurchasedPackageId (nullable) · RowVersion`
 
-Payments are append-only records of Admin assertions; package `PaymentStatus` is derived from the sum of confirmed payments versus price.
+With one manual confirmation and two states (C-01), the purchase **is** the payment record, so a separate append-only `Payments` table and a derived package `PaymentStatus` both fall away. There is no `Method` column: v1 has one destination, InstaPay, and an `AdminDirect` origin for anything agreed off-app.
+
+The name, session count, features and price are a **snapshot** taken when the athlete selects, resolved server-side by `PackagePricing`. Editing the catalogue option or the athlete's pricing afterwards cannot alter an existing purchase.
+
+Invariants, all held by the database rather than by handler checks:
+- One **pending** purchase per athlete — partial unique index on `AthleteProfileId WHERE Status='Pending'`. Selecting a different option revises the pending row instead of opening a second.
+- One purchase per package — partial unique index on `PurchasedPackageId`, which is what makes a repeated or concurrent `mark-paid` produce exactly one package.
+- `Paid` implies both `PaidAt` and `PurchasedPackageId`; `Pending` implies neither — check constraint `CK_PackagePurchases_PaidConsistency`.
+
+`Pending → Paid` is the only transition. There is no cancel, no partial payment, and no way back.
 
 **Expenses**
 `Id · CoachId · Amount · Currency · Category · IncurredOn · Note · ReceiptFileId (nullable) · CreatedAt · UpdatedAt`
@@ -789,7 +800,8 @@ Append-only; no update or delete permission granted to the application role.
 | `UserRole` | Admin, Athlete |
 | `UserStatus` | Active, Paused, Deleted |
 | `PackageStatus` | Active, Completed, Closed |
-| `PaymentStatus` | Unpaid, PartiallyPaid, Paid — see conflict C-01; the profile screen may label the first two as "Pending" |
+| `PurchasePaymentStatus` | Pending, Paid — **C-01, resolved**. Two values only; `PartiallyPaid` was ruled out of scope and there is no cancelled state. Carried on `PackagePurchase`, not on the package |
+| `PurchaseOrigin` | Athlete, AdminDirect — how the purchase started; `AdminDirect` is a sale the Admin recorded, born `Paid` |
 | `SessionStatus` | Scheduled, Attended, Cancelled, NoShow |
 | `DeliveryType` | Online, FaceToFace, Observation |
 | `ToDoPriority` | Low, Medium, High |
@@ -1631,10 +1643,17 @@ The original purchase design, retained for the deferred phase:
 
 | Method | Path | Role | Purpose |
 |---|---|---|---|
-| GET | `/payments` | A | Payment list with filters |
-| POST | `/packages/{id}/payments` | A | Record confirmed payment |
-| PATCH | `/packages/{id}/payment-status` | A | Set Unpaid/Partial/Paid |
+| POST | `/me/purchases` | T | Select an option; creates or replaces the pending request |
+| GET | `/me/purchases/current` | T | The athlete's pending purchase, else their latest |
+| GET | `/purchases` | A | Purchase list, filterable by `status` and `athleteId` |
+| GET | `/purchases/{id}` | A | One purchase |
+| POST | `/purchases/{id}/mark-paid` | A | Confirm payment; creates the package. Idempotent |
 | GET | `/payments/instapay-instructions` | B | Configured InstaPay destination/instructions |
+
+> **Phase 8 as built uses `/purchases`, not `/payments`.** The three `/payments` and
+> `/packages/{id}/payment-*` rows above were drawn for the append-only payment model that C-01's
+> resolution removed; they **do not exist**. `/payments/instapay-instructions` is unchanged.
+> Expenses below are **not built** — they were removed from Phase 8 scope.
 | GET | `/expenses` | A | Expense list |
 | POST | `/expenses` | A | Add expense |
 | PATCH | `/expenses/{id}` | A | Edit |
@@ -1862,7 +1881,7 @@ Being honest about the limits: this design would need real rework if the product
 | R-14 | **Push notification unreliability** (token churn, OEM battery managers on Android) | High | Low–Medium | Notifications persisted server-side and always visible in-app; email as a secondary channel for important events; invalid tokens pruned |
 | R-15 | **Under-specified observation flow** (A-03) delays the attendance feature | Medium | Medium | Flagged as a blocking assumption requiring a client decision before the Scheduling module is built |
 | R-16 | **Four UI screens are unwritten** (Chat, Packages, Payments, Settings marked "To be completed") | Certain | Medium | Those modules are designed from the specification's functional requirements; screen-level review scheduled before phases 4–5 of the build order |
-| R-17 | **Document conflicts resolved by assumption rather than by the client** (C-01…C-07) | High | Medium | All seven listed explicitly in section 0.3 with the implemented side stated; C-01 and C-02 need a ruling before Packages and Scheduling are built |
+| R-17 | **Document conflicts resolved by assumption rather than by the client** (C-01…C-07) | High | Medium | All seven listed explicitly in section 0.3 with the implemented side stated. **C-01 and C-02 have since been ruled on by the client** and section 0.3 records the ruling, not an assumption |
 
 ---
 
@@ -1893,10 +1912,10 @@ A Flutter mobile client for both roles, talking to a single ASP.NET Core modular
 3. **A-02** — Confirm the source of session duration for hour reporting.
 4. **A-07** — Confirm deletion vs anonymization semantics with the client's privacy requirements.
 5. **A-12** — Confirm hosting region and any data residency requirement.
-6. **C-01** — Rule on payment statuses: three values (spec) or two (UI doc). This determines whether partial payments exist at all.
+6. ~~**C-01** — Rule on payment statuses: three values (spec) or two (UI doc).~~ **Closed: two, `Pending | Paid`.** Partial payments do not exist. Implemented in Phase 8.
 7. **C-02** — Rule on the **New Session** quick action: is it Observation creation, manual booking, or removed?
 
-Items 1 and 3 block the Scheduling module. Item 2 and C-02 block the attendance flow; C-01 blocks the Packages module. The others can be resolved in parallel with early development but should not reach implementation undecided.
+Items 1 and 3 block the Scheduling module. Item 2 and C-02 block the attendance flow; C-01 blocked the Packages module and is now closed. The others can be resolved in parallel with early development but should not reach implementation undecided.
 
 ### 19.4 Suggested build order
 

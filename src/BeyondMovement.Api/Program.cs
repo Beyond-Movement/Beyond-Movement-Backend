@@ -26,6 +26,10 @@ using BeyondMovement.Modules.Identity.Features.ForgotPassword;
 using BeyondMovement.Modules.Identity.Features.GoogleSignIn;
 using BeyondMovement.Modules.Identity.Features.Login;
 using BeyondMovement.Modules.Identity.Features.Logout;
+using BeyondMovement.Api.Finance;
+using BeyondMovement.Modules.Finance.Features;
+using BeyondMovement.Modules.Finance.Payments;
+using BeyondMovement.Modules.Finance.Persistence;
 using BeyondMovement.Modules.Identity.Features.Refresh;
 using BeyondMovement.Modules.Identity.Features.ResetPassword;
 using BeyondMovement.Modules.Identity.Persistence;
@@ -164,6 +168,13 @@ builder.Services.AddScoped<SetLoyaltyHandler>();
 builder.Services.AddScoped<CatalogueReader>();
 builder.Services.AddScoped<PackagePurchaseService>();
 
+// Purchase and payment - Phase 8. Writes to Finance and Packages at once, so it lives in the
+// Api project for the same reason attendance does.
+builder.Services.Configure<InstaPayOptions>(
+    builder.Configuration.GetSection(InstaPayOptions.SectionName));
+builder.Services.AddScoped<IFinanceDbContext>(sp => sp.GetRequiredService<AppDbContext>());
+builder.Services.AddScoped<PurchaseCheckoutService>();
+
 // Attendance - Phase 6. Writes to Scheduling and Packages at once, so it lives in the Api
 // project rather than in either module (CLAUDE.md section 4).
 builder.Services.Configure<FeatureOptions>(builder.Configuration.GetSection(FeatureOptions.SectionName));
@@ -199,6 +210,7 @@ builder.Services.AddScoped<CalendlySynchronizationJobs>();
 builder.Services.AddValidatorsFromAssemblyContaining<LoginValidator>();
 builder.Services.AddValidatorsFromAssemblyContaining<SavePackageOptionValidator>();
 builder.Services.AddValidatorsFromAssemblyContaining<BookSessionValidator>();
+builder.Services.AddValidatorsFromAssemblyContaining<CreatePurchaseValidator>();
 
 builder.Services.AddApiRateLimiting();
 
@@ -285,6 +297,7 @@ app.MapPricingEndpoints();
 app.MapPreferenceEndpoints();
 app.MapSchedulingEndpoints();
 app.MapPurchasedPackageEndpoints();
+app.MapPurchaseEndpoints();
 app.MapAttendanceEndpoints();
 app.MapSessionNoteEndpoints();
 

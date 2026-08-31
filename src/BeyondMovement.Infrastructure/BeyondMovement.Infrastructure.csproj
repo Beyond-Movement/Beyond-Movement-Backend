@@ -1,7 +1,8 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\BeyondMovement.SharedKernel\BeyondMovement.SharedKernel.csproj" />
+    <ProjectReference Include="..\BeyondMovement.Modules.Finance\BeyondMovement.Modules.Finance.csproj" />
     <ProjectReference Include="..\BeyondMovement.Modules.Identity\BeyondMovement.Modules.Identity.csproj" />
     <ProjectReference Include="..\BeyondMovement.Modules.Athletes\BeyondMovement.Modules.Athletes.csproj" />
     <ProjectReference Include="..\BeyondMovement.Modules.Packages\BeyondMovement.Modules.Packages.csproj" />

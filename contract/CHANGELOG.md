@@ -7,6 +7,293 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ---
 
+## Phase 8 — Package purchase and manual payment
+
+**Purely additive.** Six new endpoints, three new schemas, three new error codes. **No existing
+shape changed** — `PurchasedPackageResponse`, `PackageOptionResponse`, `CatalogueItemResponse`
+and `SessionResponse` are all byte-for-byte what they were. Nothing the app already reads moved.
+
+This is the money half of the package model that Phase 4 deferred and Phase 6 left a hole for.
+The flow the product actually has: the athlete picks an option and gets a **pending** request
+plus the coach's InstaPay details; they pay outside this platform, which never sees the money;
+the Admin confirms receipt, and **only then does the package exist**.
+
+### C-01 is closed: `Pending | Paid`
+
+The open decision — three values from the Product Specification (`Unpaid | PartiallyPaid |
+Paid`) or two from the UI document (`Pending | Paid`) — is **resolved as two**, on the client's
+ruling. `PartiallyPaid` does not exist and cannot be represented: nothing in this product can
+record a part payment. There is also **no cancelled state**.
+
+The status lives on the **purchase**, not on the package. A `PurchasedPackage` deliberately did
+**not** gain a `paymentStatus` field, because a package is created only when its purchase turns
+`Paid` — so the field would read `Paid` on every row that could ever exist, and a field that
+never varies is one that drifts. The Athlete Profile's payment badge reads the athlete's latest
+purchase.
+
+This supersedes `software-architecture.md` §6.4 (`PaymentStatus: Unpaid, PartiallyPaid, Paid`),
+§6.2 (a `PaymentStatus` column on the purchased package) and §4.9 of the specification
+("Admin can mark payment as Unpaid, Partially Paid, or Paid"). Those documents have been
+amended; where any other copy still disagrees, this changelog is what shipped.
+
+### The endpoints
+
+| Method | Path | Role | Purpose |
+|---|---|---|---|
+| POST | `/api/v1/me/purchases` | T | Select an option; creates or replaces the pending request |
+| GET | `/api/v1/me/purchases/current` | T | The athlete's pending purchase, else their latest |
+| GET | `/api/v1/purchases` | A | Every purchase, filterable by `status` and `athleteId` |
+| GET | `/api/v1/purchases/{id}` | A | One purchase |
+| POST | `/api/v1/purchases/{id}/mark-paid` | A | Confirm payment; creates the package |
+| GET | `/api/v1/payments/instapay-instructions` | B | QR code, payment link, instructions |
+
+**These are `/purchases`, not the `/payments` of architecture §14.7.** That section was drawn
+for a different model — a separate append-only `Payments` table with the package's payment
+status derived from the sum of confirmed payments. With one manual confirmation and two states,
+the purchase *is* the payment record, so there is nothing for a `/payments` collection to return
+that `/purchases` does not. `PATCH /packages/{id}/payment-status` and `POST
+/packages/{id}/payments` from that section **do not exist and will not**. Only
+`/payments/instapay-instructions` kept its §14.7 path, unchanged.
+
+**Expenses are not in this phase.** `/expenses` from §14.7 is not built.
+
+### The price is snapshotted, and never sent by the client
+
+`CreatePurchaseRequest` has exactly one field:
+
+```json
+{ "packageOptionId": "…" }
+```
+
+There is no price, no name, no session count and no feature list in the request, and sending
+them anyway does nothing — a test pins that. The server resolves the athlete's effective price
+with the **same Phase 4 rule** that produced the number already shown in `GET /api/v1/catalogue`
+(custom override → loyalty → default, with loyalty rounded to the nearest tenth of a pound), and
+then **copies** the name, session count, ordered features, price and currency onto the purchase.
+
+**Flutter must not calculate loyalty, custom pricing, discounts or rounding.** It does not know
+the rule and must not learn it. If a price looks wrong, it is a backend bug.
+
+Because the values are copied rather than looked up, **editing the catalogue option or the
+athlete's pricing afterwards cannot change a purchase that already exists**. A test renames,
+reprices and re-features an option after selection and asserts the purchase and the package it
+later produces are untouched. `packageOptionId` on the response is provenance only, and is
+`null` if the option was deleted — the snapshot above it is complete, so the app never needs to
+follow it.
+
+Money is an integer count of piastres, as everywhere else. `priceMinor: 400000` is 4,000.00 EGP.
+Divide by 100 for display, never for arithmetic.
+
+### One pending purchase per athlete, and how a wrong choice is corrected
+
+An athlete may hold **at most one** pending purchase. Posting a *different* option while one is
+pending does not open a second request and is not an error — it **replaces the selection on the
+existing one**, keeping its id and re-pricing it under today's rules:
+
+- **201 Created** — a new pending request.
+- **200 OK** — the existing pending request, revised. Same `id` as before.
+
+Both return the same `PackagePurchaseResponse`, so the app can treat them identically and simply
+render the body; the status code is only there for clients that want to tell the cases apart.
+
+This exists because **there is no Cancel action and no `Cancelled` status**. Without replacement
+an athlete who tapped the wrong package would be stuck behind their own request until the coach
+intervened. Replacement is allowed **only while `Pending`** — once paid, the snapshot is the
+record of what somebody paid for and nothing may edit it.
+
+### `Pending → Paid` is the only transition, and it is idempotent
+
+`POST /api/v1/purchases/{id}/mark-paid` is Admin-only and does all of this in **one
+transaction**:
+
+1. Records who confirmed it (`paidByUserId`, from the token) and when (`paidAtUtc`).
+2. Creates the `PurchasedPackage` **from the stored snapshot** — the catalogue is not consulted.
+3. Links the two (`purchasedPackageId`).
+4. Re-checks **BR-03**, one active package per athlete.
+
+The response carries both, as they stand afterwards:
+
+```json
+{
+  "purchase":    { "...": "PackagePurchaseResponse, now Paid" },
+  "package":     { "...": "PurchasedPackageResponse, Active" },
+  "alreadyPaid": false
+}
+```
+
+Both are returned rather than left for the app to re-read, for the same reason Mark as Attended
+returns the session and the package together: they changed together, and a re-read can
+interleave with another change.
+
+**Repeating the request is safe and is not an error.** A second call returns `200` with the same
+purchase, the **same `package.id`**, and `alreadyPaid: true`. It never produces a second package
+— not on a double tap, not on a retry after a timeout, and not under genuine concurrency: a test
+fires eight simultaneous confirmations and asserts exactly one did the work, all eight named the
+same package, and the database holds one.
+
+> **Note the difference from Phase 6.** Repeating `POST /sessions/{id}/attend` is `409
+> SESSION_ALREADY_ATTENDED` — do not retry. Repeating `mark-paid` is `200` — safe to retry.
+> Attendance consumes something and must never do it twice; confirming a payment is a statement
+> of fact that is either already recorded or not. Do not copy the attendance retry logic here.
+
+**There is no way back.** A paid purchase never returns to `Pending`. There is no cancel, no
+reopen and no unpay — no such route exists, which a test asserts by calling four of them and
+getting 404 each time. Corrections and refunds are outside this scope; today they are a database
+operation, not an API call.
+
+**The athlete never activates a package.** There is no athlete-facing endpoint that creates,
+activates or pays for one. The only way a package comes into existence is an Admin confirming a
+purchase, or an Admin recording one directly.
+
+### BR-03 is enforced twice, and a conflict leaves the purchase Pending
+
+An athlete with an active package cannot buy the next one until it is closed or runs out.
+
+- **At selection** — `POST /me/purchases` returns `409 ACTIVE_PACKAGE_EXISTS`. Early, so the
+  athlete is told *before* they are sent to InstaPay rather than after they have paid.
+- **At confirmation** — `mark-paid` returns `409 ACTIVE_PACKAGE_EXISTS`, and **the purchase is
+  left `Pending`**, with `purchasedPackageId` and `paidAtUtc` still null. Nothing is half-done.
+  Close the current package and confirm again; a test walks exactly that recovery.
+
+The second check is not redundant: an Admin can record a package directly while a request sits
+pending, which is precisely the window it covers.
+
+### Admin-recorded packages now have payment history
+
+`POST /api/v1/athletes/{athleteId}/packages` — the Phase 6 endpoint where the Admin records a
+sale directly — **still exists and is unchanged in request and response**. It now also writes a
+`Paid` purchase beside the package it creates, in the same transaction, with
+`origin: "AdminDirect"`.
+
+Without this, the payments screen would be blind to every package that did not come through the
+app, and "is this athlete paid up?" would have two different answers depending on which screen
+asked. Such a purchase is born `Paid` because recording it *is* the confirmation — there is
+nothing to await.
+
+`origin` is therefore on every purchase:
+
+| `origin` | Means |
+|---|---|
+| `Athlete` | Chosen in the app, confirmed by the Admin after an InstaPay transfer |
+| `AdminDirect` | Recorded by the Admin — cash, bank transfer, agreed off-app |
+
+**Packages that existed before this phase were backfilled** as `Paid` / `AdminDirect` purchases,
+so the payments screen is complete from day one rather than starting empty beside athletes who
+are visibly training. Two fields on a backfilled row cannot be recovered and were not invented:
+
+- **`paidByUserId` is `null`.** Which Admin confirmed the money is not recorded anywhere, and
+  naming the seeded Admin would be a guess written into an audit trail.
+- **`features` is an empty array.** The snapshot must be what the athlete was shown at purchase
+  time; the option's features today may have been edited since, so copying them now would
+  fabricate a snapshot rather than restore one.
+
+A legacy row is therefore recognisable as `origin: "AdminDirect"` with `paidByUserId: null`.
+**The app must tolerate an empty `features` array** on a paid purchase and fall back to the
+package name and session count.
+
+### InstaPay is configuration, not code
+
+`GET /api/v1/payments/instapay-instructions` is available to **both roles** — the athlete needs
+somewhere to pay, and the Admin needs to see what the athlete is being shown.
+
+```json
+{
+  "qrImageUrl":      "https://…/instapay-qr.png",
+  "paymentUrl":      "https://ipn.eg/S/…",
+  "recipientName":   "Beyond Movement",
+  "recipientHandle": "beyondmovement@instapay",
+  "instructions":    ["Open InstaPay and scan the QR code.", "…"]
+}
+```
+
+Every value comes from configuration (`Payments:InstaPay:*`) and **none of it is hard-coded**.
+The destination is the coach's own, it can change without an app release, and a payment
+destination baked into a binary is one that cannot be corrected. **The app must read it from
+here and must not embed it.**
+
+- Any field may be `null` when not configured; `instructions` is an ordered list and may be
+  empty. Render the steps in the order given.
+- `qrImageUrl` is an absolute URL served **without authentication**, because an image request
+  cannot carry a bearer token.
+- Until real values are supplied the endpoint returns **`503 INSTAPAY_NOT_CONFIGURED`**. That is
+  a 503 and not a 404 on purpose: the feature exists and will work once the coach's details are
+  in. **Show a "contact your coach" state and keep the Pay button** — do not treat it as a
+  missing feature and hide it permanently.
+
+The platform never proxies InstaPay, never sees a transaction, and never verifies one
+automatically (**BR-14**). It hands the athlete a destination and waits for the Admin.
+
+### Error codes added
+
+| Code | Status | Meaning |
+|---|---|---|
+| `PURCHASE_NOT_FOUND` | 404 | No such purchase, **or it belongs to another coach** |
+| `INSTAPAY_NOT_CONFIGURED` | 503 | Payment details have not been supplied yet |
+
+Only two. There is deliberately **no** code for "this purchase is already paid": no request can
+produce that state. Repeating `mark-paid` is an idempotent `200`, and an athlete can only revise
+a purchase that is still `Pending`. A 409 no client can receive would only invite handling for a
+case that cannot happen, so it is not in the contract.
+
+Codes the catalogue already owns are **reused rather than duplicated** with a payment-flavoured
+name — two names for one condition is how clients end up handling only one of them:
+
+| Code | Status | When |
+|---|---|---|
+| `PACKAGE_OPTION_NOT_FOUND` | 404 | Unknown option, or another coach's |
+| `PACKAGE_OPTION_ARCHIVED` | 409 | The option was withdrawn from sale |
+| `ACTIVE_PACKAGE_EXISTS` | 409 | BR-03, at selection **and** at confirmation |
+| `ATHLETE_NOT_FOUND` | 404 | `?athleteId=` names an athlete this coach does not have |
+| `CONCURRENCY_CONFLICT` | 409 | Two selections raced; retry, and the retry revises |
+| `VALIDATION_FAILED` | 400 | Missing or empty `packageOptionId` |
+
+### Authorization
+
+- `/api/v1/purchases*` is **Admin only**. An athlete reaching one gets **403**, including for
+  their own purchase — listing every purchase and confirming payment are the coach's, and an
+  athlete must never mark their own paid. A test asserts all three routes.
+- `/api/v1/me/purchases*` is **athlete only**; an Admin gets **403**. It is always scoped to the
+  token and takes no athlete id, so an athlete cannot name another's purchase.
+- Another coach's purchase is **404, not 403**, so an id cannot be probed for existence.
+- `?athleteId=` with an unknown athlete is **404 `ATHLETE_NOT_FOUND`**, not an empty list — an
+  empty list is a real answer, and a bad id must not be mistaken for one.
+
+### Mobile integration notes
+
+1. **Regenerate the client.** Additive, but there are three new schemas and two new enums
+   (`PurchasePaymentStatus`, `PurchaseOrigin`).
+2. **Never compute a price.** Send `packageOptionId` and render `priceMinor` / `currency` from
+   the response. Loyalty, overrides and rounding are server-side and are not reproducible in the
+   app by design.
+3. **Render the purchase from its snapshot, not from the catalogue.** A purchase carries its own
+   name, session count and features precisely so it stays correct after the option changes. Do
+   not re-fetch the option to fill in a purchase screen.
+4. **Selecting again replaces.** Do not add a "cancel my request" affordance — there is no such
+   endpoint. Let the athlete pick a different package; the pending request follows. Expect `201`
+   the first time and `200` after, with the same id.
+5. **`mark-paid` is safe to retry.** On a network timeout, resend it. Use `alreadyPaid` to decide
+   whether to show a "payment confirmed" toast a second time. Do **not** copy the Phase 6
+   attendance retry logic, which must not be retried.
+6. **Handle `409 ACTIVE_PACKAGE_EXISTS` on both screens** — when the athlete selects, and when
+   the Admin confirms. On the Admin side the purchase is still pending, so the correct prompt is
+   "close the current package first", not an error state.
+7. **Payment instructions can be `503`.** Keep the Pay button and show a "contact your coach"
+   state. Any field in the payload may be `null`; `instructions` is ordered and may be empty.
+8. **Tolerate an empty `features` array** on paid purchases — backfilled legacy rows have one.
+9. **The athlete cannot activate a package.** After confirmation, `GET /api/v1/me/package` starts
+   returning the new package; that is the athlete's signal, not anything they trigger.
+10. **The Athlete Profile payment badge** comes from the athlete's latest purchase
+    (`GET /api/v1/purchases?athleteId=…`, newest first), not from a field on the package — there
+    is no `paymentStatus` on `PurchasedPackageResponse` and there will not be one.
+
+### Not in this phase, deliberately
+
+Expenses, payment reminder notifications, the financial dashboard, refunds, partial payments,
+cancellation, editing a package's price, and any automatic InstaPay verification. **Phase 7
+(To-Dos) is deferred** and was not started.
+
+---
+
 ## Phase 6E — An observation's deduction becomes the Admin's explicit choice
 
 **Breaking, in both directions.** `CreateObservationRequest` gains a required field,
