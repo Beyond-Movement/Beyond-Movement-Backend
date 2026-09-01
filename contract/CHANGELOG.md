@@ -7,6 +7,175 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ---
 
+## Phase 9 — Admin Home dashboard
+
+**Purely additive.** One new endpoint, four new schemas, no new error codes. **No existing shape
+changed**, and no migration: the dashboard reads what Phases 5, 6 and 8 already store.
+
+```
+GET /api/v1/dashboard/admin?period=Monthly&upcomingLimit=3      Admin only
+```
+
+One aggregate endpoint rather than one per card, because the screen renders as a unit: three
+separate calls can interleave with a session being marked attended and paint a header that
+contradicts the list beneath it.
+
+### The shape
+
+```json
+{
+  "statistics": {
+    "period": "Monthly",
+    "timeZone": "Africa/Cairo",
+    "fromUtc": "2026-02-28T22:00:00Z",
+    "toUtc":   "2026-03-31T22:00:00Z",
+    "attendedSessions": 3,
+    "totalMinutes": 195,
+    "onlineSessions": 1,
+    "faceToFaceSessions": 1,
+    "observationSessions": 1
+  },
+  "upcomingSessions": [
+    {
+      "sessionId": "…",
+      "athleteUserId": "…",
+      "athleteName": "Dash Athlete",
+      "scheduledStartUtc": "2026-03-13T12:00:00Z",
+      "scheduledEndUtc":   "2026-03-13T13:00:00Z",
+      "durationMinutes": 60,
+      "deliveryType": "Online"
+    }
+  ]
+}
+```
+
+### Periods are calendar periods, and the week starts Monday
+
+`period` is `Weekly | Monthly | Yearly | AllTime` and defaults to **`Monthly`**. An unrecognised
+value is `400`, not a silent fallback.
+
+| Period | Window |
+|---|---|
+| `Weekly` | The current week, **starting Monday** |
+| `Monthly` | The current month, from the 1st |
+| `Yearly` | The current year, from 1 January |
+| `AllTime` | No date bound at all |
+
+These are **calendar** periods, not rolling ones. "Last 7 days" would change yesterday's number
+today for no reason the coach did, which reads as a bug rather than a report.
+
+`fromUtc` and `toUtc` are the resolved window, echoed back so the app can label the card without
+recomputing it and risking a different answer than the server used. Both are **null for
+`AllTime`**. `toUtc` is **in the future** for a period still running — the window is the whole
+calendar period, not the part of it that has already happened.
+
+### Boundaries are computed in the Admin's own time zone
+
+`User.TimeZone` has been stored since the first migration and read by nothing. **This is the
+first thing to honour it.** Period boundaries are worked out in the Admin's local calendar and
+then converted to UTC for the query.
+
+It matters: the coach is in Cairo (UTC+2/+3), so March begins at **`2026-02-28T22:00Z`**, not at
+midnight UTC on the 1st. A session at 00:30 Cairo on 1 March is 22:30 UTC on 28 February —
+bounded in UTC it would be filed under February, and the coach's own count would disagree with
+the dashboard every month.
+
+`statistics.timeZone` reports the zone actually used. If the stored value is not one the server
+recognises it **falls back to UTC** rather than failing the request, and the response says so —
+a dashboard that 500s because somebody typed a zone badly is worse than one that reports UTC
+visibly. Both IANA (`Africa/Cairo`) and Windows (`Egypt Standard Time`) ids resolve.
+
+### Every statistic counts attended sessions only
+
+**`Attended` and nothing else.** `Scheduled` has not happened, `Cancelled` never will (BR-06),
+and **`NoShow` is deliberately excluded** — the coach's time was spent but the session was not
+delivered, and a figure labelled "attended" that counts absences is one nobody can reconcile.
+
+A session belongs to the period **it happened in** (`scheduledStartUtc`), not the period the
+coach got round to marking it in. Windows are half-open, so a session exactly on a boundary
+lands in one period and never in both.
+
+`onlineSessions`, `faceToFaceSessions` and `observationSessions` use the **identical** filter, so
+they always sum exactly to `attendedSessions`. A breakdown that does not add up to its own total
+is a bug report waiting to happen; a test pins the identity for all four periods.
+
+### Coaching time is minutes, not decimal hours
+
+`totalMinutes` is an **integer count of minutes**, summed from each session's stored
+`durationMinutes`. Divide by 60 to display; never do arithmetic on the divided value.
+
+Same reasoning as money being an integer count of piastres: a decimal in JSON becomes a Dart
+`double`, and the error that is invisible on one value shows up the first time a column is
+summed. There is deliberately **no `totalHours` field**, and a test asserts its absence.
+
+This resolves open decision **A-02** — the source for the hours report is the duration already
+stored on the session.
+
+### Upcoming sessions never move with the period
+
+`upcomingSessions` is the next scheduled sessions from now, **exactly as `GET /sessions/upcoming`
+already defines them** — `Scheduled` status, start at or after now, so a cancelled session can
+never appear.
+
+**It is independent of `period`.** Switching Weekly to Yearly changes the numbers above and never
+this list: what is coming next does not depend on how far back the coach is looking. A test
+asserts the list is byte-for-byte identical across all four periods while the statistics change.
+
+Defaults to **3**, which is what Admin Home shows. `upcomingLimit` is clamped to 1–20 rather than
+rejected, matching `/sessions` and the athlete list — a limit outside the range is a client bug
+that should still render a screen.
+
+### `athleteUserId`, named in full on purpose
+
+Each card carries **`athleteUserId`** — the athlete's **USER** id, which is what
+`GET /api/v1/athletes/{athleteId}` takes. **This is the id to navigate to Athlete Profile with.**
+
+The profile id is deliberately **absent**. The two ids are different rows and are not
+interchangeable — `athleteProfileId` is what sessions and packages are keyed by — and the card
+exists to open a profile, so it carries only the id that does that. A test asserts
+`athleteProfileId` is not present, so nobody can start depending on it by accident.
+
+> **Naming note.** The existing `/athletes/{athleteId}` routes and `AthleteListItem.Id` still use
+> the bare name `athleteId`/`id` for the user id, which is less explicit than this. Renaming them
+> is a breaking change across roughly ten endpoints and is **not** part of this phase; it is
+> recorded as an open contract decision.
+
+`athleteName` is never null, falling back to the athlete's email while `fullName` is null —
+the same rule every other session-rendering endpoint follows.
+
+`deliveryType` and `scheduledStartUtc` are named to match `SessionResponse` rather than
+introducing a second word for one concept.
+
+### Not in this phase
+
+**Package alerts, paid/unpaid totals and expenses are deferred, not dropped.** They remain in
+Phase 9's product scope; they are simply not in this response because the current Admin Home does
+not display them, and expenses are not built at all. Adding them later is additive and needs no
+change to what is here.
+
+The note preview that an earlier draft of this phase described — a snippet of the athlete's most
+recent previous session note on each upcoming card — was **removed from scope before
+implementation** and is not built. No note lookup and no index for one exist.
+
+### Mobile integration notes
+
+1. **Regenerate the client.** Additive: four new schemas and one new enum (`DashboardPeriod`).
+2. **Send `period` explicitly** rather than relying on the `Monthly` default, so the screen and
+   the request cannot drift apart. An unknown value is a `400`.
+3. **Do not compute the window.** Label the card from `fromUtc`/`toUtc`, which are the exact
+   bounds the numbers came from. Both null means All Time.
+4. **`totalMinutes` ÷ 60 for hours.** Keep the integer for any arithmetic; format only at display.
+5. **Do not re-fetch upcoming when the period changes.** It cannot change. One call repaints the
+   statistics only.
+6. **Navigate to Athlete Profile with `athleteUserId`.** Not a profile id, and there is no
+   `athleteProfileId` on these cards.
+7. **Expect `toUtc` in the future** for a running period. It is the end of the calendar window,
+   not "now".
+8. **`timeZone` is worth surfacing in support**, not in the UI: if a coach reports a week looking
+   wrong, that field says which zone the server used and whether it fell back to UTC.
+
+---
+
 ## Phase 8 — Package purchase and manual payment
 
 **Purely additive.** Six new endpoints, three new schemas, three new error codes. **No existing

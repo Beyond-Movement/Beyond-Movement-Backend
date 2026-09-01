@@ -40,7 +40,14 @@ public sealed class User
 
     private User() { }   // EF Core needs this
 
-    public static User CreateAdmin(string email, string fullName, string passwordHash, DateTime nowUtc)
+    /// <param name="timeZone">
+    /// The coach's own zone, which is the one the Admin dashboard computes week, month and year
+    /// boundaries in. Optional, and <b>defaults to UTC</b> exactly as the property does, so this
+    /// stays a deliberate act of provisioning rather than a silent default that would also reach
+    /// athletes. Supplied from <c>Seed:AdminTimeZone</c> when the Admin is seeded.
+    /// </param>
+    public static User CreateAdmin(
+        string email, string fullName, string passwordHash, DateTime nowUtc, string? timeZone = null)
     {
         var user = new User
         {
@@ -53,6 +60,10 @@ public sealed class User
             UpdatedAtUtc = nowUtc,
             ProfileCompletedAtUtc = nowUtc   // the Admin has no Complete Profile step
         };
+
+        if (!string.IsNullOrWhiteSpace(timeZone))
+            user.TimeZone = timeZone.Trim();
+
         user.CoachId = user.Id;
         return user;
     }

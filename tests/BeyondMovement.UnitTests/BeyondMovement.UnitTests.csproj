@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -25,6 +25,10 @@
     <ProjectReference Include="..\..\src\BeyondMovement.Modules.Packages\BeyondMovement.Modules.Packages.csproj" />
     <ProjectReference Include="..\..\src\BeyondMovement.Modules.Scheduling\BeyondMovement.Modules.Scheduling.csproj" />
     <ProjectReference Include="..\..\src\BeyondMovement.Infrastructure\BeyondMovement.Infrastructure.csproj" />
+
+    <!-- The dashboard period/timezone maths lives in the Api composition root, where the
+         cross-module read models live. It is pure and worth testing without a database. -->
+    <ProjectReference Include="..\..\src\BeyondMovement.Api\BeyondMovement.Api.csproj" />
   </ItemGroup>
 
 </Project>

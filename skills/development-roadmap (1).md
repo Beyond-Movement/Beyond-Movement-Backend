@@ -254,20 +254,32 @@ Phase 8 was built before it.
 entity and its `/payments` endpoint rows describe a model this phase replaced; §6.2 and §14.7
 have been amended.
 
-# PHASE 9 — Admin Dashboard
+# PHASE 9 — Admin Dashboard ◐ PARTIALLY DONE
 
 | **BACKEND**                                         | **FLUTTER / MOBILE**                            |
 |-----------------------------------------------------|-------------------------------------------------|
-| • Dashboard aggregate endpoint.                     | • Admin Home dashboard.                         |
-| • Sessions completed + coaching hours.              | • Stats cards and period filters.               |
-| • Upcoming sessions.                                | • Upcoming session cards.                       |
-| • Package alerts.                                   | • Quick actions wired to the completed modules. |
-| • Paid/unpaid totals.                               |                                                 |
-| • Expenses.                                         |                                                 |
-| • Period filters.                                   |                                                 |
-| • Last-session-note summary required by Admin Home. |                                                 |
+| ✅ Dashboard aggregate endpoint.                    | • Admin Home dashboard.                         |
+| ✅ Sessions completed + coaching hours.             | • Stats cards and period filters.               |
+| ✅ Upcoming sessions.                               | • Upcoming session cards.                       |
+| ✅ Period filters.                                  | • Quick actions wired to the completed modules. |
+| ⏸ Package alerts.                                   |                                                 |
+| ⏸ Paid/unpaid totals.                               |                                                 |
+| ⏸ Expenses.                                         |                                                 |
+| ⏸ Last-session-note summary required by Admin Home. |                                                 |
 
-**CHECK:** Architecture: UI/UX architectural consequences + Reporting/dashboard queries. UI/UX: Admin Home.
+**⏸ means deferred from the current Admin Home implementation — still in scope for this phase,
+not removed from the product.** They are absent from `GET /dashboard/admin` only because the
+Admin Home screen does not display them yet; expenses are additionally not built at all, having
+been removed from Phase 8 by the client. Every one of them is additive to the existing response
+and needs no change to what shipped.
+
+Delivered: attended-only statistics over **calendar** periods (week starts Monday) computed in
+the **Admin's own time zone**, the Online/Face-to-Face/Observation breakdown, coaching minutes
+from the session's stored duration, and upcoming sessions that do not move when the period
+changes. **A-02 closed** — the hours source is the session's stored `DurationMinutes`.
+
+**CHECK:** `contract/CHANGELOG.md` → "Phase 9" — authoritative. Architecture: UI/UX architectural
+consequences + Reporting/dashboard queries. UI/UX: Admin Home.
 
 # PHASE 10 — Notifications
 

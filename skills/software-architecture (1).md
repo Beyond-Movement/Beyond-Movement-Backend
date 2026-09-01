@@ -14,7 +14,7 @@ Nothing below is invented product scope. These are gaps in the specification tha
 | # | Gap in specification | Working assumption | Impact if wrong |
 |---|---|---|---|
 | A-01 | Calendly **Standard** plan and webhook availability. The spec fixes Calendly Standard (BR-13) but webhook subscriptions on Calendly's API have historically required a paid tier whose exact entitlement changes. | Webhooks are available on the selected seat. A **polling reconciliation job** is built regardless, so the integration works either way. | If webhooks are unavailable, sync latency rises from seconds to the polling interval (5–15 min). Architecture already tolerates this. |
-| A-02 | Session **duration** source. Reports require "total coaching hours" but no duration field is defined as coach-editable. | Duration comes from the Calendly event type and is stored on the session record; Admin may override it on Session Details. | Reporting hours would be wrong or non-reproducible. |
+| A-02 | Session **duration** source. Reports require "total coaching hours" but no duration field is defined as coach-editable. | **RESOLVED (Phase 9): the `DurationMinutes` stored on the session is the source.** It is set from the Calendly event's own start and end, or computed for an Observation. The coach-editable override was never built and is not required by the dashboard. | Reporting hours would be wrong or non-reproducible. |
 | A-03 | **Observation** sessions. BR-07 says an observation over one hour consumes one session, but observations are not booked through Calendly in the UI spec. | Observations are created manually by the Admin as a session record with type = Observation. Deduction is triggered by the same "Mark as Attended" action, and the >1h rule is evaluated from the recorded duration. | An entire creation flow (Create Observation) is missing from the screen catalogue. |
 | A-04 | **No-show** default. Spec says configurable, default no deduction. | No-show is a session status that does not deduct. Configurability is a single system setting, not per-athlete. | Rework in the attendance service if per-athlete policy is wanted. |
 | A-05 | **Partial payment** amounts. Payment status includes "Partially Paid" but no amount-paid field is specified. | Payment records store amount, currency (EGP), and status; partial = sum of payments < package price. | Financial reporting accuracy. |
@@ -1909,7 +1909,7 @@ A Flutter mobile client for both roles, talking to a single ASP.NET Core modular
 
 1. **A-01** — Confirm Calendly webhook entitlement on the purchased plan.
 2. **A-03** — Define how observations are created and when they deduct.
-3. **A-02** — Confirm the source of session duration for hour reporting.
+3. ~~**A-02** — Confirm the source of session duration for hour reporting.~~ **Closed: the session's stored `DurationMinutes`.** Implemented in Phase 9.
 4. **A-07** — Confirm deletion vs anonymization semantics with the client's privacy requirements.
 5. **A-12** — Confirm hosting region and any data residency requirement.
 6. ~~**C-01** — Rule on payment statuses: three values (spec) or two (UI doc).~~ **Closed: two, `Pending | Paid`.** Partial payments do not exist. Implemented in Phase 8.

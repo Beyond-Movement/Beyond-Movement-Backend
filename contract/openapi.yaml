@@ -257,6 +257,74 @@ paths:
                 $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
+  /api/v1/dashboard/admin:
+    get:
+      tags:
+      - Dashboard
+      summary: Everything the Admin Home screen shows, in one call.
+      description: 'period selects the statistics window and defaults to Monthly.
+        The periods are CALENDAR periods, not rolling windows: Weekly is the current
+        week starting MONDAY, Monthly is the current month from the 1st, Yearly is
+        the current year from 1 January, and AllTime has no date bound. A rolling
+        "last 7 days" would change yesterday''s number today for no reason the coach
+        did. Boundaries are computed in the ADMIN''S OWN TIME ZONE (their User.TimeZone)
+        and then converted to UTC, so a late-evening session falls in the week the
+        coach was working, not the one UTC says. The zone actually used is echoed
+        back as statistics.timeZone, and falls back to UTC if the stored value is
+        not recognised. fromUtc and toUtc are the resolved window, both null for AllTime;
+        toUtc is in the future for a period still running. Every statistic counts
+        ATTENDED sessions only, by scheduledStartUtc - the date the session happened,
+        not when it was marked. Scheduled, cancelled and NO-SHOW sessions are all
+        excluded, so the figures are delivered work. online, faceToFace and observation
+        use the identical filter and always sum exactly to attendedSessions. totalMinutes
+        is an integer count of MINUTES, summed from each session''s stored durationMinutes;
+        divide by 60 to show hours, and never do arithmetic on the divided value -
+        the same reason money is an integer count of piastres. upcomingSessions is
+        INDEPENDENT of period: it is the next scheduled sessions from now, exactly
+        as GET /sessions/upcoming defines them, and switching Weekly to Yearly never
+        changes it. Defaults to 3, and upcomingLimit is clamped to 1-20. athleteUserId
+        on each card is the athlete''s USER id - the id GET /athletes/{athleteId}
+        takes - not the profile id that sessions and packages are keyed by.'
+      operationId: GetAdminDashboard
+      parameters:
+      - name: period
+        in: query
+        schema:
+          default: Monthly
+          $ref: '#/components/schemas/DashboardPeriod'
+      - name: upcomingLimit
+        in: query
+        schema:
+          type: integer
+          format: int32
+          default: 3
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminDashboardResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
   /api/v1/auth/login:
     post:
       tags:
@@ -2909,6 +2977,18 @@ paths:
       - bearerAuth: []
 components:
   schemas:
+    AdminDashboardResponse:
+      required:
+      - statistics
+      - upcomingSessions
+      type: object
+      properties:
+        statistics:
+          $ref: '#/components/schemas/DashboardStatistics'
+        upcomingSessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/UpcomingSessionCard'
     ApiProblemDetails:
       required:
       - errorCode
@@ -3424,6 +3504,55 @@ components:
           format: int64
         currency:
           type: string
+    DashboardPeriod:
+      enum:
+      - Weekly
+      - Monthly
+      - Yearly
+      - AllTime
+      type: string
+    DashboardStatistics:
+      required:
+      - period
+      - timeZone
+      - fromUtc
+      - toUtc
+      - attendedSessions
+      - totalMinutes
+      - onlineSessions
+      - faceToFaceSessions
+      - observationSessions
+      type: object
+      properties:
+        period:
+          $ref: '#/components/schemas/DashboardPeriod'
+        timeZone:
+          type: string
+        fromUtc:
+          type:
+          - 'null'
+          - string
+          format: date-time
+        toUtc:
+          type:
+          - 'null'
+          - string
+          format: date-time
+        attendedSessions:
+          type: integer
+          format: int32
+        totalMinutes:
+          type: integer
+          format: int32
+        onlineSessions:
+          type: integer
+          format: int32
+        faceToFaceSessions:
+          type: integer
+          format: int32
+        observationSessions:
+          type: integer
+          format: int32
     DeliveryType:
       enum:
       - Online
@@ -4109,6 +4238,36 @@ components:
       properties:
         isLoyal:
           type: boolean
+    UpcomingSessionCard:
+      required:
+      - sessionId
+      - athleteUserId
+      - athleteName
+      - scheduledStartUtc
+      - scheduledEndUtc
+      - durationMinutes
+      - deliveryType
+      type: object
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        athleteUserId:
+          type: string
+          format: uuid
+        athleteName:
+          type: string
+        scheduledStartUtc:
+          type: string
+          format: date-time
+        scheduledEndUtc:
+          type: string
+          format: date-time
+        durationMinutes:
+          type: integer
+          format: int32
+        deliveryType:
+          $ref: '#/components/schemas/DeliveryType'
     UpdatePreferencesRequest:
       required:
       - athleteListSort
@@ -4189,6 +4348,7 @@ tags:
 - name: Calendly webhooks
 - name: Packages
 - name: Purchases
+- name: Dashboard
 - name: Invitations
 - name: Package options
 - name: Scheduling

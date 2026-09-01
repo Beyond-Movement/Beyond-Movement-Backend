@@ -26,6 +26,7 @@ using BeyondMovement.Modules.Identity.Features.ForgotPassword;
 using BeyondMovement.Modules.Identity.Features.GoogleSignIn;
 using BeyondMovement.Modules.Identity.Features.Login;
 using BeyondMovement.Modules.Identity.Features.Logout;
+using BeyondMovement.Api.Dashboard;
 using BeyondMovement.Api.Finance;
 using BeyondMovement.Modules.Finance.Features;
 using BeyondMovement.Modules.Finance.Payments;
@@ -175,6 +176,10 @@ builder.Services.Configure<InstaPayOptions>(
 builder.Services.AddScoped<IFinanceDbContext>(sp => sp.GetRequiredService<AppDbContext>());
 builder.Services.AddScoped<PurchaseCheckoutService>();
 
+// Admin Home - Phase 9. Reads across Scheduling, Athletes and Identity, so it is a read model
+// in the composition root like AthleteDirectory and CatalogueReader.
+builder.Services.AddScoped<AdminDashboardReader>();
+
 // Attendance - Phase 6. Writes to Scheduling and Packages at once, so it lives in the Api
 // project rather than in either module (CLAUDE.md section 4).
 builder.Services.Configure<FeatureOptions>(builder.Configuration.GetSection(FeatureOptions.SectionName));
@@ -300,6 +305,7 @@ app.MapPurchasedPackageEndpoints();
 app.MapPurchaseEndpoints();
 app.MapAttendanceEndpoints();
 app.MapSessionNoteEndpoints();
+app.MapDashboardEndpoints();
 
 if (app.Environment.IsDevelopment())
 {

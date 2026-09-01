@@ -43,7 +43,8 @@ public static class AdminSeeder
             email,
             string.IsNullOrWhiteSpace(fullName) ? "Admin" : fullName,
             passwordHash: "placeholder",
-            clock.UtcNow);
+            clock.UtcNow,
+            ResolveTimeZone(configuration["Seed:AdminTimeZone"], logger));
 
         // The hasher salts per user, so the hash can only be produced once the user exists.
         admin.SetPasswordHash(hasher.HashPassword(admin, password), clock.UtcNow);
@@ -51,6 +52,42 @@ public static class AdminSeeder
         db.Users.Add(admin);
         await db.SaveChangesAsync(ct);
 
-        logger.LogInformation("Seeded the initial Admin user {UserId}", admin.Id);
+        logger.LogInformation(
+            "Seeded the initial Admin user {UserId} in time zone {TimeZone}",
+            admin.Id, admin.TimeZone);
+    }
+
+    /// <summary>
+    /// Checks the configured zone actually resolves before it is written to the row.
+    /// <para>
+    /// The Admin dashboard computes week, month and year boundaries in this zone, and an
+    /// unrecognised value there falls back to UTC <em>silently</em> on every request — the
+    /// figures would simply be wrong for late-evening sessions and nothing would say why. Failing
+    /// it here, once, at the moment somebody typed it, is the only place the mistake is cheap.
+    /// </para>
+    /// <para>
+    /// A warning rather than a throw: an unusable time zone must not stop the Admin being created
+    /// at all, because without an Admin there is no way to log in and fix anything (BR-01).
+    /// </para>
+    /// </summary>
+    private static string? ResolveTimeZone(string? configured, ILogger logger)
+    {
+        if (string.IsNullOrWhiteSpace(configured))
+            return null;   // CreateAdmin keeps its own UTC default
+
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(configured.Trim()).Id;
+        }
+        catch (Exception exception) when (
+            exception is TimeZoneNotFoundException or InvalidTimeZoneException)
+        {
+            logger.LogWarning(
+                "Seed:AdminTimeZone is set to {TimeZone}, which this server does not recognise. " +
+                "The Admin will be created in UTC and the dashboard will report UTC periods. " +
+                "Use an IANA id such as Africa/Cairo.", configured);
+
+            return null;
+        }
     }
 }

@@ -2,7 +2,7 @@
 
 Context file for Claude Code. Read this before doing anything in this repository.
 
-**Last updated:** phases 0–6 and 8 backend complete; phase 7 deferred. See section 8.
+**Last updated:** phases 0–6, 8 and 9 backend complete; phase 7 deferred. See section 8.
 
 ---
 
@@ -110,7 +110,7 @@ These are **read-only**. A cross-module *write* is orchestrated in an endpoint i
 | `Modules.Scheduling` | Sessions, Calendly, attendance, session notes | **Built** |
 | `Modules.ToDos` | To-dos, overdue job | Phase 7 — **deferred**, not started |
 | `Modules.Finance` | Package purchases, payment status, InstaPay configuration | **Built** (Phase 8). Expenses removed from scope |
-| `Modules.Reporting` | Dashboard aggregates — read-only, may query across module tables | Phase 9, 11 |
+| `Modules.Reporting` | Dashboard aggregates | **Not created.** Phase 9's dashboard is a read model in `Api/Dashboard/`, because it spans Scheduling, Athletes and Identity and a module may not reference another module. Revisit only if reporting outgrows that |
 | `Modules.Notifications` | Push, email, reminders | Phase 10 |
 | `Modules.Chat`, `Modules.Files` | SignalR, uploads | Phase 13 |
 
@@ -214,7 +214,8 @@ Transport is chosen at startup: **Postmark → SMTP → console**. The startup l
 | 6 | **Attendance & Notes** | ✅ Done | Mark attended/no-show, exactly-once deduction, observations, session notes, **purchased packages** |
 | 7 | To-Dos | **Deferred** | Skipped by the client; Phase 8 was built first |
 | 8 | **Purchase & payment** | ✅ Done | Pending/Paid purchases, price snapshot, idempotent confirmation, InstaPay config. **C-01 closed.** Expenses removed from scope |
-| 9–14 | Dashboard → Release | Not started | |
+| 9 | **Admin Dashboard** | ✅ Done | `GET /dashboard/admin`: attended-only statistics over calendar periods in the Admin's own time zone, plus upcoming sessions. **A-02 closed.** Package alerts and payment totals deferred, not dropped |
+| 10–14 | Notifications → Release | Not started | |
 
 **A phase is not *done* until the Flutter screens are connected and tested end to end.** By that definition phases 1–6 are backend-complete and awaiting mobile integration.
 
@@ -250,7 +251,7 @@ So `product-specification.md` §4.5, `software-architecture.md` §14.3 and `deve
 | A-01 | Does the Calendly plan include webhooks? | **Phase 5 — the next phase** |
 | — | C-01 Payment statuses. **Decided: `Pending` and `Paid` only.** No partial payments, no cancellation, and a paid purchase never returns to Pending. Carried on the purchase, not the package | Closed |
 | C-02 | What does the Admin Home "New Session" quick action do? | Phase 6 |
-| A-02 | Where does session duration come from for the hours report? | Phase 5 |
+| — | A-02 Session duration for the hours report. **Decided: the `DurationMinutes` already stored on the session.** Implemented in Phase 9; the dashboard sums it and reports `totalMinutes` | Closed |
 | — | A-03 Observation creation. **Decided:** Admin creates them manually via `POST /sessions/observations`; the >1h rule (BR-07) is evaluated on Mark as Attended | Closed |
 | — | A-04 No-show deduction. **Decided:** one deployment-wide setting, `Features__NoShowDeducts`, default off | Closed |
 | A-07 | Athlete deletion: hard delete or anonymize? | Phase 2 cleanup |
