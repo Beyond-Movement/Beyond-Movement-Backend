@@ -43,12 +43,17 @@ public static class DashboardEndpoints
                 "toUtc is in the future for a period still running. " +
                 "Every statistic counts ATTENDED sessions only, by scheduledStartUtc - the date " +
                 "the session happened, not when it was marked. Scheduled, cancelled and NO-SHOW " +
-                "sessions are all excluded, so the figures are delivered work. online, " +
-                "faceToFace and observation use the identical filter and always sum exactly to " +
-                "attendedSessions. " +
-                "totalMinutes is an integer count of MINUTES, summed from each session's stored " +
-                "durationMinutes; divide by 60 to show hours, and never do arithmetic on the " +
-                "divided value - the same reason money is an integer count of piastres. " +
+                "sessions are all excluded, so the figures are delivered work. " +
+                "onlineSessions, faceToFaceSessions and observationSessions use the identical " +
+                "filter and always sum exactly to attendedSessions; onlineMinutes, " +
+                "faceToFaceMinutes and observationMinutes do the same and always sum exactly to " +
+                "totalMinutes. " +
+                "Every minute field is an integer count of MINUTES, summed from each session's " +
+                "stored durationMinutes; format for display only (90 as \"1h 30m\") and never do " +
+                "arithmetic on a divided value - the same reason money is an integer count of " +
+                "piastres. Per-type minutes are sent rather than derived because they cannot be " +
+                "recovered from the counts: three online sessions could be 30, 60 and 90 " +
+                "minutes, and any average the client invented would be wrong. " +
                 "upcomingSessions is INDEPENDENT of period: it is the next scheduled sessions " +
                 "from now, exactly as GET /sessions/upcoming defines them, and switching Weekly " +
                 "to Yearly never changes it. Defaults to 3, and upcomingLimit is clamped to " +

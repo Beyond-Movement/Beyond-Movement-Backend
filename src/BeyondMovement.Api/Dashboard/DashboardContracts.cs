@@ -73,6 +73,17 @@ public sealed record AdminDashboardResponse(
 /// <paramref name="AttendedSessions"/>, so they always sum to it exactly. A breakdown that does
 /// not add up to its own total is a bug report waiting to happen.
 /// </param>
+/// <param name="OnlineMinutes">
+/// Coaching time for this delivery type, in whole minutes, over the same window and the same
+/// attended-only filter as <paramref name="TotalMinutes"/> — so
+/// <c>onlineMinutes + faceToFaceMinutes + observationMinutes == totalMinutes</c>, exactly, for
+/// every period.
+/// <para>
+/// Sent rather than derived because the client must not compute it. Minutes for one type are not
+/// recoverable from the counts: three online sessions could be 30, 60 and 90 minutes, and any
+/// average the app invented would be wrong. Format for display only — 90 becomes "1h 30m".
+/// </para>
+/// </param>
 public sealed record DashboardStatistics(
     DashboardPeriod Period,
     string TimeZone,
@@ -82,7 +93,10 @@ public sealed record DashboardStatistics(
     int TotalMinutes,
     int OnlineSessions,
     int FaceToFaceSessions,
-    int ObservationSessions);
+    int ObservationSessions,
+    int OnlineMinutes,
+    int FaceToFaceMinutes,
+    int ObservationMinutes);
 
 /// <summary>
 /// One card in the Admin Home "upcoming sessions" list.

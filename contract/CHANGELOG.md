@@ -33,7 +33,10 @@ contradicts the list beneath it.
     "totalMinutes": 195,
     "onlineSessions": 1,
     "faceToFaceSessions": 1,
-    "observationSessions": 1
+    "observationSessions": 1,
+    "onlineMinutes": 60,
+    "faceToFaceMinutes": 90,
+    "observationMinutes": 45
   },
   "upcomingSessions": [
     {
@@ -99,14 +102,38 @@ lands in one period and never in both.
 they always sum exactly to `attendedSessions`. A breakdown that does not add up to its own total
 is a bug report waiting to happen; a test pins the identity for all four periods.
 
-### Coaching time is minutes, not decimal hours
+### Coaching time is minutes, not decimal hours — in total and per delivery type
 
-`totalMinutes` is an **integer count of minutes**, summed from each session's stored
-`durationMinutes`. Divide by 60 to display; never do arithmetic on the divided value.
+Four minute fields, all **integer counts of minutes** summed from each session's stored
+`durationMinutes` over the same window and the same attended-only filter:
 
-Same reasoning as money being an integer count of piastres: a decimal in JSON becomes a Dart
-`double`, and the error that is invisible on one value shows up the first time a column is
-summed. There is deliberately **no `totalHours` field**, and a test asserts its absence.
+| Field | Covers |
+|---|---|
+| `totalMinutes` | All attended sessions in the period |
+| `onlineMinutes` | Attended Online sessions |
+| `faceToFaceMinutes` | Attended Face-to-Face sessions |
+| `observationMinutes` | Attended Observations |
+
+**The invariant, guaranteed for every period:**
+
+```
+onlineMinutes + faceToFaceMinutes + observationMinutes == totalMinutes
+```
+
+A test pins it across all four periods, and both the counts and the minutes are folded from one
+grouped database result — the same rows added up two ways — so a breakdown cannot drift from its
+own total.
+
+**Per-type minutes are sent rather than derived, because they cannot be recovered from the
+counts.** Sessions of one type are not the same length as sessions of another: across All Time
+the fixture holds three online sessions of 60, 30 and 120 minutes, so scaling the overall average
+by the count gives 3 × (345 ÷ 5) = 207, not the true 210. A test pins that too.
+
+Format for display only — 90 becomes **"1h 30m"**. Keep the integer for any arithmetic. Same
+reasoning as money being an integer count of piastres: a decimal in JSON becomes a Dart `double`,
+and the error that is invisible on one value shows up the first time a column is summed. There is
+deliberately **no `totalHours`**, and no `...Hours` field of any kind; a test asserts their
+absence.
 
 This resolves open decision **A-02** — the source for the hours report is the duration already
 stored on the session.
@@ -164,7 +191,10 @@ implementation** and is not built. No note lookup and no index for one exist.
    the request cannot drift apart. An unknown value is a `400`.
 3. **Do not compute the window.** Label the card from `fromUtc`/`toUtc`, which are the exact
    bounds the numbers came from. Both null means All Time.
-4. **`totalMinutes` ÷ 60 for hours.** Keep the integer for any arithmetic; format only at display.
+4. **Minutes are integers; format only at display.** `totalMinutes` and the three per-type
+   fields are whole minutes — render 90 as "1h 30m". Keep the integer for any arithmetic, and do
+   **not** derive per-type minutes from the counts: they are not recoverable that way, which is
+   why the server sends them.
 5. **Do not re-fetch upcoming when the period changes.** It cannot change. One call repaints the
    statistics only.
 6. **Navigate to Athlete Profile with `athleteUserId`.** Not a profile id, and there is no

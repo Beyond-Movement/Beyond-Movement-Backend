@@ -55,6 +55,11 @@ public sealed class DashboardTests(DashboardApiFactory factory) : IClassFixture<
         stats.GetProperty("faceToFaceSessions").GetInt32(),
         stats.GetProperty("observationSessions").GetInt32());
 
+    private static (int Online, int F2F, int Observation) ReadMinutes(JsonElement stats) => (
+        stats.GetProperty("onlineMinutes").GetInt32(),
+        stats.GetProperty("faceToFaceMinutes").GetInt32(),
+        stats.GetProperty("observationMinutes").GetInt32());
+
     // --- the four period filters --------------------------------------------
 
     [Theory]
@@ -141,9 +146,50 @@ public sealed class DashboardTests(DashboardApiFactory factory) : IClassFixture<
     public async Task The_delivery_breakdown_always_sums_to_the_total(string period)
     {
         var stats = (await DashboardAsync($"?period={period}")).GetProperty("statistics");
-        var (sessions, _, online, faceToFace, observation) = Read(stats);
+        var (sessions, minutes, online, faceToFace, observation) = Read(stats);
+        var (onlineMinutes, faceToFaceMinutes, observationMinutes) = ReadMinutes(stats);
 
         Assert.Equal(sessions, online + faceToFace + observation);
+
+        // The invariant Flutter relies on: it renders per-type hours straight from these and
+        // never derives them, so a breakdown that did not add up would silently mis-report time.
+        Assert.Equal(minutes, onlineMinutes + faceToFaceMinutes + observationMinutes);
+    }
+
+    [Theory]
+    // Weekly: one 60-minute online and one 90-minute face-to-face.
+    [InlineData("Weekly", 60, 90, 0)]
+    // Monthly: adds the 45-minute observation.
+    [InlineData("Monthly", 60, 90, 45)]
+    // Yearly: adds a 30-minute online, so online is 60 + 30.
+    [InlineData("Yearly", 90, 90, 45)]
+    // All time: adds a 120-minute online, so online is 60 + 30 + 120.
+    [InlineData("AllTime", 210, 90, 45)]
+    public async Task Minutes_are_summed_per_delivery_type(
+        string period, int online, int faceToFace, int observation)
+    {
+        var stats = (await DashboardAsync($"?period={period}")).GetProperty("statistics");
+
+        Assert.Equal((online, faceToFace, observation), ReadMinutes(stats));
+    }
+
+    [Fact]
+    public async Task Per_type_minutes_are_not_recoverable_from_the_counts()
+    {
+        // All time holds five attended sessions totalling 345 minutes, three of them online at
+        // 60, 30 and 120 minutes. The obvious derivation a client might reach for - scale the
+        // overall average by the count - gives 3 x (345/5) = 207, not the true 210. Sessions of
+        // one type are not the same length as sessions of another, so only the server can say.
+        var stats = (await DashboardAsync("?period=AllTime")).GetProperty("statistics");
+
+        var sessions = stats.GetProperty("attendedSessions").GetInt32();
+        var minutes = stats.GetProperty("totalMinutes").GetInt32();
+        var onlineSessions = stats.GetProperty("onlineSessions").GetInt32();
+        var onlineMinutes = stats.GetProperty("onlineMinutes").GetInt32();
+
+        Assert.Equal(3, onlineSessions);
+        Assert.Equal(210, onlineMinutes);
+        Assert.NotEqual(onlineSessions * (minutes / sessions), onlineMinutes);
     }
 
     // --- coaching hours -----------------------------------------------------
@@ -156,9 +202,14 @@ public sealed class DashboardTests(DashboardApiFactory factory) : IClassFixture<
 
         Assert.Equal(195, stats.GetProperty("totalMinutes").GetInt32());
 
-        // An integer count of minutes, never a decimal number of hours - the client divides.
-        Assert.Equal(JsonValueKind.Number, stats.GetProperty("totalMinutes").ValueKind);
-        Assert.False(stats.TryGetProperty("totalHours", out _));
+        // Integer counts of minutes, never decimal hours - the client formats for display.
+        foreach (var field in new[]
+                 { "totalMinutes", "onlineMinutes", "faceToFaceMinutes", "observationMinutes" })
+            Assert.Equal(JsonValueKind.Number, stats.GetProperty(field).ValueKind);
+
+        foreach (var absent in new[]
+                 { "totalHours", "onlineHours", "faceToFaceHours", "observationHours" })
+            Assert.False(stats.TryGetProperty(absent, out _), $"{absent} must not exist");
     }
 
     [Fact]

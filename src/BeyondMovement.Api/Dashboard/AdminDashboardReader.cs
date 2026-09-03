@@ -88,8 +88,13 @@ public sealed class AdminDashboardReader(AppDbContext db, IClock clock)
             })
             .ToListAsync(ct);
 
+        // Both the counts and the minutes are folded from the one grouped result, so the
+        // breakdowns and their totals are the same rows added up two ways and cannot disagree.
         int CountOf(DeliveryType type) =>
             byType.SingleOrDefault(x => x.DeliveryType == type)?.Sessions ?? 0;
+
+        int MinutesOf(DeliveryType type) =>
+            byType.SingleOrDefault(x => x.DeliveryType == type)?.Minutes ?? 0;
 
         return new DashboardStatistics(
             period,
@@ -100,7 +105,10 @@ public sealed class AdminDashboardReader(AppDbContext db, IClock clock)
             byType.Sum(x => x.Minutes),
             CountOf(DeliveryType.Online),
             CountOf(DeliveryType.FaceToFace),
-            CountOf(DeliveryType.Observation));
+            CountOf(DeliveryType.Observation),
+            MinutesOf(DeliveryType.Online),
+            MinutesOf(DeliveryType.FaceToFace),
+            MinutesOf(DeliveryType.Observation));
     }
 
     /// <summary>
