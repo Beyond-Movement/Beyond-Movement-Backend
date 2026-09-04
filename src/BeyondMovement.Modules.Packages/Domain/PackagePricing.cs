@@ -34,10 +34,29 @@ public static class PackagePricing
     /// agreed price for that athlete, not a starting point, and compounding the two would make
     /// the number the coach typed not the number the athlete sees.
     /// </para>
+    /// <para>
+    /// <b>This is the only place the precedence is written.</b> <see cref="Effective"/> is the
+    /// same decision with the reason discarded, so the price the athlete is quoted and the source
+    /// the Admin is shown can never disagree about which rule applied.
+    /// </para>
+    /// </summary>
+    public static (long PriceMinor, PricingSource Source) Resolve(
+        long defaultPriceMinor, bool isLoyal, long? customPriceMinor)
+    {
+        if (customPriceMinor is { } custom)
+            return (custom, PricingSource.Custom);
+
+        return isLoyal
+            ? (ApplyLoyaltyDiscount(defaultPriceMinor), PricingSource.Loyalty)
+            : (defaultPriceMinor, PricingSource.Default);
+    }
+
+    /// <summary>
+    /// The price alone, for every caller that does not need to explain itself — the athlete
+    /// catalogue, a purchase snapshot, a recorded sale. See <see cref="Resolve"/> for the rule.
     /// </summary>
     public static long Effective(long defaultPriceMinor, bool isLoyal, long? customPriceMinor) =>
-        customPriceMinor
-        ?? (isLoyal ? ApplyLoyaltyDiscount(defaultPriceMinor) : defaultPriceMinor);
+        Resolve(defaultPriceMinor, isLoyal, customPriceMinor).PriceMinor;
 
     /// <summary>
     /// The rounding step for a discounted price: one tenth of a pound, which is ten piastres.

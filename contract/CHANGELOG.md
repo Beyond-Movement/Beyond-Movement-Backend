@@ -7,6 +7,126 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ---
 
+## Phase 11 — Admin Athlete Profile: pricing view, profile id, paged history
+
+**One breaking change** — `GET /api/v1/athletes/{athleteId}/packages` now returns a page. One new
+endpoint, one added field. **No migration**: every value here already existed, and nothing about
+how pricing is decided has changed.
+
+### NEW — `GET /api/v1/athletes/{athleteId}/pricing` (Admin only)
+
+The Athlete Pricing screen in one call. It replaces combining `/package-options`,
+`/custom-prices` and `/catalogue` and inferring the rest on the client — which would have meant
+**reproducing the pricing precedence in the app**, the one thing the pricing design forbids.
+
+```jsonc
+{
+  "athleteUserId": "…",
+  "isLoyal": true,
+  "loyaltyDiscountPercent": 15,      // null when the athlete is not loyal
+  "currency": "EGP",
+  "items": [
+    {
+      "packageOptionId": "…",
+      "name": "Premium 8",
+      "sessions": 8,
+      "defaultPriceMinor": 400000,   // the list price
+      "effectivePriceMinor": 250000, // what THIS athlete pays
+      "pricingSource": "Custom"      // "Default" | "Loyalty" | "Custom"
+    }
+  ]
+}
+```
+
+**Precedence, decided server-side and never on the client:**
+
+1. A **custom override** wins outright.
+2. Otherwise **loyalty** −15%, rounded to the nearest tenth of a pound.
+3. Otherwise the **default** price.
+
+They **do not compound.** A loyal athlete with an override pays the override exactly,
+undiscounted — an override is an agreed price, not a starting point. `effectivePriceMinor` and
+`pricingSource` come from a single server-side decision, so they can never disagree about which
+rule applied.
+
+- **`pricingSource` is what drives the row's action.** `Custom` means an override exists and
+  *Remove Custom Price* applies; `Default` and `Loyalty` mean there is none to remove. An
+  override that happens to equal the default still reports `Custom` — the number is
+  indistinguishable, the state is not.
+- `loyaltyDiscountPercent` is **null when `isLoyal` is false** — there is no percentage to state,
+  and a number there would invite the screen to show "−15%" to someone who does not get it. It
+  describes only rows whose source is `Loyalty`.
+- **Active options only**, ordered by name to match `GET /package-options`. Archived options
+  cannot be sold, so pricing them would price something nobody can buy.
+- An empty `items` means the coach has no active options; an unknown athlete is
+  `404 ATHLETE_NOT_FOUND`.
+- Prices are integer piastres. Divide by 100 to display.
+
+`effectivePriceMinor` is guaranteed equal to the price the athlete sees in their own catalogue —
+asserted by a test that reads both.
+
+**Setting and removing overrides is unchanged:**
+`PUT`/`DELETE /api/v1/athletes/{athleteId}/custom-prices/{packageOptionId}`, and
+`PUT /api/v1/athletes/{athleteId}/loyalty`.
+
+### `GET /api/v1/athletes/{athleteId}` gains `athleteProfileId`
+
+```diff
+  {
+    "id": "…",                    // the athlete's USER id — what this route takes
++   "athleteProfileId": "…",      // the PROFILE id — what sessions and packages are keyed by
+    "fullName": "…", "email": "…", "phone": null,
+    "dateOfBirth": "…", "gender": "…", "sport": "…",
+    "isLoyal": false, "status": "Active", "profileCompleted": true, "createdAtUtc": "…"
+  }
+```
+
+Purely additive. The two ids are **not interchangeable**: `athleteProfileId` is what
+`POST /api/v1/sessions/observations` wants in its body. `AthleteListItem` already carried it; the
+detail did not, so a profile opened without going through the list — a deep link, a notification,
+a restored tab — had to fetch a list it never came from to learn the other half. Never null.
+
+### BREAKING — `GET /api/v1/athletes/{athleteId}/packages` returns a page
+
+```diff
+- [ { …package… }, { …package… } ]
++ {
++   "items": [ { …package… } ],
++   "page": 1, "pageSize": 20, "totalCount": 7, "totalPages": 1,
++   "hasNextPage": false, "hasPreviousPage": false
++ }
+```
+
+The third and last list to move to this envelope, after `/athletes` and `/purchases` — the app
+now has **one** paging shape everywhere. The list was previously unbounded: every package the
+athlete had ever had, on every profile open.
+
+```
+GET /api/v1/athletes/{athleteId}/packages?page=1&pageSize=20
+```
+
+- `page` from 1; `pageSize` defaults 20, capped 100; **out-of-range is clamped, not rejected**.
+- Ordered **newest first** by `createdAtUtc`, with the id breaking ties so the order is total and
+  a package cannot land on two pages.
+- `Active`, `Completed` and `Closed` still returned together — unchanged.
+- An athlete with no packages gets an **empty page**; an unknown athlete still
+  `404 ATHLETE_NOT_FOUND`.
+
+**Reading the profile's two package cards from this one call:** at most one package is `Active`
+(BR-03) and it is always the newest, so it sorts first when it exists. The **most recent previous
+package** is therefore the first item whose `status` is not `Active`. **Page 1 is enough for both
+cards**; *View All* pages on from there.
+
+### Not implemented, deliberately
+
+No payment status on active packages — every active package is Paid by construction, since one
+can only be created by `mark-paid` or by an Admin sale born Paid, so the field could only ever
+say one thing. No chat, no athlete-level notes, no Admin editing of athlete personal information,
+and no new payment endpoint: the Athlete Profile confirms payment with the existing
+`POST /api/v1/purchases/{id}/mark-paid`.
+
+---
+
 ## Phase 10b — Purchases carry the athlete, and the list is paged
 
 **One breaking change**, and it is the shape of `GET /api/v1/purchases`. Everything else is

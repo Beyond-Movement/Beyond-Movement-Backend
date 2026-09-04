@@ -1769,6 +1769,69 @@ paths:
                 $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
+  /api/v1/athletes/{athleteId}/pricing:
+    get:
+      tags:
+      - Pricing
+      summary: 'The Admin pricing view: list price, this athlete''s price, and why.'
+      description: 'Everything the Athlete Pricing screen needs in ONE call - it replaces
+        combining /package-options, /custom-prices and /catalogue and inferring the
+        rest on the client, which would mean reproducing the pricing precedence in
+        the app. Each item carries defaultPriceMinor (the list price), effectivePriceMinor
+        (what this athlete pays) and pricingSource, which is Default, Loyalty or Custom.
+        The price and the source come from ONE server-side decision, so they can never
+        disagree about which rule applied. PRECEDENCE, decided server-side and never
+        on the client: a custom override wins outright; otherwise loyalty applies;
+        otherwise the default price stands. They do NOT compound - a loyal athlete
+        with an override pays the override exactly, undiscounted, because an override
+        is an agreed price rather than a starting point. pricingSource is also what
+        tells the screen which action applies: Custom means an override exists and
+        can be removed, Default and Loyalty mean there is none to remove. isLoyal
+        is repeated here so the loyalty toggle and the prices it affects render from
+        one response. loyaltyDiscountPercent is null when the athlete is not loyal
+        - there is no percentage to state - and applies only to items whose pricingSource
+        is Loyalty. ACTIVE options only, ordered by name to match GET /package-options;
+        archived options cannot be sold, so pricing them would price something nobody
+        can buy. An empty items list means the coach has no active package options,
+        not that the athlete is unknown. Prices are integer piastres - divide by 100
+        to display. An unknown athlete, or one belonging to another coach, returns
+        404 ATHLETE_NOT_FOUND. Setting and removing overrides is unchanged: PUT and
+        DELETE /athletes/{athleteId}/custom-prices/{packageOptionId}.'
+      operationId: GetAthletePricing
+      parameters:
+      - name: athleteId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AthletePricingResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
   /api/v1/scheduling/session-types:
     get:
       tags:
@@ -2292,11 +2355,21 @@ paths:
     get:
       tags:
       - Packages
-      summary: Every package this athlete has ever had, newest first.
-      description: Active, completed and closed together, because the screen showing
+      summary: A page of this athlete's packages, newest first.
+      description: 'Active, completed and closed together, because the screen showing
         history shows all three. An athlete who has never bought one gets an empty
-        list; an unknown athlete, or one belonging to another coach, gets 404 ATHLETE_NOT_FOUND,
-        so a bad id cannot be mistaken for an athlete with no packages.
+        page; an unknown athlete, or one belonging to another coach, gets 404 ATHLETE_NOT_FOUND,
+        so a bad id cannot be mistaken for an athlete with no packages. PAGED, in
+        the same envelope as GET /api/v1/athletes and GET /api/v1/purchases: items
+        plus page, pageSize, totalCount, totalPages, hasNextPage and hasPreviousPage.
+        page starts at 1 and pageSize defaults to 20 and is capped at 100 - values
+        outside the range are clamped rather than rejected. Ordered newest first by
+        createdAtUtc, with the id breaking ties so the order is total and a package
+        cannot appear on two pages. The Athlete Profile shows the most recent PREVIOUS
+        package by taking the first item whose status is not Active: at most one package
+        is Active at a time (BR-03), and it is the newest, so it sorts first when
+        it exists. Page 1 is therefore enough for that card, and View All pages from
+        here.'
       operationId: ListAthletePackages
       parameters:
       - name: athleteId
@@ -2305,15 +2378,25 @@ paths:
         schema:
           type: string
           format: uuid
+      - name: page
+        in: query
+        schema:
+          type: integer
+          format: int32
+          default: 1
+      - name: pageSize
+        in: query
+        schema:
+          type: integer
+          format: int32
+          default: 20
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/PurchasedPackageResponse'
+                $ref: '#/components/schemas/PagedResultOfPurchasedPackageResponse'
         '401':
           description: Unauthorized
           content:
@@ -3276,6 +3359,7 @@ components:
     AthleteDetail:
       required:
       - id
+      - athleteProfileId
       - fullName
       - email
       - phone
@@ -3289,6 +3373,9 @@ components:
       type: object
       properties:
         id:
+          type: string
+          format: uuid
+        athleteProfileId:
           type: string
           format: uuid
         fullName:
@@ -3366,6 +3453,57 @@ components:
       - NewestFirst
       - OldestFirst
       type: string
+    AthletePricingItem:
+      required:
+      - packageOptionId
+      - name
+      - sessions
+      - defaultPriceMinor
+      - effectivePriceMinor
+      - pricingSource
+      type: object
+      properties:
+        packageOptionId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        sessions:
+          type: integer
+          format: int32
+        defaultPriceMinor:
+          type: integer
+          format: int64
+        effectivePriceMinor:
+          type: integer
+          format: int64
+        pricingSource:
+          $ref: '#/components/schemas/PricingSource'
+    AthletePricingResponse:
+      required:
+      - athleteUserId
+      - isLoyal
+      - loyaltyDiscountPercent
+      - currency
+      - items
+      type: object
+      properties:
+        athleteUserId:
+          type: string
+          format: uuid
+        isLoyal:
+          type: boolean
+        loyaltyDiscountPercent:
+          type:
+          - 'null'
+          - integer
+          format: int32
+        currency:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AthletePricingItem'
     AthleteProfileResponse:
       required:
       - userId
@@ -4110,6 +4248,34 @@ components:
           type: boolean
         hasPreviousPage:
           type: boolean
+    PagedResultOfPurchasedPackageResponse:
+      required:
+      - items
+      - page
+      - pageSize
+      - totalCount
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PurchasedPackageResponse'
+        page:
+          type: integer
+          format: int32
+        pageSize:
+          type: integer
+          format: int32
+        totalCount:
+          type: integer
+          format: int32
+        totalPages:
+          type: integer
+          format: int32
+        hasNextPage:
+          type: boolean
+        hasPreviousPage:
+          type: boolean
     PaymentInstructionsResponse:
       required:
       - qrImageUrl
@@ -4148,6 +4314,12 @@ components:
           oneOf:
           - type: 'null'
           - $ref: '#/components/schemas/AthleteListSort'
+    PricingSource:
+      enum:
+      - Default
+      - Loyalty
+      - Custom
+      type: string
     PurchasedPackageResponse:
       required:
       - id

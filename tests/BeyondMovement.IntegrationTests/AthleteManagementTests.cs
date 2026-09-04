@@ -283,6 +283,33 @@ public sealed class AthleteManagementTests(AthleteApiFactory factory) : IClassFi
         Assert.Equal(JsonValueKind.Null, athlete.GetProperty("phone").ValueKind);   // nothing collects it yet
     }
 
+    /// <summary>
+    /// Both ids, and they are not interchangeable. The detail is reachable without going through
+    /// the list - a deep link, a notification, a restored tab - and the profile id is what
+    /// sessions and packages are keyed by, so a screen that only had the user id would have to
+    /// fetch a list it never came from to learn the other half.
+    /// </summary>
+    [Fact]
+    public async Task The_profile_carries_the_profile_id_as_well_as_the_user_id()
+    {
+        var admin = await AdminClientAsync();
+        var row = (await ListAsync(admin, "?search=Alex")).GetProperty("items")[0];
+
+        var userId = row.GetProperty("id").GetGuid();
+        var athlete = await admin.GetFromJsonAsync<JsonElement>($"/api/v1/athletes/{userId}");
+
+        Assert.Equal(userId, athlete.GetProperty("id").GetGuid());
+
+        // The same profile id the list row carries, so the two screens agree.
+        Assert.Equal(
+            row.GetProperty("athleteProfileId").GetGuid(),
+            athlete.GetProperty("athleteProfileId").GetGuid());
+
+        Assert.NotEqual(
+            athlete.GetProperty("id").GetGuid(),
+            athlete.GetProperty("athleteProfileId").GetGuid());
+    }
+
     [Fact]
     public async Task An_unknown_athlete_is_not_found()
     {

@@ -44,6 +44,7 @@ public sealed class AthleteDirectory(AppDbContext db)
             .Where(x => x.User.Id == athleteUserId)
             .Select(x => new AthleteDetail(
                 x.User.Id,
+                x.Profile.Id,
                 x.User.FullName,
                 x.User.Email,
                 x.User.Phone,

@@ -5,6 +5,7 @@ using BeyondMovement.Modules.Identity.Contracts;
 using BeyondMovement.Modules.Packages;
 using BeyondMovement.Modules.Packages.Contracts;
 using BeyondMovement.Modules.Packages.Domain;
+using BeyondMovement.SharedKernel;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 
@@ -58,13 +59,23 @@ public static class PurchasedPackageEndpoints
 
         athlete.MapGet(string.Empty, History)
             .WithName("ListAthletePackages")
-            .WithSummary("Every package this athlete has ever had, newest first.")
+            .WithSummary("A page of this athlete's packages, newest first.")
             .WithDescription(
                 "Active, completed and closed together, because the screen showing history shows " +
-                "all three. An athlete who has never bought one gets an empty list; an unknown " +
+                "all three. An athlete who has never bought one gets an empty page; an unknown " +
                 "athlete, or one belonging to another coach, gets 404 ATHLETE_NOT_FOUND, so a bad " +
-                "id cannot be mistaken for an athlete with no packages.")
-            .Produces<IReadOnlyList<PurchasedPackageResponse>>()
+                "id cannot be mistaken for an athlete with no packages. " +
+                "PAGED, in the same envelope as GET /api/v1/athletes and GET /api/v1/purchases: " +
+                "items plus page, pageSize, totalCount, totalPages, hasNextPage and " +
+                "hasPreviousPage. page starts at 1 and pageSize defaults to 20 and is capped at " +
+                "100 - values outside the range are clamped rather than rejected. " +
+                "Ordered newest first by createdAtUtc, with the id breaking ties so the order is " +
+                "total and a package cannot appear on two pages. " +
+                "The Athlete Profile shows the most recent PREVIOUS package by taking the first " +
+                "item whose status is not Active: at most one package is Active at a time " +
+                "(BR-03), and it is the newest, so it sorts first when it exists. Page 1 is " +
+                "therefore enough for that card, and View All pages from here.")
+            .Produces<PagedResult<PurchasedPackageResponse>>()
             .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
             .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson)
             .Produces<ApiProblemDetails>(StatusCodes.Status404NotFound, ProblemJson);
@@ -148,7 +159,8 @@ public static class PurchasedPackageEndpoints
 
     private static async Task<IResult> History(
         Guid athleteId, AppDbContext db, CatalogueReader reader, ClaimsPrincipal principal,
-        HttpContext http, CancellationToken ct)
+        HttpContext http, CancellationToken ct,
+        int page = 1, int pageSize = PagedResult<PurchasedPackageResponse>.DefaultPageSize)
     {
         if (!principal.TryGetIdentity(out _, out var coachId)) return Results.Unauthorized();
 
@@ -157,12 +169,26 @@ public static class PurchasedPackageEndpoints
         if (!await reader.BelongsToCoachAsync(coachId, athleteId, ct))
             return PricingErrors.AthleteNotFound.ToProblem(http);
 
-        var packages = await Owned(db, coachId)
-            .Where(x => db.AthleteProfiles.Any(p => p.Id == x.AthleteProfileId && p.UserId == athleteId))
+        var (normalizedPage, normalizedSize) =
+            PagedResult<PurchasedPackageResponse>.Normalize(page, pageSize);
+
+        var query = Owned(db, coachId)
+            .Where(x => db.AthleteProfiles.Any(p => p.Id == x.AthleteProfileId && p.UserId == athleteId));
+
+        var total = await query.CountAsync(ct);
+
+        // Id breaks the tie on CreatedAtUtc so the order is total. Without it two packages
+        // created in the same millisecond could swap places between requests, and offset paging
+        // would show one of them twice and the other never.
+        var packages = await query
             .OrderByDescending(x => x.CreatedAtUtc)
+            .ThenByDescending(x => x.Id)
+            .Skip((normalizedPage - 1) * normalizedSize)
+            .Take(normalizedSize)
             .ToListAsync(ct);
 
-        return Results.Ok(packages.Select(x => x.ToResponse()).ToArray());
+        return Results.Ok(new PagedResult<PurchasedPackageResponse>(
+            [.. packages.Select(x => x.ToResponse())], normalizedPage, normalizedSize, total));
     }
 
     private static async Task<IResult> Active(

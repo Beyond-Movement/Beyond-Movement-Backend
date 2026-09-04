@@ -59,12 +59,25 @@ public sealed record AthleteListItem(
     DateTime CreatedAtUtc);
 
 /// <summary>The Admin's read-only view of one athlete.</summary>
+/// <param name="Id">The athlete's <em>user</em> id, which is what this route takes.</param>
+/// <param name="AthleteProfileId">
+/// The athlete's <em>profile</em> id — a different id, and not interchangeable with
+/// <paramref name="Id"/>. Sessions and purchased packages are keyed by it, and
+/// <c>POST /sessions/observations</c> wants it in its body.
+/// <para>
+/// Carried here as well as on <see cref="AthleteListItem"/> so a screen opened directly — a deep
+/// link, a push notification, a restored tab — has both ids without having to fetch the list it
+/// never came through. Never null: the detail is a join over <c>AthleteProfiles</c>, so a
+/// response cannot exist without one.
+/// </para>
+/// </param>
 /// <param name="FullName">Null until the athlete completes their profile. See <see cref="AthleteListItem"/>.</param>
 /// <param name="Phone">
 /// Null for every athlete today — no screen collects a phone number yet. See the changelog.
 /// </param>
 public sealed record AthleteDetail(
     Guid Id,
+    Guid AthleteProfileId,
     string? FullName,
     string Email,
     string? Phone,

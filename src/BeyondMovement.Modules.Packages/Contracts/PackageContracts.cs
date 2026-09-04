@@ -70,6 +70,66 @@ public sealed record CatalogueItemResponse(
     string Currency);
 
 /// <summary>
+/// One row of the Admin's pricing view for an athlete: the list price, what this athlete
+/// actually pays, and which rule decided it.
+/// <para>
+/// The Admin counterpart of <see cref="CatalogueItemResponse"/>, and deliberately a different
+/// shape rather than more fields on it. The athlete is shown a price; the coach is shown the
+/// policy behind it, and a "was 4000" the athlete never agreed to must never reach them.
+/// </para>
+/// </summary>
+/// <param name="DefaultPriceMinor">
+/// The option's list price in piastres, before anything is applied. Equal to
+/// <paramref name="EffectivePriceMinor"/> when <paramref name="PricingSource"/> is
+/// <c>Default</c>.
+/// </param>
+/// <param name="EffectivePriceMinor">
+/// What this athlete pays in piastres, and the number a purchase would be snapshotted at today.
+/// Decided server-side by <c>PackagePricing.Resolve</c> — the client must not reproduce the rule.
+/// </param>
+/// <param name="PricingSource">
+/// Which rule produced <paramref name="EffectivePriceMinor"/>: <c>Default</c>, <c>Loyalty</c>, or
+/// <c>Custom</c>. <c>Custom</c> means an override exists for this athlete and this option, so
+/// Remove Custom Price is the action that applies; the other two mean there is none to remove.
+/// </param>
+public sealed record AthletePricingItem(
+    Guid PackageOptionId,
+    string Name,
+    int Sessions,
+    long DefaultPriceMinor,
+    long EffectivePriceMinor,
+    PricingSource PricingSource);
+
+/// <summary>
+/// Everything the Athlete Pricing screen needs, in one call: the athlete's loyalty standing and
+/// a priced row for every active package option.
+/// </summary>
+/// <param name="IsLoyal">
+/// The same flag the athlete list and athlete detail carry, repeated here so the screen does not
+/// need a second call to render the loyalty toggle beside the prices it affects.
+/// </param>
+/// <param name="LoyaltyDiscountPercent">
+/// The discount this athlete's loyalty earns, or <b>null when they are not loyal</b> — there is
+/// no percentage to state, and a number here would invite the screen to show "-15%" to someone
+/// who does not get it.
+/// <para>
+/// It applies only to items whose <c>pricingSource</c> is <c>Loyalty</c>. A loyal athlete with an
+/// override on one option pays the override on that row, undiscounted, and the loyalty price on
+/// the others.
+/// </para>
+/// </summary>
+/// <param name="Items">
+/// Active options only — archived ones cannot be sold, so pricing them would be pricing something
+/// nobody can buy. Ordered by name, matching the Admin's package-options list.
+/// </param>
+public sealed record AthletePricingResponse(
+    Guid AthleteUserId,
+    bool IsLoyal,
+    int? LoyaltyDiscountPercent,
+    string Currency,
+    IReadOnlyList<AthletePricingItem> Items);
+
+/// <summary>
 /// Records that an athlete bought a catalogue option. Nothing about the price is in the request:
 /// it is decided server-side from the option, the athlete's loyalty and any override, exactly as
 /// the catalogue already shows it. An Admin who could send a price could send a different one

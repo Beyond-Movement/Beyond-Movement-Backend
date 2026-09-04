@@ -32,6 +32,7 @@ public static class PricingEndpoints
         MapSetCustomPrice(admin);
         MapRemoveCustomPrice(admin);
         MapPreviewCatalogue(admin);
+        MapAthletePricing(admin);
 
         MapAthleteCatalogue(app);
 
@@ -200,6 +201,56 @@ public static class PricingEndpoints
             "one belonging to another coach, returns 404 ATHLETE_NOT_FOUND. An empty list means " +
             "the coach has no active package options, not that the athlete is unknown.")
         .Produces<IReadOnlyList<CatalogueItemResponse>>()
+        .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
+        .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson)
+        .Produces<ApiProblemDetails>(StatusCodes.Status404NotFound, ProblemJson);
+
+    private static void MapAthletePricing(RouteGroupBuilder group) =>
+        group.MapGet("/pricing", async (
+            Guid athleteId,
+            CatalogueReader reader,
+            ClaimsPrincipal principal,
+            HttpContext http,
+            CancellationToken ct) =>
+        {
+            if (!principal.TryGetIdentity(out _, out var coachId))
+                return Results.Unauthorized();
+
+            var pricing = await reader.AdminPricingAsync(coachId, athleteId, ct);
+
+            return pricing is null
+                ? PricingErrors.AthleteNotFound.ToProblem(http)
+                : Results.Ok(pricing);
+        })
+        .WithName("GetAthletePricing")
+        .WithSummary("The Admin pricing view: list price, this athlete's price, and why.")
+        .WithDescription(
+            "Everything the Athlete Pricing screen needs in ONE call - it replaces combining " +
+            "/package-options, /custom-prices and /catalogue and inferring the rest on the " +
+            "client, which would mean reproducing the pricing precedence in the app. " +
+            "Each item carries defaultPriceMinor (the list price), effectivePriceMinor (what " +
+            "this athlete pays) and pricingSource, which is Default, Loyalty or Custom. The price " +
+            "and the source come from ONE server-side decision, so they can never disagree about " +
+            "which rule applied. " +
+            "PRECEDENCE, decided server-side and never on the client: a custom override wins " +
+            "outright; otherwise loyalty applies; otherwise the default price stands. They do NOT " +
+            "compound - a loyal athlete with an override pays the override exactly, undiscounted, " +
+            "because an override is an agreed price rather than a starting point. " +
+            "pricingSource is also what tells the screen which action applies: Custom means an " +
+            "override exists and can be removed, Default and Loyalty mean there is none to " +
+            "remove. " +
+            "isLoyal is repeated here so the loyalty toggle and the prices it affects render " +
+            "from one response. loyaltyDiscountPercent is null when the athlete is not loyal - " +
+            "there is no percentage to state - and applies only to items whose pricingSource is " +
+            "Loyalty. " +
+            "ACTIVE options only, ordered by name to match GET /package-options; archived options " +
+            "cannot be sold, so pricing them would price something nobody can buy. An empty items " +
+            "list means the coach has no active package options, not that the athlete is unknown. " +
+            "Prices are integer piastres - divide by 100 to display. " +
+            "An unknown athlete, or one belonging to another coach, returns 404 ATHLETE_NOT_FOUND. " +
+            "Setting and removing overrides is unchanged: PUT and DELETE " +
+            "/athletes/{athleteId}/custom-prices/{packageOptionId}.")
+        .Produces<AthletePricingResponse>()
         .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
         .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson)
         .Produces<ApiProblemDetails>(StatusCodes.Status404NotFound, ProblemJson);
