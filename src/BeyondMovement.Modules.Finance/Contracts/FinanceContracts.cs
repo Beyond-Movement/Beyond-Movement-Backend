@@ -30,6 +30,26 @@ public sealed record CreatePurchaseRequest(Guid PackageOptionId);
 /// not change them, so what the app shows on a paid receipt is what was actually paid.
 /// </para>
 /// </summary>
+/// <param name="AthleteName">
+/// Who the purchase is for, denormalised onto the row so the payments screen can label it
+/// without fetching the athlete directory to resolve one field per row.
+/// <para>
+/// <b>Null for an athlete who registered but never finished Complete Profile</b> — the same
+/// state <c>AthleteListItem.FullName</c> reports null for. Fall back to
+/// <see cref="AthleteEmail"/>, which is what the athlete list itself shows in that case.
+/// </para>
+/// <para>
+/// Unlike the snapshot fields below, this is the athlete's name <em>now</em>, not as it was when
+/// they selected. A purchase records what was bought and for how much; who they are is not part
+/// of that bargain, and a renamed athlete should not show an old name on their own history.
+/// </para>
+/// </param>
+/// <param name="AthleteEmail">
+/// The fallback label, and always present in practice. Null only if the user record behind the
+/// purchase has gone, which nothing in this API can currently do — payment history is kept even
+/// then rather than the row being dropped, so an app should treat the pair as
+/// <c>athleteName ?? athleteEmail ?? "Athlete"</c> and never assume both are set.
+/// </param>
 /// <param name="PackageOptionId">
 /// Provenance only. Null when the catalogue entry has since been deleted; the snapshot above it
 /// is still complete, so the app never needs to follow this id to render the purchase.
@@ -46,6 +66,8 @@ public sealed record PackagePurchaseResponse(
     Guid Id,
     Guid AthleteUserId,
     Guid AthleteProfileId,
+    string? AthleteName,
+    string? AthleteEmail,
     Guid? PackageOptionId,
     string PackageName,
     int SessionCount,
@@ -88,8 +110,15 @@ public sealed record PaymentInstructionsResponse(
 
 public static class PackagePurchaseMapping
 {
-    public static PackagePurchaseResponse ToResponse(this PackagePurchase x) => new(
-        x.Id, x.AthleteUserId, x.AthleteProfileId, x.PackageOptionId, x.PackageName,
+    /// <summary>
+    /// The athlete's name and email are passed in rather than read here: they live on
+    /// <c>Users</c>, which is the Identity module, and this module may not reference it. Every
+    /// caller sits in the Api composition root, which is the only project that sees both.
+    /// </summary>
+    public static PackagePurchaseResponse ToResponse(
+        this PackagePurchase x, string? athleteName, string? athleteEmail) => new(
+        x.Id, x.AthleteUserId, x.AthleteProfileId, athleteName, athleteEmail,
+        x.PackageOptionId, x.PackageName,
         x.SessionCount, x.Features, x.PriceMinor, x.Currency, x.Status, x.Origin,
         x.CreatedAtUtc, x.UpdatedAtUtc, x.PaidAtUtc, x.PaidByUserId, x.PurchasedPackageId);
 }

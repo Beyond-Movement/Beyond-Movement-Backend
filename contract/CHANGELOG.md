@@ -7,6 +7,101 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ---
 
+## Phase 10b — Purchases carry the athlete, and the list is paged
+
+**One breaking change**, and it is the shape of `GET /api/v1/purchases`. Everything else is
+additive. No migration.
+
+### BREAKING — `GET /api/v1/purchases` returns a page, not an array
+
+```diff
+- [ { …purchase… }, { …purchase… } ]
++ {
++   "items": [ { …purchase… } ],
++   "page": 1, "pageSize": 20, "totalCount": 37, "totalPages": 2,
++   "hasNextPage": true, "hasPreviousPage": false
++ }
+```
+
+The same envelope `GET /api/v1/athletes` already uses, so the app has one paging shape, not two.
+The list was previously unbounded — every purchase the coach had ever taken, on every load.
+
+```
+GET /api/v1/purchases?status=Pending&athleteId=<userId>&page=1&pageSize=20
+```
+
+- `status` and `athleteId` are **unchanged**, and still mean exactly what they did.
+- `page` starts at 1, `pageSize` defaults to 20 and is capped at 100. **Out-of-range values are
+  clamped, not rejected** — `pageSize=5000` gives 100 and a `200`, matching `/athletes`.
+- **Filters apply before paging**, so `totalCount` is the number of purchases matching the
+  filter, not the number that exist.
+- Ordered newest first, with the id breaking ties on `createdAtUtc`. The tiebreak makes the order
+  total: without it two purchases created in the same millisecond could swap places between
+  requests, and offset paging would show one twice and the other never.
+- A page past the end is an empty `items` with `hasNextPage: false`, not an error.
+- An unknown `athleteId` is still `404 ATHLETE_NOT_FOUND`, not an empty page.
+
+### Every purchase now says who it is for
+
+`PackagePurchaseResponse` gains two fields, after `athleteProfileId`:
+
+```diff
+  "athleteUserId": "…",
+  "athleteProfileId": "…",
++ "athleteName": "Nadia Hassan",
++ "athleteEmail": "nadia@example.com",
+  "packageOptionId": "…",
+```
+
+**Render the label as `athleteName ?? athleteEmail ?? "Athlete"`.**
+
+- `athleteName` is **null for an athlete who registered but never finished Complete Profile** —
+  the same state `AthleteListItem.fullName` reports null for. This is the case the email is
+  there for, and it preserves what the app already does when it falls back to the address.
+- `athleteEmail` is present in every case the API can currently produce. It is nullable only
+  because no foreign key ties a purchase to a user row: if one ever went missing, the purchase is
+  still returned with both fields null rather than being **dropped from payment history**, which
+  is what a stricter join would have done silently.
+- The name is read **at request time, not snapshotted**. Renaming an athlete updates their whole
+  purchase history. The money fields — `packageName`, `sessionCount`, `features`, `priceMinor` —
+  are still frozen at selection and are unaffected; who someone is was never part of that bargain.
+
+The fields appear consistently on **every** shape that carries a purchase, so a name shown in the
+list does not disappear when the coach confirms the payment:
+
+```
+GET  /api/v1/purchases                 → items[].athleteName / athleteEmail
+GET  /api/v1/purchases/{id}            → athleteName / athleteEmail
+POST /api/v1/purchases/{id}/mark-paid  → purchase.athleteName / athleteEmail   (both branches,
+                                          including the idempotent alreadyPaid: true repeat)
+POST /api/v1/me/purchases              → athleteName / athleteEmail
+GET  /api/v1/me/purchases/current      → athleteName / athleteEmail
+```
+
+**This removes the athlete-directory fetch the payments screen currently does** to resolve names,
+and with it the bug where a purchase confirmed after a token refresh rendered as the literal
+`"Athlete"` because the cached name map had been rebuilt empty.
+
+### Change Password signs this device out — the app must handle it
+
+Not a change; it has always behaved this way, and it is written down here because the Profile
+screen is about to call it.
+
+`POST /api/v1/auth/change-password` returning **200 revokes every refresh token for the user,
+including the one the calling app is holding.** There is no new token pair in the response and
+none to ask for: `/auth/refresh` will reject the stored token with `401 INVALID_REFRESH_TOKEN`.
+
+On success the app must **clear its stored tokens and auth state and route back to Login.**
+Showing a success message and staying put leaves the app holding credentials that are already
+dead — the access token keeps working for up to its remaining 15 minutes, so the failure surfaces
+later, in whatever screen happens to need a refresh first.
+
+This is deliberate, and matches password reset: changing a password is how someone responds to
+another person having it, so every other session has to end. The same applies to the device that
+made the change.
+
+---
+
 ## Phase 10 — Admin Profile: device time-zone sync and personal information
 
 **Additive, with one field added to an existing shape.** Three new endpoints, four new schemas,
@@ -90,8 +185,8 @@ serving both lifetimes would put contact details on the session-restore path.
 
 ### Not changed
 
-`PackagePurchaseResponse` still carries no athlete name — the payments screen continues to
-resolve names from the athlete list. `NotificationPreferences` remains unused and unexposed.
+`NotificationPreferences` remains unused and unexposed. (`PackagePurchaseResponse` gained an
+athlete name and email in Phase 10b, immediately above.)
 
 ---
 

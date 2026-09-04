@@ -21,7 +21,8 @@ namespace BeyondMovement.Api.Finance;
 /// orchestrated in the Api, inside one transaction.
 /// </para>
 /// </summary>
-public sealed class PurchaseCheckoutService(AppDbContext db, IClock clock, IAuditLogger audit)
+public sealed class PurchaseCheckoutService(
+    AppDbContext db, PurchaseReader reader, IClock clock, IAuditLogger audit)
 {
     /// <summary>
     /// The athlete chooses a package option.
@@ -133,8 +134,12 @@ public sealed class PurchaseCheckoutService(AppDbContext db, IClock clock, IAudi
 
         await transaction.CommitAsync(ct);
 
-        return Result<PurchaseSelectionResult>.Success(
-            new PurchaseSelectionResult(purchase.ToResponse(), created));
+        // Read after the commit: the response labels the purchase with the athlete's name as it
+        // stands now, which is not part of the snapshot the transaction protects.
+        var label = await reader.LabelAsync(athleteUserId, ct);
+
+        return Result<PurchaseSelectionResult>.Success(new PurchaseSelectionResult(
+            purchase.ToResponse(label.FullName, label.Email), created));
     }
 
     /// <summary>
@@ -185,8 +190,11 @@ public sealed class PurchaseCheckoutService(AppDbContext db, IClock clock, IAudi
 
             await transaction.CommitAsync(ct);
 
+            var repeatLabel = await reader.LabelAsync(purchase.AthleteUserId, ct);
+
             return Result<MarkPurchasePaidResponse>.Success(new MarkPurchasePaidResponse(
-                purchase.ToResponse(), alreadyBought.ToResponse(), AlreadyPaid: true));
+                purchase.ToResponse(repeatLabel.FullName, repeatLabel.Email),
+                alreadyBought.ToResponse(), AlreadyPaid: true));
         }
 
         if (await HasActivePackageAsync(purchase.AthleteProfileId, ct))
@@ -237,8 +245,11 @@ public sealed class PurchaseCheckoutService(AppDbContext db, IClock clock, IAudi
 
         await transaction.CommitAsync(ct);
 
+        var label = await reader.LabelAsync(purchase.AthleteUserId, ct);
+
         return Result<MarkPurchasePaidResponse>.Success(new MarkPurchasePaidResponse(
-            purchase.ToResponse(), package.ToResponse(), AlreadyPaid: false));
+            purchase.ToResponse(label.FullName, label.Email),
+            package.ToResponse(), AlreadyPaid: false));
     }
 
     private Task<bool> HasActivePackageAsync(Guid athleteProfileId, CancellationToken ct) =>

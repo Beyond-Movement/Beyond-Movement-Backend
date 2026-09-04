@@ -74,6 +74,10 @@ public sealed class PurchaseTests(PurchaseApiFactory factory) : IClassFixture<Pu
     private static async Task<JsonElement> BodyAsync(HttpResponseMessage response) =>
         await response.Content.ReadFromJsonAsync<JsonElement>();
 
+    /// <summary>The rows out of the paged list envelope, which GET /purchases now returns.</summary>
+    private static async Task<JsonElement> ItemsAsync(HttpResponseMessage response) =>
+        (await BodyAsync(response)).GetProperty("items");
+
     // --- price snapshotting -------------------------------------------------
 
     [Fact]
@@ -511,7 +515,7 @@ public sealed class PurchaseTests(PurchaseApiFactory factory) : IClassFixture<Pu
             $"/api/v1/athletes/{userId}/packages",
             new { packageOptionId = option.GetProperty("id").GetGuid() }));
 
-        var purchases = await BodyAsync(
+        var purchases = await ItemsAsync(
             await admin.GetAsync($"/api/v1/purchases?athleteId={userId}"));
 
         var purchase = Assert.Single(purchases.EnumerateArray().ToArray());
@@ -545,19 +549,19 @@ public sealed class PurchaseTests(PurchaseApiFactory factory) : IClassFixture<Pu
             .GetProperty("id").GetGuid();
         await admin.PostAsync($"/api/v1/purchases/{toPay}/mark-paid", null);
 
-        var pending = await BodyAsync(await admin.GetAsync("/api/v1/purchases?status=Pending"));
+        var pending = await ItemsAsync(await admin.GetAsync("/api/v1/purchases?status=Pending"));
         Assert.Contains(pending.EnumerateArray(),
             x => x.GetProperty("athleteUserId").GetGuid() == pendingUserId);
         Assert.All(pending.EnumerateArray(),
             x => Assert.Equal("Pending", x.GetProperty("status").GetString()));
 
-        var paid = await BodyAsync(await admin.GetAsync("/api/v1/purchases?status=Paid"));
+        var paid = await ItemsAsync(await admin.GetAsync("/api/v1/purchases?status=Paid"));
         Assert.Contains(paid.EnumerateArray(),
             x => x.GetProperty("athleteUserId").GetGuid() == paidUserId);
         Assert.All(paid.EnumerateArray(),
             x => Assert.Equal("Paid", x.GetProperty("status").GetString()));
 
-        var forOne = await BodyAsync(await admin.GetAsync($"/api/v1/purchases?athleteId={pendingUserId}"));
+        var forOne = await ItemsAsync(await admin.GetAsync($"/api/v1/purchases?athleteId={pendingUserId}"));
         Assert.All(forOne.EnumerateArray(),
             x => Assert.Equal(pendingUserId, x.GetProperty("athleteUserId").GetGuid()));
     }

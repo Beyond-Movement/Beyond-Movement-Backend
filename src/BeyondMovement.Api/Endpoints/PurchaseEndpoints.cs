@@ -6,6 +6,7 @@ using BeyondMovement.Modules.Finance.Contracts;
 using BeyondMovement.Modules.Finance.Domain;
 using BeyondMovement.Modules.Finance.Payments;
 using BeyondMovement.Modules.Identity.Contracts;
+using BeyondMovement.SharedKernel;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -86,7 +87,7 @@ public static class PurchaseEndpoints
 
         admin.MapGet(string.Empty, List)
             .WithName("ListPurchases")
-            .WithSummary("Every purchase, newest first, filterable by status and athlete.")
+            .WithSummary("A page of purchases, newest first, filterable by status and athlete.")
             .WithDescription(
                 "The Admin payments screen. Omit status to see pending and paid together; pass " +
                 "status=Pending for the queue of athletes waiting to be confirmed, or " +
@@ -94,8 +95,17 @@ public static class PurchaseEndpoints
                 "matching every other /athletes/{athleteId} route. An unknown athlete id returns " +
                 "404 ATHLETE_NOT_FOUND rather than an empty list, because an empty list is a real " +
                 "answer - most athletes have no purchases yet - and a bad id must not be " +
-                "mistaken for one.")
-            .Produces<IReadOnlyList<PackagePurchaseResponse>>()
+                "mistaken for one. " +
+                "PAGED, in the same envelope as GET /api/v1/athletes: items plus page, pageSize, " +
+                "totalCount, totalPages, hasNextPage and hasPreviousPage. page starts at 1 and " +
+                "pageSize defaults to 20 and is capped at 100 - values outside the range are " +
+                "clamped rather than rejected. Filters apply BEFORE paging, so totalCount is the " +
+                "number of purchases matching the filter, not the number that exist. " +
+                "Ordered newest first, with the id breaking ties on createdAtUtc so the order is " +
+                "total and a row cannot appear on two pages. " +
+                "Each row carries athleteName and athleteEmail, so the screen needs no second " +
+                "call to label it.")
+            .Produces<PagedResult<PackagePurchaseResponse>>()
             .Produces<ApiProblemDetails>(StatusCodes.Status400BadRequest, ProblemJson)
             .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
             .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson)
@@ -182,26 +192,24 @@ public static class PurchaseEndpoints
     }
 
     private static async Task<IResult> Current(
-        AppDbContext db, ClaimsPrincipal principal, HttpContext http, CancellationToken ct)
+        PurchaseReader reader, ClaimsPrincipal principal, HttpContext http, CancellationToken ct)
     {
         if (!principal.TryGetUserId(out var athleteUserId)) return Results.Unauthorized();
 
         // Pending first, then newest. A pending request is what the screen is waiting on; with
         // none, the most recent purchase is the last thing that happened.
-        var purchase = await db.PackagePurchases.AsNoTracking()
-            .Where(x => x.AthleteUserId == athleteUserId)
-            .OrderBy(x => x.Status == PurchasePaymentStatus.Pending ? 0 : 1)
-            .ThenByDescending(x => x.CreatedAtUtc)
-            .FirstOrDefaultAsync(ct);
+        var purchase = await reader.CurrentAsync(athleteUserId, ct);
 
         return purchase is null
             ? FinanceErrors.PurchaseNotFound.ToProblem(http)
-            : Results.Ok(purchase.ToResponse());
+            : Results.Ok(purchase);
     }
 
     private static async Task<IResult> List(
-        AppDbContext db, ClaimsPrincipal principal, HttpContext http, CancellationToken ct,
-        PurchasePaymentStatus? status = null, Guid? athleteId = null)
+        AppDbContext db, PurchaseReader reader, ClaimsPrincipal principal, HttpContext http,
+        CancellationToken ct,
+        PurchasePaymentStatus? status = null, Guid? athleteId = null,
+        int page = 1, int pageSize = PagedResult<PackagePurchaseResponse>.DefaultPageSize)
     {
         if (!principal.TryGetIdentity(out _, out var coachId)) return Results.Unauthorized();
 
@@ -209,30 +217,24 @@ public static class PurchaseEndpoints
                 x => x.UserId == id && x.CoachId == coachId && x.DeletedAtUtc == null, ct))
             return PricingErrors.AthleteNotFound.ToProblem(http);
 
-        var query = db.PackagePurchases.AsNoTracking().Where(x => x.CoachId == coachId);
+        var (normalizedPage, normalizedSize) =
+            PagedResult<PackagePurchaseResponse>.Normalize(page, pageSize);
 
-        if (status is { } wanted) query = query.Where(x => x.Status == wanted);
-        if (athleteId is { } user) query = query.Where(x => x.AthleteUserId == user);
-
-        var purchases = await query
-            .OrderByDescending(x => x.CreatedAtUtc)
-            .ThenByDescending(x => x.Id)
-            .ToListAsync(ct);
-
-        return Results.Ok(purchases.Select(x => x.ToResponse()).ToArray());
+        return Results.Ok(await reader.ListAsync(
+            coachId, status, athleteId, normalizedPage, normalizedSize, ct));
     }
 
     private static async Task<IResult> Detail(
-        Guid id, AppDbContext db, ClaimsPrincipal principal, HttpContext http, CancellationToken ct)
+        Guid id, PurchaseReader reader, ClaimsPrincipal principal, HttpContext http,
+        CancellationToken ct)
     {
         if (!principal.TryGetIdentity(out _, out var coachId)) return Results.Unauthorized();
 
-        var purchase = await db.PackagePurchases.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Id == id && x.CoachId == coachId, ct);
+        var purchase = await reader.GetAsync(coachId, id, ct);
 
         return purchase is null
             ? FinanceErrors.PurchaseNotFound.ToProblem(http)
-            : Results.Ok(purchase.ToResponse());
+            : Results.Ok(purchase);
     }
 
     private static async Task<IResult> MarkPaid(

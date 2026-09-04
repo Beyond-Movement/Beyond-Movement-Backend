@@ -240,8 +240,17 @@ public static class AuthEndpoints
         .WithDescription(
             "Requires the current password. Returns 401 INVALID_CREDENTIALS if it is wrong, and " +
             "400 PASSWORD_NOT_SET for a Google-only account that has no password yet — those " +
-            "accounts set a first password through Forgot Password. On success every refresh " +
-            "token for the user is revoked, including this device's, so the app must sign in again.")
+            "accounts set a first password through Forgot Password. " +
+            "SUCCESS SIGNS THIS DEVICE OUT. Every refresh token for the user is revoked, " +
+            "INCLUDING THE ONE THIS APP IS HOLDING - there is no re-issued pair in the response " +
+            "and none to ask for, because /auth/refresh will now reject the stored token with " +
+            "401 INVALID_REFRESH_TOKEN. On 200 the app must clear its stored tokens and auth " +
+            "state and route back to Login; showing a success message and staying on the screen " +
+            "leaves it holding credentials that are already dead, and the next request to need a " +
+            "refresh fails in whatever screen the user happens to be on. The existing ACCESS " +
+            "token keeps working for up to its remaining 15 minutes, so do not wait to be told. " +
+            "This is deliberate and matches the password reset: changing a password is how a user " +
+            "responds to someone else having it, and every other session has to end.")
         .Produces(StatusCodes.Status200OK)
         .Produces<ApiProblemDetails>(StatusCodes.Status400BadRequest, ProblemJson)
         .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)

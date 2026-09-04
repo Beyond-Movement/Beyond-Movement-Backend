@@ -178,6 +178,7 @@ builder.Services.AddScoped<PackagePurchaseService>();
 builder.Services.Configure<InstaPayOptions>(
     builder.Configuration.GetSection(InstaPayOptions.SectionName));
 builder.Services.AddScoped<IFinanceDbContext>(sp => sp.GetRequiredService<AppDbContext>());
+builder.Services.AddScoped<PurchaseReader>();
 builder.Services.AddScoped<PurchaseCheckoutService>();
 
 // Admin Home - Phase 9. Reads across Scheduling, Athletes and Identity, so it is a read model

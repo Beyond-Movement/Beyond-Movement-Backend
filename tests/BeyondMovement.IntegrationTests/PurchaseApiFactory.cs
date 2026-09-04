@@ -74,6 +74,25 @@ public class PurchaseApiFactory : ApiFactory
         return (userId, email);
     }
 
+    /// <summary>
+    /// An athlete who registered and never finished Complete Profile, so they have no name at
+    /// all. The case <c>athleteName</c> is null for, and the reason a purchase carries the email
+    /// beside it.
+    /// </summary>
+    public async Task<(Guid UserId, string Email)> NewNamelessAthleteAsync()
+    {
+        var ordinal = Interlocked.Increment(ref _athleteCounter);
+        var email = $"nameless{ordinal}@nowhere.test";
+
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var userId = await AthleteApiFactory.AddAthleteAsync(
+            db, scope.ServiceProvider, email, fullName: null, sport: null, dateOfBirth: null);
+
+        return (userId, email);
+    }
+
     /// <summary>Reads the database directly, for assertions the API deliberately will not make.</summary>
     public async Task<T> QueryAsync<T>(Func<AppDbContext, Task<T>> query)
     {
