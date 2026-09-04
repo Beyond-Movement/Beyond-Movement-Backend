@@ -88,6 +88,16 @@ public static class IdentityErrors
     public static readonly Error AthleteNotFound =
         new(ApiErrorCodes.AthleteNotFound, "No such athlete.", Status.NotFound);
 
+    /// <summary>
+    /// The submitted zone is not one this server can resolve.
+    /// <para>
+    /// Refused rather than quietly ignored: the dashboard's own resolver falls back to UTC
+    /// without complaint, so a rejected write is the only place a bad id is ever visible.
+    /// </para>
+    /// </summary>
+    public static readonly Error TimeZoneInvalid =
+        new(ApiErrorCodes.TimeZoneInvalid, "Use a valid IANA time zone, such as Africa/Cairo.", Status.BadRequest);
+
     /// <summary>Lockout with the remaining time, so the app can show a real countdown.</summary>
     public static Error LockedFor(TimeSpan remaining) =>
         AccountLocked with { RetryAfterSeconds = Math.Max(1, (int)Math.Ceiling(remaining.TotalSeconds)) };

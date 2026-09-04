@@ -66,10 +66,26 @@ namespace BeyondMovement.Infrastructure.Migrations
         /// independently set to Africa/Cairo after the migration is indistinguishable from one
         /// this migration set — the row records a value, not who wrote it — so a rollback returns
         /// them to UTC. Distinguishing the two would mean recording per-row provenance for a
-        /// one-off correction, which is more machinery than the problem deserves. It is also
-        /// unreachable today: <c>User.TimeZone</c> has a private setter and no mutator, and there
-        /// is no settings endpoint, so nothing can change a time zone except raw SQL. If a way to
-        /// change it is ever added, revisit this <c>Down</c> before relying on it.
+        /// one-off correction, which is more machinery than the problem deserves.
+        /// </para>
+        /// <para>
+        /// <b>That ambiguity is now reachable, and this note is the revisit the original asked
+        /// for.</b> When this migration was written, <c>User.TimeZone</c> had a private setter,
+        /// no mutator and no endpoint, so nothing could change a zone except raw SQL and the
+        /// case above was theoretical. <c>User.SetTimeZone</c> and
+        /// <c>PUT /api/v1/auth/me/timezone</c> now exist: the mobile app detects the device zone
+        /// and writes it whenever it differs from the stored one, so an Admin in Egypt will
+        /// legitimately be set to Africa/Cairo <em>by the app</em>, indistinguishably from the
+        /// row this migration corrected.
+        /// </para>
+        /// <para>
+        /// The consequence is bounded and still acceptable: rolling back reverts such an Admin to
+        /// UTC, and the app restores the correct zone on its next start-up, because it compares
+        /// against <c>/auth/me</c> rather than assuming it already wrote. <b>Rolling this back is
+        /// therefore self-healing for any signed-in device, and permanent only for an Admin who
+        /// never opens the app again.</b> If that is ever not good enough, the fix is to drop the
+        /// <c>Down</c> entirely rather than to make it cleverer — this is a one-off data
+        /// correction, and reverting it has no value once the app maintains the column itself.
         /// </para>
         /// </summary>
         public const string DownSql =

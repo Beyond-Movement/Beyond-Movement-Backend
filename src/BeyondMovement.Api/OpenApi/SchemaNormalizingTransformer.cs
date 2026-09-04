@@ -213,11 +213,18 @@ public sealed class SchemaNormalizingTransformer : IOpenApiSchemaTransformer
         // Every module's codes, unioned here because the Api is the only project that can see
         // all of them - modules may not reference one another. A code missing from this list is
         // a code the generated client has no case for.
+        //
+        // Distinct because two modules may legitimately raise the SAME code for the same
+        // meaning - TIME_ZONE_INVALID is both a bad booking zone and a bad profile zone - and a
+        // JSON Schema enum that repeats a value is invalid, which would break generation.
         string[] all =
             [.. ApiErrorCodes.All, .. PackageErrorCodes.All, .. SchedulingErrors.AllCodes,
              .. AttendanceErrors.AllCodes, .. FinanceErrorCodes.All];
 
         if (errorCode is OpenApiSchema property)
-            property.Enum = [.. all.Order(StringComparer.Ordinal).Select(code => JsonValue.Create(code)! as JsonNode)];
+            property.Enum =
+                [.. all.Distinct(StringComparer.Ordinal)
+                       .Order(StringComparer.Ordinal)
+                       .Select(code => JsonValue.Create(code)! as JsonNode)];
     }
 }

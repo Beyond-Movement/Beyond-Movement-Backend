@@ -73,12 +73,18 @@ public static class ApiErrorCodes
     public const string TooManyRequests = "TOO_MANY_REQUESTS";
     public const string AthleteNotFound = "ATHLETE_NOT_FOUND";
 
+    /// <summary>
+    /// Deliberately the same string the Scheduling module uses for a bad booking zone. One
+    /// meaning, one code — the app should not need two cases for "that is not a time zone".
+    /// </summary>
+    public const string TimeZoneInvalid = "TIME_ZONE_INVALID";
+
     public static readonly string[] All =
     [
         ValidationFailed, InvalidCredentials, AccountLocked, AccountPaused, InvalidToken,
         InvalidRefreshToken, InvalidResetToken, InvalidGoogleToken, InvitationRequired, PasswordNotSet,
         InvitationInvalid, InvitationExpired, InvitationUsed, InvitationRevoked,
         RegistrationTokenInvalid, GoogleEmailMismatch, EmailAlreadyRegistered,
-        ProfileAlreadyCompleted, TooManyRequests, AthleteNotFound
+        ProfileAlreadyCompleted, TooManyRequests, AthleteNotFound, TimeZoneInvalid
     ];
 }

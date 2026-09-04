@@ -26,7 +26,8 @@ public sealed class CurrentUserHandler(IIdentityDbContext db)
                 u.CoachId,
                 u.ProfileCompletedAtUtc != null,
                 u.AthleteListSort,
-                minimumSupportedAppVersion))
+                minimumSupportedAppVersion,
+                u.TimeZone))
             .FirstOrDefaultAsync(ct);
 
         return user is null

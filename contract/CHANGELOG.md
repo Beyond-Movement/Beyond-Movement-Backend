@@ -7,6 +7,94 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ---
 
+## Phase 10 — Admin Profile: device time-zone sync and personal information
+
+**Additive, with one field added to an existing shape.** Three new endpoints, four new schemas,
+one new error code, no migration. Nothing was removed and no field changed type, so an older
+build keeps working — but the app cannot implement the new Profile screen without the pieces
+below.
+
+```
+PUT  /api/v1/auth/me/timezone      any signed-in user
+GET  /api/v1/auth/me/profile       Admin only
+PUT  /api/v1/auth/me/profile       Admin only
+```
+
+### `/auth/me` gains `timeZone`
+
+```diff
+  {
+    "id": "…", "role": "Admin", "status": "Active",
+    "fullName": "Nadia Hassan", "email": "coach@…", "coachId": "…",
+    "profileCompleted": true, "athleteListSort": "NameAscending",
+    "minimumSupportedAppVersion": "1.0.0",
++   "timeZone": "Africa/Cairo"
+  }
+```
+
+Non-null always; `UTC` for a user whose zone has never been set.
+
+### Time zone is synchronised from the device, never chosen
+
+**There is no time-zone setting in the app, and the coach is never asked.** The zone exists
+because the Admin dashboard computes week, month and year boundaries in it — a session at 00:30
+Cairo on the 1st belongs to that month, not the previous one — so it has to follow the device.
+
+The flow, and the only one the backend supports:
+
+1. On start-up, read `timeZone` from `GET /api/v1/auth/me`.
+2. Detect the device zone as an **IANA** id (`Africa/Cairo`).
+3. If and only if they differ, `PUT /api/v1/auth/me/timezone` with `{"timeZone": "Africa/Cairo"}`.
+
+```json
+{ "timeZone": "Africa/Cairo" }
+```
+
+**The value is stored and returned byte-for-byte as sent.** That is deliberate and is what makes
+step 3 settle after one call: the server does not rewrite `Africa/Cairo` into the platform's own
+`Egypt Standard Time`, which would never match the device and would re-sync on every launch.
+
+`400 TIME_ZONE_INVALID` for anything the server cannot resolve — the same code the Scheduling
+module already returns for a bad booking zone, so the app needs no new case. It is **refused
+rather than ignored** on purpose: the dashboard's own resolver falls back to UTC silently, so a
+bad value that got through would surface only as quietly wrong figures. Repeating a zone that is
+already stored is a no-op and still returns `200`.
+
+Athletes may call it and the value is stored, but nothing reads an athlete's zone yet.
+
+### The Admin profile is its own shape, not more of `/auth/me`
+
+```json
+{ "id": "…", "fullName": "Nadia Hassan", "email": "coach@…", "phone": "+20 100 123 4567" }
+```
+
+`GET` returns it; `PUT` takes `{ "fullName", "phone" }` and returns the same shape as stored.
+
+Kept separate on purpose. `/auth/me` answers *who is signed in and where does the app route
+them*: it is called on every start-up and drives routing, forced upgrade and the sync above.
+Profile fields are read when a screen opens and written when a form is saved. One response
+serving both lifetimes would put contact details on the session-restore path.
+
+- **`fullName` is required.** Blank is `400 VALIDATION_FAILED`. The domain refuses it too, because
+  the contract promises `profileCompleted: true` implies a non-null name and the Admin is
+  complete from creation — an edit must not be able to empty it.
+- **`phone` is optional.** Send `null` or `""` to clear it; it reads back as `null` either way,
+  never `""`. Digits and `+ ( ) - .` only, up to 40 characters — deliberately loose, because the
+  number is displayed and copied, not dialled.
+- **`email` is read-only.** Returned so the screen can show it, and absent from the request. It is
+  the login identity and the unique key on the user, so changing it needs re-verification and
+  re-issued tokens — a feature of its own, not a field on this form.
+- Both fields are stored **trimmed**, so render from the response rather than from what was sent.
+- No profile picture and no professional title exist in this API. The UI document lists both;
+  neither has a column, and neither is in scope here.
+
+### Not changed
+
+`PackagePurchaseResponse` still carries no athlete name — the payments screen continues to
+resolve names from the athlete list. `NotificationPreferences` remains unused and unexposed.
+
+---
+
 ## Phase 9 — Admin Home dashboard
 
 **Purely additive.** One new endpoint, four new schemas, no new error codes. **No existing shape

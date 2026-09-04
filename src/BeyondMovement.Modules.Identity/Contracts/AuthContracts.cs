@@ -71,6 +71,17 @@ public sealed record AuthResponse(
 /// <param name="MinimumSupportedAppVersion">
 /// The oldest mobile build this API still supports, for the forced-upgrade prompt.
 /// </param>
+/// <param name="TimeZone">
+/// The zone currently stored for this user, exactly as it was last written — an IANA id such as
+/// <c>Africa/Cairo</c>, or <c>UTC</c> for a user whose zone has never been set.
+/// <para>
+/// Here rather than on the profile because it is <b>device state, not a profile field</b>: there
+/// is no time-zone setting in the app and the user never chooses it. On start-up the app detects
+/// the device zone, compares it with this value, and calls
+/// <c>PUT /api/v1/auth/me/timezone</c> only when the two differ. Without this field that
+/// comparison is impossible and the app would have to write on every launch.
+/// </para>
+/// </param>
 public sealed record CurrentUserResponse(
     Guid Id,
     UserRole Role,
@@ -80,4 +91,21 @@ public sealed record CurrentUserResponse(
     Guid CoachId,
     bool ProfileCompleted,
     AthleteListSort? AthleteListSort,
-    string MinimumSupportedAppVersion);
+    string MinimumSupportedAppVersion,
+    string TimeZone);
+
+/// <summary>
+/// The device's detected zone, pushed by the app rather than chosen by the user.
+/// </summary>
+/// <param name="TimeZone">
+/// An IANA id such as <c>Africa/Cairo</c>. A Windows id is accepted too, but send IANA: it is
+/// what a mobile platform reports, and it is what comes back from <c>/auth/me</c> for comparison.
+/// Anything this server cannot resolve is refused with <c>TIME_ZONE_INVALID</c>.
+/// </param>
+public sealed record UpdateTimeZoneRequest(string TimeZone);
+
+/// <summary>
+/// The zone as stored after the write — the value a later <c>/auth/me</c> will return, so the
+/// app can settle its local copy without a follow-up read.
+/// </summary>
+public sealed record TimeZoneResponse(string TimeZone);

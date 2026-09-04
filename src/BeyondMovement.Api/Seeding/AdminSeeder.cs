@@ -1,5 +1,6 @@
 using BeyondMovement.Modules.Identity.Domain;
 using BeyondMovement.Modules.Identity.Persistence;
+using BeyondMovement.Modules.Identity.Services;
 using BeyondMovement.SharedKernel;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -75,19 +76,18 @@ public static class AdminSeeder
         if (string.IsNullOrWhiteSpace(configured))
             return null;   // CreateAdmin keeps its own UTC default
 
-        try
-        {
-            return TimeZoneInfo.FindSystemTimeZoneById(configured.Trim()).Id;
-        }
-        catch (Exception exception) when (
-            exception is TimeZoneNotFoundException or InvalidTimeZoneException)
-        {
-            logger.LogWarning(
-                "Seed:AdminTimeZone is set to {TimeZone}, which this server does not recognise. " +
-                "The Admin will be created in UTC and the dashboard will report UTC periods. " +
-                "Use an IANA id such as Africa/Cairo.", configured);
+        // Shares TimeZoneId with the sync endpoint, so "a zone this server accepts" has one
+        // definition. It also preserves the configured id rather than TimeZoneInfo.Id, which
+        // means a Windows development host stores "Africa/Cairo" like a Linux one instead of
+        // silently rewriting it to "Egypt Standard Time".
+        if (TimeZoneId.TryNormalize(configured, out var timeZone))
+            return timeZone;
 
-            return null;
-        }
+        logger.LogWarning(
+            "Seed:AdminTimeZone is set to {TimeZone}, which this server does not recognise. " +
+            "The Admin will be created in UTC and the dashboard will report UTC periods. " +
+            "Use an IANA id such as Africa/Cairo.", configured);
+
+        return null;
     }
 }

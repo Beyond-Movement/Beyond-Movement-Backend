@@ -6,6 +6,8 @@ using BeyondMovement.Modules.Identity.Features.ForgotPassword;
 using BeyondMovement.Modules.Identity.Features.GoogleSignIn;
 using BeyondMovement.Modules.Identity.Features.Login;
 using BeyondMovement.Modules.Identity.Features.Logout;
+using BeyondMovement.Modules.Identity.Features.Profile;
+using BeyondMovement.Modules.Identity.Features.TimeZone;
 using BeyondMovement.Modules.Identity.Features.Refresh;
 using BeyondMovement.Modules.Identity.Features.ResetPassword;
 using FluentValidation;
@@ -28,6 +30,9 @@ public static class AuthEndpoints
         MapResetPassword(group);
         MapChangePassword(group);
         MapCurrentUser(group);
+        MapUpdateTimeZone(group);
+        MapGetProfile(group);
+        MapUpdateProfile(group);
 
         return app;
     }
@@ -242,6 +247,115 @@ public static class AuthEndpoints
         .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
         .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson);
 
+    /// <summary>
+    /// Device time-zone synchronisation. Not a setting — see the endpoint description.
+    /// </summary>
+    private static void MapUpdateTimeZone(RouteGroupBuilder group) =>
+        group.MapPut("/me/timezone", async (
+            UpdateTimeZoneRequest request,
+            UpdateTimeZoneHandler handler,
+            ClaimsPrincipal principal,
+            HttpContext http,
+            CancellationToken ct) =>
+        {
+            if (!principal.TryGetUserId(out var userId))
+                return Results.Unauthorized();
+
+            var result = await handler.HandleAsync(userId, request, ct);
+
+            return result.IsSuccess ? Results.Ok(result.Value) : result.Error!.ToProblem(http);
+        })
+        .WithName("UpdateTimeZone")
+        .WithSummary("Keep the stored time zone in step with the device's.")
+        .WithDescription(
+            "There is NO time-zone setting in the app and the user never chooses one. On start-up " +
+            "the app detects the device zone, compares it with the timeZone field from " +
+            "GET /api/v1/auth/me, and calls this ONLY when the two differ - so in normal use it " +
+            "runs once, when the device has actually moved. " +
+            "Send an IANA id such as Africa/Cairo; a Windows id is accepted, but IANA is what a " +
+            "mobile platform reports and what /auth/me returns for comparison. The value is stored " +
+            "and returned exactly as sent, so a later /auth/me matches what was written and the " +
+            "comparison settles after one call. " +
+            "400 TIME_ZONE_INVALID for anything this server cannot resolve - it is refused rather " +
+            "than ignored, because the dashboard's own resolver falls back to UTC silently and a " +
+            "bad value would otherwise show up only as wrong figures. " +
+            "Repeating the same zone is a no-op that still returns 200. " +
+            "This is what the ADMIN dashboard computes week, month and year boundaries in; an " +
+            "athlete may call it and the value is stored, but nothing reads it for them yet.")
+        .Produces<TimeZoneResponse>()
+        .Produces<ApiProblemDetails>(StatusCodes.Status400BadRequest, ProblemJson)
+        .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
+        .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson);
+
+    private static void MapGetProfile(RouteGroupBuilder group) =>
+        group.MapGet("/me/profile", async (
+            AdminProfileHandler handler,
+            ClaimsPrincipal principal,
+            HttpContext http,
+            CancellationToken ct) =>
+        {
+            if (!principal.TryGetUserId(out var userId))
+                return Results.Unauthorized();
+
+            var result = await handler.GetAsync(userId, ct);
+
+            return result.IsSuccess ? Results.Ok(result.Value) : result.Error!.ToProblem(http);
+        })
+        .RequireAuthorization("AdminOnly")
+        .WithName("GetMyProfile")
+        .WithSummary("The signed-in Admin's own profile.")
+        .WithDescription(
+            "Personal Information: full name, email and phone, and deliberately nothing else - " +
+            "no profile picture and no professional title exist in this API. " +
+            "Separate from /auth/me on purpose: that endpoint answers who is signed in and where " +
+            "to route them, is called on every app start, and must not grow contact details. " +
+            "Read this when the Profile screen opens. " +
+            "phone is null until somebody sets one - no screen has ever written it. " +
+            "email is READ-ONLY here and is not accepted by the PUT.")
+        .Produces<AdminProfileResponse>()
+        .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
+        .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson);
+
+    private static void MapUpdateProfile(RouteGroupBuilder group) =>
+        group.MapPut("/me/profile", async (
+            UpdateAdminProfileRequest request,
+            IValidator<UpdateAdminProfileRequest> validator,
+            AdminProfileHandler handler,
+            ClaimsPrincipal principal,
+            HttpContext http,
+            CancellationToken ct) =>
+        {
+            var validation = await validator.ValidateAsync(request, ct);
+            if (!validation.IsValid)
+                return validation.ToValidationProblem(http);
+
+            if (!principal.TryGetUserId(out var userId))
+                return Results.Unauthorized();
+
+            var result = await handler.UpdateAsync(userId, request, ct);
+
+            return result.IsSuccess ? Results.Ok(result.Value) : result.Error!.ToProblem(http);
+        })
+        .RequireAuthorization("AdminOnly")
+        .WithName("UpdateMyProfile")
+        .WithSummary("Edit the signed-in Admin's own name and phone.")
+        .WithDescription(
+            "A full replacement of both editable fields, not a patch: send fullName and phone " +
+            "every time. Always the caller's own profile - there is no id in the route or body. " +
+            "fullName is required; blank is 400 VALIDATION_FAILED. " +
+            "phone is optional - send null or an empty string to clear it, and it reads back as " +
+            "null either way. Digits and + ( ) - . only, up to 40 characters; the format is " +
+            "otherwise unconstrained because numbers are international and displayed, not dialled. " +
+            "EMAIL CANNOT BE CHANGED HERE. It is the login identity and the unique key on the " +
+            "user, so changing it needs re-verification and re-issued tokens - a feature of its " +
+            "own. It is absent from this request and untouched by this call. " +
+            "The response is the profile as stored, after trimming, so render from it rather " +
+            "than from what was sent.")
+        .Produces<AdminProfileResponse>()
+        .Produces<ApiProblemDetails>(StatusCodes.Status400BadRequest, ProblemJson)
+        .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
+        .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson);
+
     private static void MapCurrentUser(RouteGroupBuilder group) =>
         group.MapGet("/me", async (
             CurrentUserHandler handler,
@@ -265,7 +379,11 @@ public static class AuthEndpoints
             "the token was issued is reflected immediately. Returns 403 ACCOUNT_PAUSED if the " +
             "account was paused after this access token was issued — treat that as an immediate " +
             "sign-out. When profileCompleted is false, route the user to Complete Profile rather " +
-            "than Home. minimumSupportedAppVersion drives the forced-upgrade prompt.")
+            "than Home. minimumSupportedAppVersion drives the forced-upgrade prompt. " +
+            "timeZone is the zone currently stored for this user, exactly as it was last " +
+            "written - compare it with the device's detected zone on start-up and call " +
+            "PUT /api/v1/auth/me/timezone only when they differ. It is session state, not a " +
+            "profile field: contact details live on /auth/me/profile instead.")
         .Produces<CurrentUserResponse>()
         .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
         .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson);

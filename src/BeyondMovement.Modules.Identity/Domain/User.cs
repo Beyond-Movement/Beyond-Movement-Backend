@@ -100,9 +100,55 @@ public sealed class User
         };
     }
 
+    /// <summary>
+    /// Rejects a blank name rather than storing one. <see cref="MarkProfileCompleted"/> keeps
+    /// the "completed implies named" invariant at the moment of completion, but this is the only
+    /// mutator that could break it <em>afterwards</em> — an Admin editing their profile down to
+    /// an empty name would leave <see cref="ProfileCompleted"/> true with no name behind it, and
+    /// the mobile app treats that pair as an invariant rather than re-checking it. Endpoints
+    /// validate first, so reaching here blank is a bug in the caller, not bad input.
+    /// </summary>
     public void SetFullName(string fullName, DateTime nowUtc)
     {
-        FullName = fullName;
+        if (string.IsNullOrWhiteSpace(fullName))
+            throw new ArgumentException("A full name cannot be blank.", nameof(fullName));
+
+        FullName = fullName.Trim();
+        UpdatedAtUtc = nowUtc;
+    }
+
+    /// <summary>
+    /// The contact number shown on the profile. Optional, and blank is stored as null rather
+    /// than as an empty string — the contract says null for "not given", and "" would render as
+    /// a phone number that is set but empty.
+    /// </summary>
+    public void SetPhone(string? phone, DateTime nowUtc)
+    {
+        Phone = string.IsNullOrWhiteSpace(phone) ? null : phone.Trim();
+        UpdatedAtUtc = nowUtc;
+    }
+
+    /// <summary>
+    /// The zone the Admin dashboard computes week, month and year boundaries in.
+    /// <para>
+    /// Kept in step with the device rather than chosen in a settings screen: the app detects the
+    /// zone and calls the endpoint only when it differs from what <c>/auth/me</c> returned, so a
+    /// coach who travels gets correct period boundaries without ever being asked. The value is
+    /// stored exactly as the caller sent it — see <c>TimeZoneId.TryNormalize</c> for why that,
+    /// and not <c>TimeZoneInfo.Id</c>, is what makes that comparison settle.
+    /// </para>
+    /// <para>
+    /// Validation lives at the boundary, not here: the only reader falls back to UTC silently,
+    /// so an unresolvable id must be refused before it is written. Reaching here with one is a
+    /// bug in the caller.
+    /// </para>
+    /// </summary>
+    public void SetTimeZone(string timeZone, DateTime nowUtc)
+    {
+        if (string.IsNullOrWhiteSpace(timeZone))
+            throw new ArgumentException("A time zone cannot be blank.", nameof(timeZone));
+
+        TimeZone = timeZone.Trim();
         UpdatedAtUtc = nowUtc;
     }
 
