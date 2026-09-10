@@ -42,7 +42,13 @@ public sealed class DashboardApiFactory : ApiFactory
     public string AthleteEmail => "dash-athlete@nowhere.test";
 
     /// <summary>Ids of the three sessions that should appear, in order, under the default limit.</summary>
-    public Guid[] ExpectedUpcoming { get; private set; } = [];
+    public Guid[] ExpectedToday { get; private set; } = [];
+    public Guid PastEndedScheduled { get; private set; }
+    public Guid OngoingScheduled { get; private set; }
+    public Guid FutureScheduled { get; private set; }
+    public Guid AttendedSession { get; private set; }
+    public Guid NoShowSession { get; private set; }
+    public Guid CancelledSession { get; private set; }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -88,7 +94,7 @@ public sealed class DashboardApiFactory : ApiFactory
         // Cairo week of the pinned Thursday runs Mon 9 Mar 00:00 to Mon 16 Mar 00:00 local,
         // which is 8 Mar 22:00 UTC to 15 Mar 22:00 UTC.
 
-        Attended(db, coach.Id, profileId, "wk-online", new DateTime(2026, 3, 10, 10, 0, 0, DateTimeKind.Utc), 60, DeliveryType.Online);
+        AttendedSession = Attended(db, coach.Id, profileId, "wk-online", Now.AddHours(-4), 60, DeliveryType.Online);
         Attended(db, coach.Id, profileId, "wk-f2f", new DateTime(2026, 3, 11, 10, 0, 0, DateTimeKind.Utc), 90, DeliveryType.FaceToFace);
 
         // Earlier the same month, outside the week.
@@ -102,25 +108,26 @@ public sealed class DashboardApiFactory : ApiFactory
 
         // --- things that happened this week but were NOT delivered --------------------------
         // Both sit inside every window, so if either is ever counted the weekly numbers move.
-        Resolved(db, coach.Id, profileId, "wk-noshow", new DateTime(2026, 3, 10, 12, 0, 0, DateTimeKind.Utc), 60, DeliveryType.Online, SessionStatus.NoShow);
-        Cancelled(db, coach.Id, profileId, "wk-cancelled", new DateTime(2026, 3, 10, 14, 0, 0, DateTimeKind.Utc), 60, DeliveryType.Online);
+        NoShowSession = Resolved(db, coach.Id, profileId, "wk-noshow", Now.AddHours(-3), 60, DeliveryType.Online, SessionStatus.NoShow);
+        CancelledSession = Cancelled(db, coach.Id, profileId, "wk-cancelled", Now.AddHours(6), 60, DeliveryType.Online);
 
         // Still scheduled, in the past: not delivered either.
         Scheduled(db, coach.Id, profileId, "wk-unresolved", new DateTime(2026, 3, 10, 16, 0, 0, DateTimeKind.Utc), 60, DeliveryType.Online);
+        PastEndedScheduled = Scheduled(db, coach.Id, profileId, "today-ended", Now.AddHours(-2), 60, DeliveryType.Online);
+        OngoingScheduled = Scheduled(db, coach.Id, profileId, "ongoing", Now.AddMinutes(-30), 60, DeliveryType.Online);
+        FutureScheduled = Scheduled(db, coach.Id, profileId, "today-future", Now.AddHours(2), 60, DeliveryType.FaceToFace);
 
         // --- another coach's delivered session, which must never be visible -----------------
         var foreignCoachId = Guid.NewGuid();
         var foreignProfileId = await AddForeignAthleteAsync(db, scope.ServiceProvider, foreignCoachId);
         Attended(db, foreignCoachId, foreignProfileId, "foreign", new DateTime(2026, 3, 10, 10, 0, 0, DateTimeKind.Utc), 600, DeliveryType.Online);
 
-        // --- upcoming: four scheduled ahead, plus a cancelled one that must not appear -------
-        var first = Scheduled(db, coach.Id, profileId, "up-1", Now.AddDays(1), 60, DeliveryType.Online);
-        var second = Scheduled(db, coach.Id, profileId, "up-2", Now.AddDays(2), 60, DeliveryType.FaceToFace);
-        var third = Scheduled(db, coach.Id, profileId, "up-3", Now.AddDays(3), 60, DeliveryType.Observation);
+        // Future-day sessions prove that todaySessions is bounded to the local calendar day.
+        Scheduled(db, coach.Id, profileId, "up-1", Now.AddDays(1), 60, DeliveryType.Online);
+        Scheduled(db, coach.Id, profileId, "up-2", Now.AddDays(2), 60, DeliveryType.FaceToFace);
+        Scheduled(db, coach.Id, profileId, "up-3", Now.AddDays(3), 60, DeliveryType.Observation);
         Scheduled(db, coach.Id, profileId, "up-4", Now.AddDays(4), 60, DeliveryType.Online);
-        Cancelled(db, coach.Id, profileId, "up-cancelled", Now.AddHours(6), 60, DeliveryType.Online);
-
-        ExpectedUpcoming = [first, second, third];
+        ExpectedToday = [PastEndedScheduled, OngoingScheduled, FutureScheduled];
 
         await db.SaveChangesAsync();
     }

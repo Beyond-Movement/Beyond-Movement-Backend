@@ -224,44 +224,51 @@ public sealed class DashboardTests(DashboardApiFactory factory) : IClassFixture<
         Assert.Equal(1, monthly.GetProperty("observationSessions").GetInt32());
     }
 
-    // --- upcoming sessions --------------------------------------------------
+    // --- today's sessions ---------------------------------------------------
 
     [Fact]
-    public async Task Upcoming_returns_the_next_three_scheduled_sessions_in_order()
+    public async Task Today_returns_scheduled_sessions_in_start_order()
     {
-        var upcoming = (await DashboardAsync()).GetProperty("upcomingSessions");
-        var ids = upcoming.EnumerateArray().Select(x => x.GetProperty("sessionId").GetGuid()).ToArray();
+        var today = (await DashboardAsync()).GetProperty("todaySessions");
+        var ids = today.EnumerateArray().Select(x => x.GetProperty("sessionId").GetGuid()).ToArray();
 
         Assert.Equal(3, ids.Length);
-        Assert.Equal(factory.ExpectedUpcoming, ids);
+        Assert.Equal(factory.ExpectedToday, ids);
 
-        // Ordered by start, soonest first.
-        var starts = upcoming.EnumerateArray()
+        var starts = today.EnumerateArray()
             .Select(x => x.GetProperty("scheduledStartUtc").GetDateTime()).ToArray();
         Assert.Equal(starts.OrderBy(x => x), starts);
     }
 
     [Fact]
-    public async Task Upcoming_excludes_cancelled_and_past_sessions()
+    public async Task Today_includes_ended_ongoing_and_future_scheduled_but_excludes_resolved_sessions()
     {
-        var upcoming = (await DashboardAsync("?upcomingLimit=20")).GetProperty("upcomingSessions");
+        var today = (await DashboardAsync("?todayLimit=20")).GetProperty("todaySessions");
+        var ids = today.EnumerateArray()
+            .Select(card => card.GetProperty("sessionId").GetGuid()).ToArray();
 
-        Assert.All(upcoming.EnumerateArray(), card =>
+        Assert.Contains(factory.PastEndedScheduled, ids);
+        Assert.Contains(factory.OngoingScheduled, ids);
+        Assert.Contains(factory.FutureScheduled, ids);
+        Assert.DoesNotContain(factory.AttendedSession, ids);
+        Assert.DoesNotContain(factory.NoShowSession, ids);
+        Assert.DoesNotContain(factory.CancelledSession, ids);
+
+        Assert.All(today.EnumerateArray(), card =>
         {
-            Assert.True(card.GetProperty("scheduledStartUtc").GetDateTime() >= DashboardApiFactory.Now);
-
-            // The cancelled future session sits 6 hours out - sooner than all four scheduled
-            // ones - so it would head this list if cancellation were not excluded.
-            Assert.NotEqual(DashboardApiFactory.Now.AddHours(6),
-                card.GetProperty("scheduledStartUtc").GetDateTime());
+            var start = card.GetProperty("scheduledStartUtc").GetDateTime();
+            Assert.InRange(start,
+                new DateTime(2026, 3, 11, 22, 0, 0, DateTimeKind.Utc),
+                new DateTime(2026, 3, 12, 21, 59, 59, DateTimeKind.Utc));
         });
 
-        // Four scheduled ahead, and the cancelled one is not among them.
-        Assert.Equal(4, upcoming.GetArrayLength());
+        var starts = today.EnumerateArray()
+            .Select(card => card.GetProperty("scheduledStartUtc").GetDateTime()).ToArray();
+        Assert.Equal(starts.OrderBy(start => start), starts);
     }
 
     [Fact]
-    public async Task Upcoming_does_not_change_when_the_statistics_period_changes()
+    public async Task Today_does_not_change_when_the_statistics_period_changes()
     {
         string[] serialised = [];
 
@@ -269,21 +276,21 @@ public sealed class DashboardTests(DashboardApiFactory factory) : IClassFixture<
         {
             var body = await DashboardAsync($"?period={period}");
             var stats = body.GetProperty("statistics");
-            var upcoming = body.GetProperty("upcomingSessions").GetRawText();
+            var today = body.GetProperty("todaySessions").GetRawText();
 
             // The statistics really are changing between these calls...
             Assert.True(stats.GetProperty("attendedSessions").GetInt32() > 0);
 
-            // ...while the upcoming list is byte-for-byte identical every time.
-            if (serialised.Length == 0) serialised = [upcoming];
-            else Assert.Equal(serialised[0], upcoming);
+            // ...while today's list is byte-for-byte identical every time.
+            if (serialised.Length == 0) serialised = [today];
+            else Assert.Equal(serialised[0], today);
         }
     }
 
     [Fact]
-    public async Task Each_upcoming_card_carries_the_athletes_user_id_and_name()
+    public async Task Each_today_card_carries_the_athletes_user_id_and_name()
     {
-        var card = (await DashboardAsync()).GetProperty("upcomingSessions").EnumerateArray().First();
+        var card = (await DashboardAsync()).GetProperty("todaySessions").EnumerateArray().First();
 
         // The USER id, which is what GET /athletes/{athleteId} takes - not the profile id.
         Assert.Equal(factory.AthleteUserId, card.GetProperty("athleteUserId").GetGuid());
@@ -297,16 +304,16 @@ public sealed class DashboardTests(DashboardApiFactory factory) : IClassFixture<
     }
 
     [Fact]
-    public async Task The_upcoming_limit_is_clamped_rather_than_rejected()
+    public async Task The_today_limit_is_clamped_rather_than_rejected()
     {
-        Assert.Equal(4, (await DashboardAsync("?upcomingLimit=999"))
-            .GetProperty("upcomingSessions").GetArrayLength());
+        Assert.Equal(3, (await DashboardAsync("?todayLimit=999"))
+            .GetProperty("todaySessions").GetArrayLength());
 
         // Zero and negatives fall back to the default rather than returning an empty list.
-        Assert.Equal(3, (await DashboardAsync("?upcomingLimit=0"))
-            .GetProperty("upcomingSessions").GetArrayLength());
-        Assert.Equal(3, (await DashboardAsync("?upcomingLimit=-5"))
-            .GetProperty("upcomingSessions").GetArrayLength());
+        Assert.Equal(3, (await DashboardAsync("?todayLimit=0"))
+            .GetProperty("todaySessions").GetArrayLength());
+        Assert.Equal(3, (await DashboardAsync("?todayLimit=-5"))
+            .GetProperty("todaySessions").GetArrayLength());
     }
 
     // --- authorization ------------------------------------------------------

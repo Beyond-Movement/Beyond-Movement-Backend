@@ -83,6 +83,15 @@ public static class DashboardPeriods
         return new DashboardWindow(ToUtc(startLocal, zone), ToUtc(endLocal, zone));
     }
 
+    /// <summary>The Admin's current local calendar day, expressed as a UTC half-open interval.</summary>
+    public static DashboardWindow Today(DateTime nowUtc, TimeZoneInfo zone)
+    {
+        var local = TimeZoneInfo.ConvertTimeFromUtc(
+            DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc), zone);
+        var startLocal = local.Date;
+        return new DashboardWindow(ToUtc(startLocal, zone), ToUtc(startLocal.AddDays(1), zone));
+    }
+
     private static (DateTime Start, DateTime End) WeekOf(DateTime local)
     {
         // Sunday is day 0, so without the +7 a Sunday would walk back to a negative offset and

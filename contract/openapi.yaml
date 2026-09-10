@@ -284,10 +284,10 @@ paths:
         value - the same reason money is an integer count of piastres. Per-type minutes
         are sent rather than derived because they cannot be recovered from the counts:
         three online sessions could be 30, 60 and 90 minutes, and any average the
-        client invented would be wrong. upcomingSessions is INDEPENDENT of period:
-        it is the next scheduled sessions from now, exactly as GET /sessions/upcoming
-        defines them, and switching Weekly to Yearly never changes it. Defaults to
-        3, and upcomingLimit is clamped to 1-20. athleteUserId on each card is the
+        client invented would be wrong. todaySessions is INDEPENDENT of period:
+        it contains Scheduled sessions whose start falls on the Admin''s current local
+        calendar day, ordered by scheduledStartUtc. Switching Weekly to Yearly never
+        changes it. Defaults to 3, and todayLimit is clamped to 1-20. athleteUserId on each card is the
         athlete''s USER id - the id GET /athletes/{athleteId} takes - not the profile
         id that sessions and packages are keyed by.'
       operationId: GetAdminDashboard
@@ -297,7 +297,7 @@ paths:
         schema:
           default: Monthly
           $ref: '#/components/schemas/DashboardPeriod'
-      - name: upcomingLimit
+      - name: todayLimit
         in: query
         schema:
           type: integer
@@ -3236,15 +3236,15 @@ components:
     AdminDashboardResponse:
       required:
       - statistics
-      - upcomingSessions
+      - todaySessions
       type: object
       properties:
         statistics:
           $ref: '#/components/schemas/DashboardStatistics'
-        upcomingSessions:
+        todaySessions:
           type: array
           items:
-            $ref: '#/components/schemas/UpcomingSessionCard'
+            $ref: '#/components/schemas/TodaySessionCard'
     AdminProfileResponse:
       required:
       - id
@@ -4665,7 +4665,7 @@ components:
       properties:
         timeZone:
           type: string
-    UpcomingSessionCard:
+    TodaySessionCard:
       required:
       - sessionId
       - athleteUserId

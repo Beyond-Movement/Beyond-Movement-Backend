@@ -54,9 +54,9 @@ public static class DashboardEndpoints
                 "piastres. Per-type minutes are sent rather than derived because they cannot be " +
                 "recovered from the counts: three online sessions could be 30, 60 and 90 " +
                 "minutes, and any average the client invented would be wrong. " +
-                "upcomingSessions is INDEPENDENT of period: it is the next scheduled sessions " +
-                "from now, exactly as GET /sessions/upcoming defines them, and switching Weekly " +
-                "to Yearly never changes it. Defaults to 3, and upcomingLimit is clamped to " +
+                "todaySessions is INDEPENDENT of period: it contains Scheduled sessions whose " +
+                "start falls on the Admin's current local calendar day, ordered by start time. " +
+                "Switching Weekly to Yearly never changes it. Defaults to 3, and todayLimit is clamped to " +
                 "1-20. athleteUserId on each card is the athlete's USER id - the id " +
                 "GET /athletes/{athleteId} takes - not the profile id that sessions and packages " +
                 "are keyed by.")
@@ -71,16 +71,16 @@ public static class DashboardEndpoints
     private static async Task<IResult> Admin(
         AdminDashboardReader reader, ClaimsPrincipal principal, CancellationToken ct,
         DashboardPeriod period = DashboardPeriod.Monthly,
-        int upcomingLimit = AdminDashboardReader.DefaultUpcoming)
+        int todayLimit = AdminDashboardReader.DefaultToday)
     {
         if (!principal.TryGetIdentity(out _, out var coachId)) return Results.Unauthorized();
 
         // Clamped rather than rejected, matching /sessions and the athlete list: a limit outside
         // the range is a client bug that should still render a screen, not a 400 the coach sees.
         var take = Math.Clamp(
-            upcomingLimit <= 0 ? AdminDashboardReader.DefaultUpcoming : upcomingLimit,
+            todayLimit <= 0 ? AdminDashboardReader.DefaultToday : todayLimit,
             1,
-            AdminDashboardReader.MaxUpcoming);
+            AdminDashboardReader.MaxToday);
 
         return Results.Ok(await reader.ReadAsync(coachId, period, take, ct));
     }

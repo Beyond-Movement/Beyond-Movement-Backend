@@ -35,7 +35,7 @@ public enum DashboardPeriod
 /// </summary>
 public sealed record AdminDashboardResponse(
     DashboardStatistics Statistics,
-    IReadOnlyList<UpcomingSessionCard> UpcomingSessions);
+    IReadOnlyList<TodaySessionCard> TodaySessions);
 
 /// <summary>
 /// Delivery statistics for the selected period.
@@ -99,10 +99,10 @@ public sealed record DashboardStatistics(
     int ObservationMinutes);
 
 /// <summary>
-/// One card in the Admin Home "upcoming sessions" list.
+/// One card in the Admin Home "today's sessions" list.
 /// <para>
 /// <b>Independent of the statistics period.</b> Switching Weekly to Yearly changes the numbers
-/// above and never this list: what is coming next does not depend on how far back the coach is
+/// above and never this list: today's calendar does not depend on how far back the coach is
 /// looking.
 /// </para>
 /// </summary>
@@ -121,7 +121,7 @@ public sealed record DashboardStatistics(
 /// Named to match <c>SessionResponse.deliveryType</c> rather than introducing a second word for
 /// one concept.
 /// </param>
-public sealed record UpcomingSessionCard(
+public sealed record TodaySessionCard(
     Guid SessionId,
     Guid AthleteUserId,
     string AthleteName,

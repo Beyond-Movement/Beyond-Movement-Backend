@@ -316,7 +316,7 @@ athlete name and email in Phase 10b, immediately above.)
 changed**, and no migration: the dashboard reads what Phases 5, 6 and 8 already store.
 
 ```
-GET /api/v1/dashboard/admin?period=Monthly&upcomingLimit=3      Admin only
+GET /api/v1/dashboard/admin?period=Monthly&todayLimit=3         Admin only
 ```
 
 One aggregate endpoint rather than one per card, because the screen renders as a unit: three
@@ -341,7 +341,7 @@ contradicts the list beneath it.
     "faceToFaceMinutes": 90,
     "observationMinutes": 45
   },
-  "upcomingSessions": [
+  "todaySessions": [
     {
       "sessionId": "…",
       "athleteUserId": "…",
@@ -441,19 +441,18 @@ absence.
 This resolves open decision **A-02** — the source for the hours report is the duration already
 stored on the session.
 
-### Upcoming sessions never move with the period
+### Today's sessions never move with the period
 
-`upcomingSessions` is the next scheduled sessions from now, **exactly as `GET /sessions/upcoming`
-already defines them** — `Scheduled` status, start at or after now, so a cancelled session can
-never appear.
+`todaySessions` contains Scheduled sessions whose start falls on the Admin's current local
+calendar day, ordered by `scheduledStartUtc`. Sessions remain present after their start or end
+passes and leave only when their status becomes `Attended`, `NoShow`, or `Cancelled`.
 
 **It is independent of `period`.** Switching Weekly to Yearly changes the numbers above and never
 this list: what is coming next does not depend on how far back the coach is looking. A test
 asserts the list is byte-for-byte identical across all four periods while the statistics change.
 
-Defaults to **3**, which is what Admin Home shows. `upcomingLimit` is clamped to 1–20 rather than
-rejected, matching `/sessions` and the athlete list — a limit outside the range is a client bug
-that should still render a screen.
+Defaults to **3**. `todayLimit` is clamped to 1–20 rather than rejected, matching `/sessions` and
+the athlete list — a limit outside the range is a client bug that should still render a screen.
 
 ### `athleteUserId`, named in full on purpose
 

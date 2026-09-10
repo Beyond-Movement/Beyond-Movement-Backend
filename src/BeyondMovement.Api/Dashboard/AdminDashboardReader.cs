@@ -12,14 +12,13 @@ namespace BeyondMovement.Api.Dashboard;
 /// <para>
 /// <b>No new domain rules are defined here.</b> "Delivered" is
 /// <see cref="SessionStatus.Attended"/>, which is the status <c>Session.Resolve</c> writes and
-/// the one <c>AttendedAtUtc</c> is stamped for; "upcoming" is the definition
-/// <c>GET /sessions/upcoming</c> already publishes — <see cref="SessionStatus.Scheduled"/> from
-/// now forward, so a cancelled session can never appear. Duration is the session's own stored
-/// <c>DurationMinutes</c>.
+/// the one <c>AttendedAtUtc</c> is stamped for. The dashboard's daily list contains Scheduled
+/// sessions whose start falls on the Admin's current local calendar day. Duration is the
+/// session's own stored <c>DurationMinutes</c>.
 /// </para>
 /// <para>
 /// <b>Two queries, whatever the data.</b> The statistics are one grouped aggregate evaluated in
-/// the database, and the upcoming cards are one join — neither loops, so nothing here grows a
+/// the database, and today's cards are one join — neither loops, so nothing here grows a
 /// query per row.
 /// </para>
 /// </summary>
@@ -28,14 +27,14 @@ public sealed class AdminDashboardReader(AppDbContext db, IClock clock)
     /// <summary>
     /// What the Admin Home screen shows by default. Three fits the card list without scrolling.
     /// </summary>
-    public const int DefaultUpcoming = 3;
+    public const int DefaultToday = 3;
 
-    public const int MaxUpcoming = 20;
+    public const int MaxToday = 20;
 
     public async Task<AdminDashboardResponse> ReadAsync(
         Guid coachId,
         DashboardPeriod period,
-        int upcomingLimit,
+        int todayLimit,
         CancellationToken ct)
     {
         var nowUtc = clock.UtcNow;
@@ -49,11 +48,12 @@ public sealed class AdminDashboardReader(AppDbContext db, IClock clock)
 
         var zone = DashboardPeriods.Resolve(zoneId);
         var window = DashboardPeriods.Window(period, nowUtc, zone);
+        var todayWindow = DashboardPeriods.Today(nowUtc, zone);
 
         var statistics = await ReadStatisticsAsync(coachId, period, zone, window, ct);
-        var upcoming = await ReadUpcomingAsync(coachId, nowUtc, upcomingLimit, ct);
+        var today = await ReadTodayAsync(coachId, todayWindow, todayLimit, ct);
 
-        return new AdminDashboardResponse(statistics, upcoming);
+        return new AdminDashboardResponse(statistics, today);
     }
 
     /// <summary>
@@ -112,10 +112,10 @@ public sealed class AdminDashboardReader(AppDbContext db, IClock clock)
     }
 
     /// <summary>
-    /// The next few scheduled sessions, exactly as <c>GET /sessions/upcoming</c> defines them.
+    /// Scheduled sessions starting on the Admin's current local calendar day.
     /// <para>
-    /// Deliberately takes no window: this is what is coming next, and it must not move when the
-    /// coach switches the statistics filter from Weekly to Yearly.
+    /// Uses its own daily window, so it does not move when the coach switches the independent
+    /// statistics filter from Weekly to Yearly.
     /// </para>
     /// <para>
     /// The athlete's name and user id come from one join rather than a lookup per card. The name
@@ -123,16 +123,17 @@ public sealed class AdminDashboardReader(AppDbContext db, IClock clock)
     /// session is rendered.
     /// </para>
     /// </summary>
-    private Task<List<UpcomingSessionCard>> ReadUpcomingAsync(
-        Guid coachId, DateTime nowUtc, int limit, CancellationToken ct) =>
+    private Task<List<TodaySessionCard>> ReadTodayAsync(
+        Guid coachId, DashboardWindow today, int limit, CancellationToken ct) =>
         (from session in db.Sessions.AsNoTracking()
          join profile in db.AthleteProfiles on session.AthleteProfileId equals profile.Id
          join user in db.Users on profile.UserId equals user.Id
          where session.CoachId == coachId
                && session.Status == SessionStatus.Scheduled
-               && session.ScheduledStartUtc >= nowUtc
+               && session.ScheduledStartUtc >= today.FromUtc!.Value
+               && session.ScheduledStartUtc < today.ToUtc!.Value
          orderby session.ScheduledStartUtc, session.Id
-         select new UpcomingSessionCard(
+         select new TodaySessionCard(
              session.Id,
              user.Id,
              user.FullName ?? user.Email,
