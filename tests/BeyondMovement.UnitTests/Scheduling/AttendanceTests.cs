@@ -141,6 +141,23 @@ public sealed class AttendanceTests
         Assert.Null(session.AttendedByUserId);
     }
 
+    [Theory]
+    [InlineData(SessionStatus.Attended, 1)]
+    [InlineData(SessionStatus.NoShow, 0)]
+    public void A_future_session_cannot_be_resolved(SessionStatus outcome, int consumed)
+    {
+        var start = Now.AddMinutes(1);
+        var session = Session.Create(Guid.NewGuid(), Guid.NewGuid(),
+            Data(start, start.AddHours(1)), Now);
+
+        var result = session.Resolve(outcome, consumed, Admin, Now);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("SESSION_NOT_STARTED", result.Error!.Code);
+        Assert.Equal(SessionStatus.Scheduled, session.Status);
+        Assert.Equal(0, session.ConsumedSessionCount);
+    }
+
     [Fact]
     public void A_cancelled_session_cannot_be_attended()
     {

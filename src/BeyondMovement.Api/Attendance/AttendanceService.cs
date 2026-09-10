@@ -64,6 +64,14 @@ public sealed class AttendanceService(AppDbContext db, IClock clock, IAuditLogge
         if (alreadyResolved is not null)
             return Result<AttendanceResponse>.Failure(alreadyResolved);
 
+        var nowUtc = clock.UtcNow;
+
+        // ScheduledStartUtc is already the canonical UTC instant received from Calendly (or the
+        // explicitly UTC observation input). Comparing UTC instants avoids applying the Admin's
+        // display time zone a second time and changing the actual boundary.
+        if (nowUtc < session.ScheduledStartUtc)
+            return Result<AttendanceResponse>.Failure(SchedulingErrors.SessionNotStarted);
+
         var sessionOutcome = outcome switch
         {
             AttendanceOutcome.Attended => SessionStatus.Attended,
@@ -99,19 +107,19 @@ public sealed class AttendanceService(AppDbContext db, IClock clock, IAuditLogge
         // marked attended against a balance that never moved is the failure this prevents.
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
-        var resolved = session.Resolve(sessionOutcome, consumed, actorUserId, clock.UtcNow);
+        var resolved = session.Resolve(sessionOutcome, consumed, actorUserId, nowUtc);
 
         if (resolved.IsFailure)
             return Result<AttendanceResponse>.Failure(resolved.Error!);
 
         if (package is not null)
         {
-            var deduction = package.Consume(consumed, clock.UtcNow);
+            var deduction = package.Consume(consumed, nowUtc);
 
             if (deduction.IsFailure)
                 return Result<AttendanceResponse>.Failure(deduction.Error!);
 
-            session.AttachToPackage(package.Id);
+            session.AttachToPackage(package.Id, package.UsedSessions);
         }
 
         try
@@ -162,14 +170,9 @@ public sealed class AttendanceService(AppDbContext db, IClock clock, IAuditLogge
 
         if (session.ConsumedSessionCount > 0 && session.PackageId == package.Id)
         {
-            // Its own position: how many of this package's sessions had been consumed by the
-            // time this one was, itself included. Ordered by when they were attended, which is
-            // the order the coach used them in, not the order they were booked.
-            number = await db.Sessions.AsNoTracking().CountAsync(x =>
-                x.PackageId == package.Id
-                && x.ConsumedSessionCount > 0
-                && (x.AttendedAtUtc < session.AttendedAtUtc
-                    || (x.AttendedAtUtc == session.AttendedAtUtc && x.Id == session.Id)), ct);
+            // The package's used count immediately after the deduction is persisted on the
+            // session. This works for both Attended and NoShow and remains historically stable.
+            number = session.ConsumedPackagePosition;
         }
         else
         {

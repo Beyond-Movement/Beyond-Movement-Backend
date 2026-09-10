@@ -42,6 +42,12 @@ public sealed class Session
     public int ConsumedSessionCount { get; private set; }
 
     /// <summary>
+    /// The one-based position this deduction took in its package. Persisting the position avoids
+    /// reconstructing it later from outcome-specific timestamps. Null when nothing was consumed.
+    /// </summary>
+    public int? ConsumedPackagePosition { get; private set; }
+
+    /// <summary>
     /// The Admin's explicit answer, given when the observation was recorded, to whether attending
     /// it consumes a package session (BR-07). Non-null exactly when <see cref="DeliveryType"/> is
     /// Observation, and null for everything Calendly books, which follows BR-05 instead.
@@ -210,9 +216,11 @@ public sealed class Session
             case SessionStatus.Cancelled: return Result.Failure(SchedulingErrors.SessionCancelled);
         }
 
+        if (nowUtc < ScheduledStartUtc)
+            return Result.Failure(SchedulingErrors.SessionNotStarted);
+
         Status = outcome;
         ConsumedSessionCount = consumedSessionCount;
-
         // Stamped for Attended only. A no-show did not attend anything, and a field called
         // AttendedAt holding the moment somebody did not turn up is the kind of small lie that
         // later gets read as attendance in a report. The audit log records who marked it.
@@ -227,7 +235,15 @@ public sealed class Session
     }
 
     /// <summary>Links this session to the package it consumed, for the audit trail.</summary>
-    public void AttachToPackage(Guid? packageId) => PackageId = packageId;
+    public void AttachToPackage(Guid packageId, int consumedPackagePosition)
+    {
+        if (ConsumedSessionCount == 0)
+            throw new InvalidOperationException("A non-consuming session cannot have a package position.");
+
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(consumedPackagePosition);
+        PackageId = packageId;
+        ConsumedPackagePosition = consumedPackagePosition;
+    }
 
     private static DateTime EnsureUtc(DateTime value) => value.Kind == DateTimeKind.Utc
         ? value : value.ToUniversalTime();

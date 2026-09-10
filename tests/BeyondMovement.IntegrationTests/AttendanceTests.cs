@@ -117,9 +117,9 @@ public sealed class AttendanceTests(AthleteApiFactory factory) : IClassFixture<A
     /// observation to do to the balance, rather than inheriting it from the duration.
     /// </param>
     private static async Task<Guid> ObservationAsync(
-        HttpClient admin, Guid profileId, int minutes, bool deductSession)
+        HttpClient admin, Guid profileId, int minutes, bool deductSession, DateTime? startUtc = null)
     {
-        var start = new DateTime(2026, 3, 2, 9, 0, 0, DateTimeKind.Utc);
+        var start = startUtc ?? new DateTime(2026, 3, 2, 9, 0, 0, DateTimeKind.Utc);
 
         var response = await admin.PostAsJsonAsync("/api/v1/sessions/observations", new
         {
@@ -182,6 +182,29 @@ public sealed class AttendanceTests(AthleteApiFactory factory) : IClassFixture<A
     }
 
     // ---------------------------------------------------------------- attendance
+
+    [Theory]
+    [InlineData("Attended")]
+    [InlineData("NoShow")]
+    public async Task A_future_session_cannot_be_resolved(string outcome)
+    {
+        var admin = await AdminClientAsync();
+        var profileId = await ProfileIdAsync("alex@nowhere.test");
+        var sessionId = await ObservationAsync(admin, profileId, minutes: 60,
+            deductSession: true, startUtc: DateTime.UtcNow.AddDays(1));
+
+        var response = outcome == "NoShow"
+            ? await admin.PostAsJsonAsync($"/api/v1/sessions/{sessionId}/attend",
+                new { outcome, deductSession = true })
+            : await admin.PostAsJsonAsync($"/api/v1/sessions/{sessionId}/attend", new { outcome });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("SESSION_NOT_STARTED", problem.GetProperty("errorCode").GetString());
+
+        var session = await admin.GetFromJsonAsync<JsonElement>($"/api/v1/sessions/{sessionId}");
+        Assert.Equal("Scheduled", session.GetProperty("status").GetString());
+    }
 
     [Fact]
     public async Task Marking_attended_deducts_exactly_one_and_a_second_attempt_deducts_nothing()
@@ -290,6 +313,7 @@ public sealed class AttendanceTests(AthleteApiFactory factory) : IClassFixture<A
 
         Assert.Equal(0, body.GetProperty("consumedSessionCount").GetInt32());
         Assert.Equal("NoShow", body.GetProperty("session").GetProperty("status").GetString());
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("progress").ValueKind);
 
         var package = await admin.GetFromJsonAsync<JsonElement>($"/api/v1/packages/{packageId}");
         Assert.Equal(3, package.GetProperty("remainingSessions").GetInt32());
@@ -303,6 +327,11 @@ public sealed class AttendanceTests(AthleteApiFactory factory) : IClassFixture<A
 
         // Recorded as non-deducting, then marked a no-show that does deduct: the no-show choice
         // is the one that applies, because the observation was never attended.
+        var attendedSessionId = await ObservationAsync(admin, profileId, minutes: 45, deductSession: true);
+        var attended = await admin.PostAsJsonAsync(
+            $"/api/v1/sessions/{attendedSessionId}/attend", new { outcome = "Attended" });
+        Assert.Equal(HttpStatusCode.OK, attended.StatusCode);
+
         var deductingSessionId = await ObservationAsync(admin, profileId, minutes: 45, deductSession: false);
         response = await admin.PostAsJsonAsync(
             $"/api/v1/sessions/{deductingSessionId}/attend",
@@ -312,7 +341,12 @@ public sealed class AttendanceTests(AthleteApiFactory factory) : IClassFixture<A
         body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(1, body.GetProperty("consumedSessionCount").GetInt32());
         Assert.Equal("NoShow", body.GetProperty("session").GetProperty("status").GetString());
-        Assert.Equal(2, body.GetProperty("package").GetProperty("remainingSessions").GetInt32());
+        Assert.Equal(2, body.GetProperty("progress").GetProperty("sessionNumber").GetInt32());
+        Assert.Equal(1, body.GetProperty("package").GetProperty("remainingSessions").GetInt32());
+
+        var progress = await admin.GetFromJsonAsync<JsonElement>(
+            $"/api/v1/sessions/{deductingSessionId}/package-progress");
+        Assert.Equal(2, progress.GetProperty("sessionNumber").GetInt32());
     }
 
     [Fact]

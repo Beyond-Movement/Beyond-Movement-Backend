@@ -19,6 +19,9 @@ public sealed class SessionConfiguration : IEntityTypeConfiguration<Session>
             // actually happened may record having consumed one.
             t.HasCheckConstraint("CK_Sessions_ConsumedOnlyWhenResolved",
                 "\"ConsumedSessionCount\" = 0 OR \"Status\" IN ('Attended', 'NoShow')");
+            t.HasCheckConstraint("CK_Sessions_PackagePositionMatchesConsumption",
+                "(\"ConsumedSessionCount\" = 0 AND \"ConsumedPackagePosition\" IS NULL) OR " +
+                "(\"ConsumedSessionCount\" = 1 AND \"ConsumedPackagePosition\" > 0)");
 
             // BR-07. The Admin's deduction choice belongs to observations and only to them, so
             // the column is non-null exactly when the session is one. Stated here because the

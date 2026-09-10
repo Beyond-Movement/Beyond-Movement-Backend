@@ -51,7 +51,8 @@ public static class AttendanceEndpoints
                 "already a no-show is 409 SESSION_ALREADY_RESOLVED, and cancelled is 409 " +
                 "SESSION_CANCELLED (BR-06). Those are not failures to retry past - they mean the " +
                 "deduction has already happened exactly once, or must never happen. A session " +
-                "that would deduct from an athlete with no active package is 409 " +
+                "whose scheduled UTC start is still in the future is 409 SESSION_NOT_STARTED. " +
+                "A session that would deduct from an athlete with no active package is 409 " +
                 "ACTIVE_PACKAGE_NOT_FOUND, and one whose package is exhausted is 409 " +
                 "NO_SESSIONS_REMAINING. Two requests racing produce one success and one 409 " +
                 "CONCURRENCY_CONFLICT, never two deductions.")

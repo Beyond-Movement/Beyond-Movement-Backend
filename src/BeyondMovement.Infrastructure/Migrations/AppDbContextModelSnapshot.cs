@@ -867,6 +867,9 @@ namespace BeyondMovement.Infrastructure.Migrations
                     b.Property<int>("ConsumedSessionCount")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("ConsumedPackagePosition")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -935,6 +938,8 @@ namespace BeyondMovement.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_Sessions_Consumed", "\"ConsumedSessionCount\" IN (0, 1)");
 
                             t.HasCheckConstraint("CK_Sessions_ConsumedOnlyWhenResolved", "\"ConsumedSessionCount\" = 0 OR \"Status\" IN ('Attended', 'NoShow')");
+
+                            t.HasCheckConstraint("CK_Sessions_PackagePositionMatchesConsumption", "(\"ConsumedSessionCount\" = 0 AND \"ConsumedPackagePosition\" IS NULL) OR (\"ConsumedSessionCount\" = 1 AND \"ConsumedPackagePosition\" > 0)");
 
                             t.HasCheckConstraint("CK_Sessions_Duration", "\"DurationMinutes\" > 0");
 

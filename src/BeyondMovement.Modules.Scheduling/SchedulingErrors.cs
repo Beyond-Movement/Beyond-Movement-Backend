@@ -11,6 +11,7 @@ public static class SchedulingErrors
         "EVENT_TYPE_INVALID", "IDEMPOTENCY_KEY_REQUIRED", "LOCATION_INVALID",
         "LOCATION_REQUIRED", "SESSION_NOT_FOUND", "SLOT_UNAVAILABLE", "TIME_ZONE_INVALID",
         "SESSION_ALREADY_ATTENDED", "SESSION_ALREADY_RESOLVED", "SESSION_CANCELLED",
+        "SESSION_NOT_STARTED",
         "SESSION_NOTE_NOT_FOUND", "OBSERVATION_RANGE_INVALID"
     ];
     /// <summary>
@@ -49,6 +50,10 @@ public static class SchedulingErrors
     /// <summary>BR-06 — a cancelled session never consumes one, so it cannot be attended either.</summary>
     public static readonly Error SessionCancelled = new("SESSION_CANCELLED",
         "This session was cancelled and cannot be marked attended.", 409);
+
+    /// <summary>Attendance is an outcome, so it cannot be recorded before the scheduled start.</summary>
+    public static readonly Error SessionNotStarted = new("SESSION_NOT_STARTED",
+        "This session has not reached its scheduled start time.", 409);
 
     public static readonly Error SessionNoteNotFound = new("SESSION_NOTE_NOT_FOUND",
         "Session note not found.", 404);
