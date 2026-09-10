@@ -280,7 +280,9 @@ public sealed class AthleteManagementTests(AthleteApiFactory factory) : IClassFi
         Assert.Equal("Female", athlete.GetProperty("gender").GetString());
         Assert.Equal("2001-04-17", athlete.GetProperty("dateOfBirth").GetString());
         Assert.Equal("Active", athlete.GetProperty("status").GetString());
-        Assert.Equal(JsonValueKind.Null, athlete.GetProperty("phone").ValueKind);   // nothing collects it yet
+        // Optional, and this fixture's athletes have never given one. The athlete's own Edit
+        // Profile screen writes it now, so null here means "not given", not "cannot be given".
+        Assert.Equal(JsonValueKind.Null, athlete.GetProperty("phone").ValueKind);
     }
 
     /// <summary>

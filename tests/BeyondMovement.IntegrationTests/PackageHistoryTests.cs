@@ -235,4 +235,139 @@ public sealed class PackageHistoryTests(PackageHistoryApiFactory factory)
         Assert.Equal("ATHLETE_NOT_FOUND",
             (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("errorCode").GetString());
     }
+
+    // --- the athlete's own history -------------------------------------------
+
+    private async Task<HttpClient> AthleteClientAsync(string email)
+    {
+        var client = factory.CreateClient();
+        var response = await client.PostAsJsonAsync("/api/v1/auth/login",
+            new { email, password = AthleteApiFactory.AthletePassword });
+
+        response.EnsureSuccessStatusCode();
+        var auth = (await response.Content.ReadFromJsonAsync<AuthPayload>(Json))!;
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
+        return client;
+    }
+
+    private static async Task<JsonElement> MyHistoryAsync(HttpClient athlete, string query = "")
+    {
+        var response = await athlete.GetAsync(
+            $"/api/v1/me/packages{(query.Length == 0 ? "" : "?" + query)}");
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<JsonElement>();
+    }
+
+    /// <summary>
+    /// The whole point of the athlete route: the mobile app reuses one Package History screen
+    /// for both roles, so the two responses have to be the same thing, not merely similar.
+    /// </summary>
+    [Fact]
+    public async Task The_athlete_sees_exactly_what_the_admin_sees_for_them()
+    {
+        var admin = await AdminClientAsync();
+        var optionId = await CreateOptionAsync(admin, "History Shared");
+        var (athleteId, email) = await factory.NewAthleteAsync();
+
+        await SellAndCloseAsync(admin, athleteId, optionId);
+        await SellAndCloseAsync(admin, athleteId, optionId);
+
+        var athlete = await AthleteClientAsync(email);
+
+        var theirs = await MyHistoryAsync(athlete);
+        var coachs = await HistoryAsync(admin, athleteId);
+
+        Assert.Equal(coachs.GetRawText(), theirs.GetRawText());
+    }
+
+    [Fact]
+    public async Task An_athlete_with_no_packages_gets_an_empty_page_rather_than_a_404()
+    {
+        var (_, email) = await factory.NewAthleteAsync();
+        var athlete = await AthleteClientAsync(email);
+
+        var body = await MyHistoryAsync(athlete);
+
+        Assert.Equal(
+            ["items", "page", "pageSize", "totalCount", "totalPages", "hasNextPage", "hasPreviousPage"],
+            body.EnumerateObject().Select(p => p.Name).ToArray());
+
+        // Unlike GET /me/package, which is the single ACTIVE package and 404s when there is
+        // none. History has nothing to be missing — an athlete who has never bought one has an
+        // empty history, and the screen shows its empty view.
+        Assert.Empty(body.GetProperty("items").EnumerateArray());
+        Assert.Equal(0, body.GetProperty("totalCount").GetInt32());
+    }
+
+    /// <summary>
+    /// There is no athlete id on this route, so the only thing that could leak another athlete's
+    /// packages is the query itself. This is what says it does not.
+    /// </summary>
+    [Fact]
+    public async Task An_athlete_sees_only_their_own_packages()
+    {
+        var admin = await AdminClientAsync();
+        var optionId = await CreateOptionAsync(admin, "History Isolated");
+
+        var (mineId, myEmail) = await factory.NewAthleteAsync();
+        var (theirsId, _) = await factory.NewAthleteAsync();
+
+        var mine = await SellAndCloseAsync(admin, mineId, optionId);
+        var theirs = await SellAndCloseAsync(admin, theirsId, optionId);
+
+        var ids = (await MyHistoryAsync(await AthleteClientAsync(myEmail)))
+            .GetProperty("items").EnumerateArray()
+            .Select(x => x.GetProperty("id").GetGuid())
+            .ToArray();
+
+        Assert.Equal([mine], ids);
+        Assert.DoesNotContain(theirs, ids);
+    }
+
+    [Fact]
+    public async Task The_athletes_history_pages_and_orders_the_same_way()
+    {
+        var admin = await AdminClientAsync();
+        var optionId = await CreateOptionAsync(admin, "History Mine Paged");
+        var (athleteId, email) = await factory.NewAthleteAsync();
+
+        var expected = new List<Guid>();
+        for (var i = 0; i < 3; i++)
+            expected.Add(await SellAndCloseAsync(admin, athleteId, optionId));
+
+        var athlete = await AthleteClientAsync(email);
+
+        var first = await MyHistoryAsync(athlete, "page=1&pageSize=2");
+        Assert.Equal(3, first.GetProperty("totalCount").GetInt32());
+        Assert.Equal(2, first.GetProperty("totalPages").GetInt32());
+        Assert.True(first.GetProperty("hasNextPage").GetBoolean());
+
+        var second = await MyHistoryAsync(athlete, "page=2&pageSize=2");
+        Assert.False(second.GetProperty("hasNextPage").GetBoolean());
+
+        var seen = first.GetProperty("items").EnumerateArray()
+            .Concat(second.GetProperty("items").EnumerateArray())
+            .Select(x => x.GetProperty("id").GetGuid())
+            .ToArray();
+
+        // Newest first, so the walk is the reverse of the order they were sold in.
+        Assert.Equal([.. Enumerable.Reverse(expected)], seen);
+
+        // Clamped rather than rejected, exactly as the Admin's is.
+        var clamped = await MyHistoryAsync(athlete, "page=0&pageSize=9999");
+        Assert.Equal(1, clamped.GetProperty("page").GetInt32());
+        Assert.Equal(100, clamped.GetProperty("pageSize").GetInt32());
+    }
+
+    [Fact]
+    public async Task The_admin_cannot_use_the_athlete_route_and_an_anonymous_caller_cannot_either()
+    {
+        var admin = await AdminClientAsync();
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await admin.GetAsync("/api/v1/me/packages")).StatusCode);
+
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await factory.CreateClient().GetAsync("/api/v1/me/packages")).StatusCode);
+    }
 }

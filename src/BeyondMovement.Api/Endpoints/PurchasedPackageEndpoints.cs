@@ -124,9 +124,36 @@ public static class PurchasedPackageEndpoints
             .Produces<ApiProblemDetails>(StatusCodes.Status404NotFound, ProblemJson)
             .Produces<ApiProblemDetails>(StatusCodes.Status409Conflict, ProblemJson);
 
-        app.MapGet("/api/v1/me/package", MyPackage)
+        var mine = app.MapGroup("/api/v1/me")
             .WithTags("Packages")
-            .RequireAuthorization("AthleteOnly")
+            .RequireAuthorization("AthleteOnly");
+
+        mine.MapGet("/packages", MyPackages)
+            .WithName("ListMyPackages")
+            .WithSummary("A page of the calling athlete's own packages, newest first.")
+            .WithDescription(
+                "The athlete's Package History. Always the caller's own - there is no athlete " +
+                "id, and an athlete can never read another's history. " +
+                "THE SAME RESPONSE AS THE ADMIN'S GET /api/v1/athletes/{athleteId}/packages, " +
+                "item for item and field for field, so the two screens share one model: active, " +
+                "completed and closed together, in the same paged envelope of items plus page, " +
+                "pageSize, totalCount, totalPages, hasNextPage and hasPreviousPage. page starts " +
+                "at 1 and pageSize defaults to 20 and is capped at 100 - values outside the " +
+                "range are clamped rather than rejected. " +
+                "Ordered newest first by createdAtUtc, with the id breaking ties so the order is " +
+                "total and a package cannot appear on two pages. " +
+                "An athlete who has never had a package gets an EMPTY PAGE, not a 404 - it is a " +
+                "normal state and the screen should show its empty view. That differs from " +
+                "GET /api/v1/me/package, which is the single ACTIVE package and is 404 when " +
+                "there is none. " +
+                "The most recent PREVIOUS package is the first item whose status is not Active: " +
+                "at most one is Active at a time (BR-03) and it is the newest, so it sorts " +
+                "first when it exists.")
+            .Produces<PagedResult<PurchasedPackageResponse>>()
+            .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
+            .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson);
+
+        mine.MapGet("/package", MyPackage)
             .WithName("GetMyPackage")
             .WithSummary("The calling athlete's own active package.")
             .WithDescription(
@@ -169,11 +196,42 @@ public static class PurchasedPackageEndpoints
         if (!await reader.BelongsToCoachAsync(coachId, athleteId, ct))
             return PricingErrors.AthleteNotFound.ToProblem(http);
 
+        return Results.Ok(await HistoryPageAsync(db, coachId, athleteId, page, pageSize, ct));
+    }
+
+    /// <summary>
+    /// The calling athlete's own history. No ownership check and no id to check one against:
+    /// both ids come from the token, so the query cannot be pointed at anyone else.
+    /// <para>
+    /// An athlete with no packages gets an empty page rather than a 404. The Admin route has to
+    /// tell an unknown athlete apart from an empty one because the id is caller-supplied; here
+    /// the athlete demonstrably exists — they are holding the token.
+    /// </para>
+    /// </summary>
+    private static async Task<IResult> MyPackages(
+        AppDbContext db, ClaimsPrincipal principal, HttpContext http, CancellationToken ct,
+        int page = 1, int pageSize = PagedResult<PurchasedPackageResponse>.DefaultPageSize)
+    {
+        if (!principal.TryGetIdentity(out var userId, out var coachId)) return Results.Unauthorized();
+
+        return Results.Ok(await HistoryPageAsync(db, coachId, userId, page, pageSize, ct));
+    }
+
+    /// <summary>
+    /// One page of an athlete's packages. Shared by the Admin's history and the athlete's own so
+    /// the two cannot drift: the mobile app reuses one Package History screen for both, and a
+    /// difference in ordering or paging here would show up as the same list disagreeing with
+    /// itself depending on who opened it.
+    /// </summary>
+    private static async Task<PagedResult<PurchasedPackageResponse>> HistoryPageAsync(
+        AppDbContext db, Guid coachId, Guid athleteUserId, int page, int pageSize,
+        CancellationToken ct)
+    {
         var (normalizedPage, normalizedSize) =
             PagedResult<PurchasedPackageResponse>.Normalize(page, pageSize);
 
         var query = Owned(db, coachId)
-            .Where(x => db.AthleteProfiles.Any(p => p.Id == x.AthleteProfileId && p.UserId == athleteId));
+            .Where(x => db.AthleteProfiles.Any(p => p.Id == x.AthleteProfileId && p.UserId == athleteUserId));
 
         var total = await query.CountAsync(ct);
 
@@ -187,8 +245,8 @@ public static class PurchasedPackageEndpoints
             .Take(normalizedSize)
             .ToListAsync(ct);
 
-        return Results.Ok(new PagedResult<PurchasedPackageResponse>(
-            [.. packages.Select(x => x.ToResponse())], normalizedPage, normalizedSize, total));
+        return new PagedResult<PurchasedPackageResponse>(
+            [.. packages.Select(x => x.ToResponse())], normalizedPage, normalizedSize, total);
     }
 
     private static async Task<IResult> Active(

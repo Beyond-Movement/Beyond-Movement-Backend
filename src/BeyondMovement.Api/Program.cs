@@ -301,6 +301,7 @@ app.MapGet("/api/v1/ping", () => Results.Ok(new { message = "pong" })).AllowAnon
 app.MapAuthEndpoints();
 app.MapInvitationEndpoints();
 app.MapRegistrationEndpoints();
+app.MapAthleteProfileEndpoints();
 app.MapAthleteEndpoints();
 app.MapPackageOptionEndpoints();
 app.MapPricingEndpoints();

@@ -319,8 +319,10 @@ public static class AuthEndpoints
             "Separate from /auth/me on purpose: that endpoint answers who is signed in and where " +
             "to route them, is called on every app start, and must not grow contact details. " +
             "Read this when the Profile screen opens. " +
-            "phone is null until somebody sets one - no screen has ever written it. " +
-            "email is READ-ONLY here and is not accepted by the PUT.")
+            "phone is null until it is set, and the PUT below is what sets it. " +
+            "email is READ-ONLY here and is not accepted by the PUT. " +
+            "ADMIN ONLY. The athlete's equivalent is GET /api/v1/athletes/me/profile, which is a " +
+            "different screen with different fields - sport, date of birth and gender as well.")
         .Produces<AdminProfileResponse>()
         .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
         .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson);

@@ -95,8 +95,12 @@ public static class AthleteEndpoints
         .WithName("GetAthlete")
         .WithSummary("One athlete, read-only.")
         .WithDescription(
-            "Read-only in phase 2 - there is no endpoint to change an athlete's personal " +
-            "details. phone is always null for now, because no screen collects one yet. " +
+            "Read-only for the ADMIN: there is still no endpoint for a coach to change an " +
+            "athlete's personal details - that was deferred by the client. The athlete edits " +
+            "their own through POST /api/v1/athletes/me/profile, so what this returns can change " +
+            "underneath the coach. " +
+            "phone is null until the athlete gives one, and is optional even for a completed " +
+            "profile - it is no longer null for every athlete, so render what is stored. " +
             "Profile photo is deferred until file storage exists. An unknown id, another " +
             "coach's athlete and a deleted athlete all return 404 ATHLETE_NOT_FOUND.")
         .Produces<AthleteDetail>()

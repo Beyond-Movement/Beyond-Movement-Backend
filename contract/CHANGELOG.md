@@ -7,6 +7,148 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ---
 
+## Phase 12 — Athlete Profile
+
+**Additive for every existing caller**, with one nullability change to a response the mobile app
+has not shipped against yet. **No migration**: every column here already existed.
+
+The athlete's own Profile screen — avatar, name, sport, email, phone, Edit Profile, Package
+History, Change Password, Log Out. Three of those needed backend work; the rest already existed
+and are reused rather than rebuilt.
+
+### NEW — `GET /api/v1/athletes/me/profile` (Athlete only)
+
+The read behind the Profile screen. There was no athlete-facing profile read at all before this:
+`/auth/me` answers "who is signed in and where do I route them" and deliberately carries no
+contact details, and `/auth/me/profile` is **Admin only** and returns 403 to an athlete.
+
+```jsonc
+{
+  "userId": "…",
+  "fullName": "Alex Thompson",   // null until Complete Profile is finished
+  "email": "alex@…",             // READ-ONLY, see below
+  "phone": "+20 100 123 4567",   // null until the athlete gives one
+  "dateOfBirth": "2001-04-17",
+  "gender": "Male",
+  "sport": "Tennis",
+  "profileCompleted": true
+}
+```
+
+- Always the caller's own. **There is no athlete id** in the route or the body, so there is
+  nothing to authorise beyond being signed in as an athlete.
+- An athlete who registered and never finished Complete Profile reads back with `fullName`,
+  `dateOfBirth`, `gender`, `sport` and `phone` **all null** and `profileCompleted: false`. That
+  is the state, not an error, and not a 404.
+- Once `profileCompleted` is true, `fullName`, `dateOfBirth`, `gender` and `sport` are all
+  non-null. **`phone` stays optional** and may be null on a complete profile.
+- **No avatar field.** See "Not implemented, deliberately".
+
+### `POST /api/v1/athletes/me/profile` gains `phone`
+
+```diff
+  {
+    "fullName": "Alex Thompson",
+    "dateOfBirth": "2001-04-17",
+    "gender": "Male",
+    "sport": "Tennis",
++   "phone": "+20 100 123 4567"   // optional; null or "" clears it
+  }
+```
+
+One endpoint still serves **both** Complete Profile and Edit Profile — they set the same fields,
+and a second edit endpoint could only drift from this one. The Athlete Profile's *Edit Profile*
+posts here.
+
+- **Still a full replacement, not a patch.** Send every field every time. **Omitting `phone`
+  clears it** — that is the same rule the other fields have always followed, and it is now
+  load-bearing because there is something to lose.
+- `phone` is optional: send `null` or `""` to clear it, and it reads back as `null` either way.
+  Digits and `+ ( ) - . ` only, up to 40 characters — **the same rule the Admin's
+  `PUT /auth/me/profile` applies**, from one shared definition, so the two cannot disagree about
+  a number they both write to the same column.
+- The response carries `phone` **as stored, after trimming**, so render that field from the
+  response rather than from what was sent.
+
+### CHANGED — `AthleteProfileResponse.fullName` is now nullable
+
+```diff
+- "fullName": "string"          // required, non-null
++ "fullName": "string | null"   // null before Complete Profile is finished
+```
+
+The only breaking-shaped change here, and it exists because the response now serves a **read** as
+well as a write. The POST could promise a name because it had just been given one; the GET cannot,
+because an athlete may not have one yet. It matches `fullName` on `/auth/me` and on
+`AthleteDetail`, which have always been nullable for exactly this reason. The invariant is
+unchanged: **`profileCompleted: true` still implies a non-null `fullName`.**
+
+### NEW — `GET /api/v1/me/packages` (Athlete only)
+
+The athlete's **Package History**, paged.
+
+```
+GET /api/v1/me/packages?page=1&pageSize=20
+```
+
+**Identical to `GET /api/v1/athletes/{athleteId}/packages` item for item and field for field** —
+same envelope, same ordering, same paging, same `PurchasedPackageResponse`. One shared query
+serves both, so the Admin and athlete Package History screens can be **one screen in the app**,
+and the two cannot drift apart.
+
+- Always the caller's own. There is no athlete id, so there is nothing to point at anyone else.
+- An athlete who has never had a package gets an **empty page**, not a 404. This differs from
+  `GET /api/v1/me/package`, which is the single **active** package and is `404 PACKAGE_NOT_FOUND`
+  when there is none — history has nothing to be missing.
+- `Active`, `Completed` and `Closed` together, newest first, id breaking ties.
+- `page` from 1; `pageSize` defaults 20, capped 100; out-of-range is clamped, not rejected.
+
+### Reused unchanged — Change Password and Log Out
+
+Both are already **role-independent** and need no athlete-specific work:
+
+- `POST /api/v1/auth/change-password`
+- `POST /api/v1/auth/logout`
+
+Neither carries a role policy; both sit under the deny-by-default `RequireAuthenticatedUser`
+fallback. Two things the Athlete Profile screen must handle that the Admin one never had to:
+
+- **A Google-only athlete has no password.** Change Password returns `400 PASSWORD_NOT_SET` for
+  them. Admins are always created with a password, so this path only ever appears for athletes.
+  They set a first password through Forgot Password. **This behaviour is unchanged and
+  deliberate.**
+- **Change Password signs this device out.** Every refresh token is revoked, including the one
+  the app is holding. On `200` the app must clear its tokens and route to Login.
+
+### Email is read-only, and stays that way
+
+Returned by the GET so the screen can show it; **not accepted** by the POST, and an `email` sent
+in the body is ignored rather than honoured. The address is the login identity, the unique key on
+`Users`, and what Google sign-in matches on, so changing it means proving ownership of the new
+address and re-issuing tokens. **There is no verification flow, so there is no email change** —
+it is a feature of its own, not a field on a form. The Admin profile has said the same since
+phase 10; this makes the two consistent.
+
+### Resolved — `phone` is no longer always null
+
+The phase 2 gap "**`phone` is always null**" is **closed**. `AthleteDetail.phone`, on the Admin's
+`GET /api/v1/athletes/{athleteId}`, now carries whatever the athlete set on their own Edit
+Profile screen. It is still **optional**, so null remains common and means "not given" rather
+than "cannot be given" — but a screen must render what is stored instead of assuming it is empty.
+
+There is still **no Admin endpoint to edit an athlete's personal details** — that remains
+deferred by the client. The athlete edits their own, which means what the coach reads can now
+change underneath them.
+
+### Not implemented, deliberately
+
+**Profile photo.** There is no avatar field in any request or response, and no upload endpoint.
+It needs file storage, a multipart upload, a URL column and unauthenticated public serving — an
+image tag cannot carry a bearer token, which the InstaPay QR code already had to work around.
+That is a phase of its own and was explicitly left out of this one. **The app shows initials.**
+
+---
+
 ## Phase 11 — Admin Athlete Profile: pricing view, profile id, paged history
 
 **One breaking change** — `GET /api/v1/athletes/{athleteId}/packages` now returns a page. One new
@@ -1634,6 +1776,7 @@ gender — and required in the request that sets it.
 
 `CompleteProfileRequest` has no photo field and will not gain one before phase 13, which brings
 file storage. Initials as the fallback is right.
+*(Still true after phase 12. The request gained `phone`; it did not gain a photo.)*
 
 ### Confirmed · invitation validation is **10 per hour per IP**
 
@@ -1806,6 +1949,8 @@ a malformed body is the caller's fault, and that applies to every endpoint, not 
 
 - **`phone` is always null.** The field is in `AthleteDetail` as the specification requires, but
   no screen collects a phone number yet — Complete Profile does not ask for one.
+  *(Closed in phase 12: `POST /athletes/me/profile` now takes `phone`, so the athlete's own Edit
+  Profile screen collects it. Still optional, so null stays common.)*
 - **Device tokens are not revoked on pause.** Only refresh tokens are. The `DeviceTokens` table
   arrives with notifications in phase 10; until then there is nothing to revoke.
 - **Profile photo** is absent pending file storage (phase 13).
@@ -1925,6 +2070,8 @@ message and the right next action for each case.
 
 - **Profile photo is not accepted yet.** `POST /athletes/me/profile` takes `fullName`,
   `dateOfBirth`, `gender` and `sport`. Photo upload needs file storage, which is phase 13.
+  *(Still open after phase 12, which added `phone` to this request but deliberately not a photo.
+  Storage, upload and public serving remain a phase of their own.)*
 - **`gender` and `sport` are free strings.** The UI shows a dropdown and a searchable field, but
   no allowed value list exists in any source document. Constraining them later to enums **is a
   contract change** — agree the lists with the client before the mobile screens harden.

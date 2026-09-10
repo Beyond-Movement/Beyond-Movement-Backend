@@ -73,7 +73,10 @@ public sealed record AthleteListItem(
 /// </param>
 /// <param name="FullName">Null until the athlete completes their profile. See <see cref="AthleteListItem"/>.</param>
 /// <param name="Phone">
-/// Null for every athlete today — no screen collects a phone number yet. See the changelog.
+/// Null until the athlete gives one on their own Edit Profile screen
+/// (<c>POST /athletes/me/profile</c>). Optional there and optional here, so an athlete who has
+/// completed their profile may still have none — but it is no longer null for everyone, and a
+/// screen must render whatever is stored rather than assuming the field is empty.
 /// </param>
 public sealed record AthleteDetail(
     Guid Id,

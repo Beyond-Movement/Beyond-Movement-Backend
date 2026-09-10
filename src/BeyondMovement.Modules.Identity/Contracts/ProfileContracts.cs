@@ -22,8 +22,9 @@ namespace BeyondMovement.Modules.Identity.Contracts;
 /// is a feature of its own, not a field on a form.
 /// </param>
 /// <param name="Phone">
-/// Null when it has never been given. The column has existed since the first migration and
-/// nothing has ever written it, so every profile starts null here.
+/// Null when it has never been given. Written by this screen for the Admin, and by
+/// <c>POST /athletes/me/profile</c> for an athlete — one column, one set of format rules, in
+/// <see cref="PhonePolicy"/>.
 /// </param>
 public sealed record AdminProfileResponse(
     Guid Id,
