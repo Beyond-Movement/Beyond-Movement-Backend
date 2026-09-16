@@ -1,4 +1,4 @@
-using BeyondMovement.Infrastructure.Auditing;
+﻿using BeyondMovement.Infrastructure.Auditing;
 using BeyondMovement.Modules.Athletes.Domain;
 using BeyondMovement.Modules.Athletes.Persistence;
 using BeyondMovement.Modules.Finance.Domain;
@@ -34,10 +34,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
 
     // Finance module
     public DbSet<PackagePurchase> PackagePurchases => Set<PackagePurchase>();
+    public DbSet<PackagePurchaseFeature> PackagePurchaseFeatures => Set<PackagePurchaseFeature>();
 
     // Scheduling module
     public DbSet<Session> Sessions => Set<Session>();
     public DbSet<SessionNote> SessionNotes => Set<SessionNote>();
+    public DbSet<ObservationRequest> ObservationRequests => Set<ObservationRequest>();
     public DbSet<CalendlyWebhookEvent> CalendlyWebhookEvents => Set<CalendlyWebhookEvent>();
     public DbSet<BookingOperation> BookingOperations => Set<BookingOperation>();
     public DbSet<SchedulingChange> SchedulingChanges => Set<SchedulingChange>();
@@ -77,6 +79,16 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             .HasForeignKey(x => x.SessionId).OnDelete(DeleteBehavior.SetNull);
         modelBuilder.Entity<SchedulingChange>().HasOne<Session>().WithMany()
             .HasForeignKey(x => x.SessionId).OnDelete(DeleteBehavior.Cascade);
+
+        // An observation request names the athlete who made it and, once accepted, the session
+        // it produced. Restrict on both: deleting the session would leave a request that says
+        // the coach agreed and cannot say to what - the state
+        // CK_ObservationRequests_AcceptedHasSession forbids, and exactly what SetNull would try
+        // to write.
+        modelBuilder.Entity<ObservationRequest>().HasOne<AthleteProfile>().WithMany()
+            .HasForeignKey(x => x.AthleteProfileId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ObservationRequest>().HasOne<Session>().WithMany()
+            .HasForeignKey(x => x.SessionId).OnDelete(DeleteBehavior.Restrict);
 
         // A purchase spans three modules' tables and may name none of them from inside Finance,
         // so its relationships are declared here for the same reason Session's are.

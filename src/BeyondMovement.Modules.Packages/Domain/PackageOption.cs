@@ -1,4 +1,4 @@
-using BeyondMovement.SharedKernel;
+﻿using BeyondMovement.SharedKernel;
 
 namespace BeyondMovement.Modules.Packages.Domain;
 
@@ -55,6 +55,15 @@ public sealed class PackageOption
     public IReadOnlyList<PackageOptionFeature> OrderedFeatures =>
         [.. _features.OrderBy(f => f.Position)];
 
+    /// <summary>
+    /// The <see cref="PackageFeatureCode"/>s this option grants, which is what a purchase
+    /// snapshots and what every eligibility rule reads. Distinct, because the code is the
+    /// identity and a duplicate would say nothing new — the validator and a filtered unique
+    /// index stop one being stored, and this does not depend on them having held.
+    /// </summary>
+    public IReadOnlyList<PackageFeatureCode> FeatureCodes =>
+        [.. _features.Where(f => f.Code is not null).Select(f => f.Code!.Value).Distinct()];
+
     /// <summary>The EF navigation, by name. Used for Include, never for reading.</summary>
     public const string FeaturesNavigation = "_features";
 
@@ -62,7 +71,7 @@ public sealed class PackageOption
 
     public static PackageOption Create(
         Guid coachId, string name, int sessions, long defaultPriceMinor,
-        IReadOnlyList<string> features, DateTime nowUtc)
+        IReadOnlyList<PackageFeature> features, DateTime nowUtc)
     {
         var option = new PackageOption
         {
@@ -83,7 +92,7 @@ public sealed class PackageOption
     /// </summary>
     public Result Edit(
         string name, int sessions, long defaultPriceMinor,
-        IReadOnlyList<string> features, DateTime nowUtc)
+        IReadOnlyList<PackageFeature> features, DateTime nowUtc)
     {
         // Restoring is a deliberate, separate act. Editing an archived option would quietly
         // resurrect it in the Admin list while it is still hidden from athletes.
@@ -96,7 +105,7 @@ public sealed class PackageOption
 
     private void Apply(
         string name, int sessions, long defaultPriceMinor,
-        IReadOnlyList<string> features, DateTime nowUtc)
+        IReadOnlyList<PackageFeature> features, DateTime nowUtc)
     {
         Name = name.Trim();
         Sessions = sessions;
@@ -110,12 +119,13 @@ public sealed class PackageOption
 
         for (var i = 0; i < features.Count; i++)
         {
-            var text = features[i].Trim();
+            var text = features[i].Text.Trim();
+            var code = features[i].Code;
 
             if (i < existing.Count)
-                existing[i].MoveTo(i, text);
+                existing[i].MoveTo(i, text, code);
             else
-                _features.Add(PackageOptionFeature.At(i, text));
+                _features.Add(PackageOptionFeature.At(i, text, code));
         }
 
         // Whatever the new list did not use.
@@ -161,22 +171,52 @@ public sealed class PackageOptionFeature
 {
     public const int MaxTextLength = 100;
 
+    /// <summary>
+    /// Fits the longest <see cref="PackageFeatureCode"/> name with room to grow. The column is
+    /// sized rather than left unbounded so a future member cannot be silently truncated.
+    /// </summary>
+    public const int MaxCodeLength = 40;
+
     public Guid Id { get; private set; } = Guid.NewGuid();
     public Guid PackageOptionId { get; private set; }
 
     /// <summary>Zero-based, contiguous, and unique within the option.</summary>
     public int Position { get; private set; }
+
+    /// <summary>
+    /// What the athlete reads. Free-form and always the coach's to change — <b>never read to
+    /// decide anything</b>, which is what <see cref="Code"/> is for.
+    /// </summary>
     public string Text { get; private set; } = null!;
+
+    /// <summary>
+    /// The recognised feature this line is, or <b>null for an ordinary feature</b> — the
+    /// original behaviour of this model and still the common case. A non-null code is the only
+    /// machine-readable identity a feature has; see <see cref="PackageFeatureCode"/>.
+    /// <para>
+    /// At most one feature per option may carry a given code. The validator checks it so the
+    /// Admin gets VALIDATION_FAILED, and a filtered unique index in the configuration is what
+    /// holds when two devices race.
+    /// </para>
+    /// </summary>
+    public PackageFeatureCode? Code { get; private set; }
 
     private PackageOptionFeature() { }
 
-    public static PackageOptionFeature At(int position, string text) =>
-        new() { Position = position, Text = text };
+    public static PackageOptionFeature At(int position, string text, PackageFeatureCode? code) =>
+        new() { Position = position, Text = text, Code = code };
 
     /// <summary>Rewrites this row rather than replacing it, so its position never collides.</summary>
-    public void MoveTo(int position, string text)
+    public void MoveTo(int position, string text, PackageFeatureCode? code)
     {
         Position = position;
         Text = text;
+        Code = code;
     }
+
+    /// <summary>
+    /// The wire and domain shape of this row, without its identity or its position — the
+    /// position is the index in the list it is read from.
+    /// </summary>
+    public PackageFeature ToFeature() => new(Text, Code);
 }

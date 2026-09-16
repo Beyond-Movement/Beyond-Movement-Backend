@@ -1,4 +1,4 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using BeyondMovement.Modules.Identity.Contracts;
 using BeyondMovement.Modules.Packages.Contracts;
 using BeyondMovement.Modules.Packages.Features;
@@ -109,8 +109,17 @@ public static class PackageOptionEndpoints
             "archived options included, so archiving does not free a name for reuse. sessions is " +
             "1-1000. defaultPriceMinor is " +
             "a non-negative integer number of piastres, 100 to the EGP, never a decimal. " +
-            "features is 1-10 non-blank strings of at most 100 characters each, and the order " +
-            "sent is the order stored and returned. A duplicate name returns 409 " +
+            "features is 1-10 entries, each an OBJECT of { text, code }, and the order sent is the " +
+            "order stored and returned. text is the line the athlete reads: required, " +
+            "non-blank, at most 100 characters, and free-form in any language. code names a " +
+            "feature THE BACKEND ACTS ON and is null or omitted for an ordinary feature, " +
+            "which is what nearly every feature is. The only code so far is Observations, " +
+            "which lets the athlete file an Observation Request; an unrecognised code is " +
+            "refused. AT MOST ONE entry may carry a given code - a repeat is 400 " +
+            "VALIDATION_FAILED on features - while ordinary features with no code are " +
+            "unlimited and unrestricted. Eligibility is decided from code alone and NEVER " +
+            "from text, so a feature that merely reads \"Observations\" grants nothing. " +
+            "A duplicate name returns 409 " +
             "PACKAGE_NAME_CONFLICT; anything else invalid returns 400 VALIDATION_FAILED with " +
             "per-field detail in errors.")
         .Produces<PackageOptionResponse>(StatusCodes.Status201Created)
@@ -148,7 +157,11 @@ public static class PackageOptionEndpoints
             "field could leave it half-changed. Send the version you last read - a stale version " +
             "returns 409 CONCURRENCY_CONFLICT rather than overwriting another device's change, " +
             "and the version increases on every successful change. An archived option cannot be " +
-            "edited and returns 409 PACKAGE_OPTION_ARCHIVED; restore it first.")
+            "edited and returns 409 PACKAGE_OPTION_ARCHIVED; restore it first. " +
+            "features takes the SAME { text, code } objects and the same rules as the create, and " +
+            "replacing the list is how a code is added to an option or taken away again. " +
+            "Neither reaches back into a package somebody already bought: the recognised features " +
+            "a purchase grants are snapshotted at purchase time and are not read from here again.")
         .Produces<PackageOptionResponse>()
         .Produces<ApiProblemDetails>(StatusCodes.Status400BadRequest, ProblemJson)
         .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)

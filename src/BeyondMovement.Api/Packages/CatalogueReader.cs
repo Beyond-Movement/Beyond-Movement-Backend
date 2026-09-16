@@ -1,4 +1,4 @@
-using BeyondMovement.Infrastructure;
+﻿using BeyondMovement.Infrastructure;
 using BeyondMovement.Modules.Packages;
 using BeyondMovement.Modules.Packages.Contracts;
 using BeyondMovement.Modules.Packages.Domain;
@@ -143,7 +143,7 @@ public sealed class CatalogueReader(AppDbContext db)
                 option.Id,
                 option.Name,
                 option.Sessions,
-                option.OrderedFeatures.Select(feature => feature.Text).ToArray(),
+                [.. option.OrderedFeatures.Select(feature => feature.ToFeature())],
                 PackagePricing.Effective(
                     option.DefaultPriceMinor,
                     isLoyal,

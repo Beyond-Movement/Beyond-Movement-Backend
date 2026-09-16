@@ -1,6 +1,7 @@
-using BeyondMovement.Api.Attendance;
+﻿using BeyondMovement.Api.Attendance;
 using BeyondMovement.Api.Authentication;
 using BeyondMovement.Api.Endpoints;
+using BeyondMovement.Api.Scheduling;
 using BeyondMovement.Api;
 using BeyondMovement.Api.Athletes;
 using BeyondMovement.Api.Packages;
@@ -195,6 +196,9 @@ builder.Services.AddOptions<CalendlyOptions>()
     .Bind(builder.Configuration.GetSection(CalendlyOptions.SectionName));
 builder.Services.AddScoped<ISchedulingDbContext>(sp => sp.GetRequiredService<AppDbContext>());
 builder.Services.AddScoped<SchedulingService>();
+builder.Services.AddScoped<ObservationRequestService>();
+builder.Services.AddScoped<ObservationRequestReader>();
+builder.Services.AddScoped<ObservationEligibility>();
 builder.Services.AddSingleton<ICalendlyWebhookVerifier, CalendlyWebhookVerifier>();
 builder.Services.AddSingleton<ICalendlyWebhookParser, CalendlyWebhookParser>();
 builder.Services.AddHttpClient<ICalendlyClient, CalendlyClient>((sp, client) =>
@@ -310,6 +314,7 @@ app.MapSchedulingEndpoints();
 app.MapPurchasedPackageEndpoints();
 app.MapPurchaseEndpoints();
 app.MapAttendanceEndpoints();
+app.MapObservationRequestEndpoints();
 app.MapSessionNoteEndpoints();
 app.MapDashboardEndpoints();
 

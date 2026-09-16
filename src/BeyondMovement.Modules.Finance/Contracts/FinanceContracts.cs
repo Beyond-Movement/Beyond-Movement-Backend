@@ -1,4 +1,5 @@
-using BeyondMovement.Modules.Finance.Domain;
+﻿using BeyondMovement.Modules.Finance.Domain;
+using BeyondMovement.SharedKernel;
 
 namespace BeyondMovement.Modules.Finance.Contracts;
 
@@ -71,7 +72,7 @@ public sealed record PackagePurchaseResponse(
     Guid? PackageOptionId,
     string PackageName,
     int SessionCount,
-    IReadOnlyList<string> Features,
+    IReadOnlyList<PackageFeature> Features,
     long PriceMinor,
     string Currency,
     PurchasePaymentStatus Status,

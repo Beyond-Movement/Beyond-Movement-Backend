@@ -201,12 +201,12 @@ paths:
         value - the same reason money is an integer count of piastres. Per-type minutes
         are sent rather than derived because they cannot be recovered from the counts:
         three online sessions could be 30, 60 and 90 minutes, and any average the
-        client invented would be wrong. todaySessions is INDEPENDENT of period:
-        it contains Scheduled sessions whose start falls on the Admin''s current local
-        calendar day, ordered by scheduledStartUtc. Switching Weekly to Yearly never
-        changes it. Defaults to 3, and todayLimit is clamped to 1-20. athleteUserId on each card is the
-        athlete''s USER id - the id GET /athletes/{athleteId} takes - not the profile
-        id that sessions and packages are keyed by.'
+        client invented would be wrong. todaySessions is INDEPENDENT of period: it
+        contains Scheduled sessions whose start falls on the Admin''s current local
+        calendar day, ordered by start time. Switching Weekly to Yearly never changes
+        it. Defaults to 3, and todayLimit is clamped to 1-20. athleteUserId on each
+        card is the athlete''s USER id - the id GET /athletes/{athleteId} takes -
+        not the profile id that sessions and packages are keyed by.'
       operationId: GetAdminDashboard
       parameters:
       - name: period
@@ -1257,14 +1257,22 @@ paths:
       tags:
       - Package options
       summary: Add a package option to the catalogue.
-      description: name is trimmed and must be unique across the WHOLE catalogue,
+      description: 'name is trimmed and must be unique across the WHOLE catalogue,
         case-insensitively - archived options included, so archiving does not free
         a name for reuse. sessions is 1-1000. defaultPriceMinor is a non-negative
         integer number of piastres, 100 to the EGP, never a decimal. features is 1-10
-        non-blank strings of at most 100 characters each, and the order sent is the
-        order stored and returned. A duplicate name returns 409 PACKAGE_NAME_CONFLICT;
+        entries, each an OBJECT of { text, code }, and the order sent is the order
+        stored and returned. text is the line the athlete reads: required, non-blank,
+        at most 100 characters, and free-form in any language. code names a feature
+        THE BACKEND ACTS ON and is null or omitted for an ordinary feature, which
+        is what nearly every feature is. The only code so far is Observations, which
+        lets the athlete file an Observation Request; an unrecognised code is refused.
+        AT MOST ONE entry may carry a given code - a repeat is 400 VALIDATION_FAILED
+        on features - while ordinary features with no code are unlimited and unrestricted.
+        Eligibility is decided from code alone and NEVER from text, so a feature that
+        merely reads "Observations" grants nothing. A duplicate name returns 409 PACKAGE_NAME_CONFLICT;
         anything else invalid returns 400 VALIDATION_FAILED with per-field detail
-        in errors.
+        in errors.'
       operationId: CreatePackageOption
       requestBody:
         content:
@@ -1358,7 +1366,11 @@ paths:
         you last read - a stale version returns 409 CONCURRENCY_CONFLICT rather than
         overwriting another device''s change, and the version increases on every successful
         change. An archived option cannot be edited and returns 409 PACKAGE_OPTION_ARCHIVED;
-        restore it first.'
+        restore it first. features takes the SAME { text, code } objects and the same
+        rules as the create, and replacing the list is how a code is added to an option
+        or taken away again. Neither reaches back into a package somebody already
+        bought: the recognised features a purchase grants are snapshotted at purchase
+        time and are not read from here again.'
       operationId: EditPackageOption
       parameters:
       - name: id
@@ -2636,9 +2648,17 @@ paths:
       tags:
       - Packages
       summary: The calling athlete's own active package.
-      description: Always the caller's own - there is no athlete id, and an athlete
-        can never read another's package. 404 PACKAGE_NOT_FOUND when they have none,
-        which includes an athlete who has not completed their profile yet.
+      description: 'Always the caller''s own - there is no athlete id, and an athlete
+        can never read another''s package. 404 PACKAGE_NOT_FOUND when they have none,
+        which includes an athlete who has not completed their profile yet. includedFeatures
+        lists the recognised package features this package GRANTS, frozen at purchase
+        and OFTEN EMPTY - it is empty for every package bought before the codes existed.
+        Read it to show or hide a feature''s action: an athlete may file an Observation
+        Request only while it contains Observations, and POST /me/observation-requests
+        answers 403 OBSERVATIONS_NOT_INCLUDED otherwise, so hiding the action is UX
+        and this is the rule. Editing the catalogue option afterwards never changes
+        it, and the DISPLAY TEXT of a feature is never what decides - read the codes
+        here, not the feature lines on the purchase.'
       operationId: GetMyPackage
       responses:
         '200':
@@ -2976,8 +2996,8 @@ paths:
         a no-show is 409 SESSION_ALREADY_RESOLVED, and cancelled is 409 SESSION_CANCELLED
         (BR-06). Those are not failures to retry past - they mean the deduction has
         already happened exactly once, or must never happen. A session whose scheduled
-        UTC start is still in the future is 409 SESSION_NOT_STARTED. A session that would
-        deduct from an athlete with no active package is 409 ACTIVE_PACKAGE_NOT_FOUND,
+        UTC start is still in the future is 409 SESSION_NOT_STARTED. A session that
+        would deduct from an athlete with no active package is 409 ACTIVE_PACKAGE_NOT_FOUND,
         and one whose package is exhausted is 409 NO_SESSIONS_REMAINING. Two requests
         racing produce one success and one 409 CONCURRENCY_CONFLICT, never two deductions.'
       operationId: MarkSessionAttendance
@@ -3129,6 +3149,594 @@ paths:
                 $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/me/observation-requests:
+    post:
+      tags:
+      - Observation requests
+      summary: Ask the coach to observe a competition or training session.
+      description: 'Always the caller''s own - there is no athlete id in the route
+        or the body, so a request cannot be filed against anyone else. Starts Pending:
+        nothing appears on the schedule, nothing can be attended, and no package session
+        is touched. requestedStartUtc must be UTC and IN THE FUTURE - convert the
+        local date and time the athlete picked before sending, the same way booking
+        does. location is REQUIRED: an athlete asking to be observed is asking their
+        coach to come somewhere. details is OPTIONAL free text for the coach - what
+        is being trained or competed in, and what they would like watched. requestedDurationMinutes
+        is optional and defaults to 60; the athlete''s form does not collect it, and
+        the Admin can change it when they accept. An athlete may have SEVERAL pending
+        requests at once - two competitions are two things to ask for - which is deliberately
+        unlike a package purchase, where only one may be pending. REQUIRES AN ACTIVE
+        PACKAGE THAT INCLUDES OBSERVATIONS. The athlete''s active purchased package
+        must carry the Observations feature code in its includedFeatures, or this
+        is 403 OBSERVATIONS_NOT_INCLUDED - which is also the answer when they have
+        no active package at all. Read includedFeatures from GET /me/package to show
+        or hide the action; that is UX only, and this endpoint enforces the rule whatever
+        the app drew. Eligibility is decided from the SNAPSHOT taken when the package
+        was bought, never from the catalogue option as it stands today, and never
+        from a feature''s display text. NO SESSION IS CONSUMED by asking: the balance
+        moves at Mark as Attended and nowhere else (BR-04).'
+      operationId: CreateObservationRequest
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveObservationRequestRequest'
+        required: true
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservationRequestResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+    get:
+      tags:
+      - Observation requests
+      summary: A page of the calling athlete's own observation requests.
+      description: 'Always the caller''s own, and an athlete can never read another''s.
+        Omit status to see every request; pass status=Pending for the ones still waiting
+        on the coach. PAGED, in the same envelope as every other list in this API:
+        items plus page, pageSize, totalCount, totalPages, hasNextPage and hasPreviousPage.
+        page starts at 1 and pageSize defaults to 20 and is capped at 100 - values
+        outside the range are clamped rather than rejected. Ordered by requestedStartUtc,
+        soonest first, with the id breaking ties so a request cannot appear on two
+        pages. An athlete who has never asked for one gets an EMPTY PAGE, not a 404.'
+      operationId: ListMyObservationRequests
+      parameters:
+      - name: status
+        in: query
+        schema:
+          $ref: '#/components/schemas/ObservationRequestStatus'
+      - name: page
+        in: query
+        schema:
+          type: integer
+          format: int32
+          default: 1
+      - name: pageSize
+        in: query
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedResultOfObservationRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/me/observation-requests/{id}:
+    get:
+      tags:
+      - Observation requests
+      summary: One of the calling athlete's own observation requests.
+      description: The same object the list returns, so one model serves both. A request
+        that does not exist and one belonging to another athlete are both 404 OBSERVATION_REQUEST_NOT_FOUND
+        - deliberately indistinguishable, so an id cannot be probed for existence.
+        Once status is Accepted, sessionId names the observation session that was
+        created; read GET /sessions/{sessionId} for it, and use the ordinary session
+        endpoints for anything that happens afterwards.
+      operationId: GetMyObservationRequest
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservationRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+    put:
+      tags:
+      - Observation requests
+      summary: Change a request the coach has not answered yet.
+      description: 'PENDING ONLY. Once the coach has accepted, declined, or the athlete
+        has cancelled, the request is READ-ONLY and this is 409 OBSERVATION_REQUEST_NOT_PENDING.
+        After an acceptance the date and time belong to the session that was created,
+        not to this request - change them there, through the ordinary session behaviour.
+        A FULL REPLACEMENT, not a patch: send requestedStartUtc, location, details
+        and requestedDurationMinutes every time. OMITTING details CLEARS IT, and an
+        omitted requestedDurationMinutes returns the request to the 60-minute default.
+        The same rules the create applies: UTC, in the future, location required.'
+      operationId: UpdateMyObservationRequest
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveObservationRequestRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservationRequestResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/me/observation-requests/{id}/cancel:
+    post:
+      tags:
+      - Observation requests
+      summary: Withdraw a request the coach has not answered yet.
+      description: PENDING ONLY, and 409 OBSERVATION_REQUEST_NOT_PENDING otherwise
+        - including on a repeat, so a double tap is a conflict rather than a silent
+        success. NO SESSION IS CREATED and none ever will be for this request; the
+        athlete files a new one if they change their mind again. A request the coach
+        has ALREADY ACCEPTED cannot be cancelled here - by then there is a real session,
+        and cancelling that is POST /sessions/{id}/cancel.
+      operationId: CancelMyObservationRequest
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservationRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/observation-requests:
+    get:
+      tags:
+      - Observation requests
+      summary: A page of observation requests, soonest first, filterable.
+      description: The coach's review queue. Omit status to see every request; pass
+        status=Pending for the ones still waiting to be answered. athleteId is the
+        athlete's USER id, matching every other /athletes/{athleteId} route - an unknown
+        one is 404 ATHLETE_NOT_FOUND rather than an empty list, because an empty list
+        is a real answer and a bad id must not be mistaken for one. PAGED in the usual
+        envelope, page from 1, pageSize 20 by default and capped at 100, clamped rather
+        than rejected. Filters apply BEFORE paging, so totalCount is the number matching
+        the filter. Ordered by requestedStartUtc, SOONEST FIRST - a queue is a list
+        of things about to happen, and the one with least time left belongs at the
+        top - with the id breaking ties. Every row carries athleteName and athleteUserId,
+        so the queue needs no second call to label itself.
+      operationId: ListObservationRequests
+      parameters:
+      - name: status
+        in: query
+        schema:
+          $ref: '#/components/schemas/ObservationRequestStatus'
+      - name: athleteId
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: page
+        in: query
+        schema:
+          type: integer
+          format: int32
+          default: 1
+      - name: pageSize
+        in: query
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedResultOfObservationRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/observation-requests/{id}:
+    get:
+      tags:
+      - Observation requests
+      summary: One observation request.
+      description: A request belonging to another coach is 404 OBSERVATION_REQUEST_NOT_FOUND,
+        the same as one that does not exist, so an id cannot be probed for existence.
+      operationId: GetObservationRequest
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservationRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+    put:
+      tags:
+      - Observation requests
+      summary: Adjust what the athlete proposed, without answering it yet.
+      description: 'PENDING ONLY, and 409 OBSERVATION_REQUEST_NOT_PENDING otherwise.
+        For the coach who wants to move the time or correct the place and leave the
+        request waiting - the athlete sees the adjusted proposal and the request stays
+        Pending. The SAME BODY AND THE SAME RULES as the athlete''s own PUT: a full
+        replacement, so send every field every time, omitting details CLEARS it, and
+        requestedStartUtc must be UTC and in the future. To adjust AND accept in one
+        step, send the same fields to /accept instead - that applies them and creates
+        the session in one transaction, which is the better call when the coach has
+        already decided.'
+      operationId: UpdateObservationRequest
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveObservationRequestRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservationRequestResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/observation-requests/{id}/accept:
+    post:
+      tags:
+      - Observation requests
+      summary: Accept a request, creating the observation session.
+      description: 'PENDING ONLY. In ONE TRANSACTION this records the decision, applies
+        any changes the Admin made, creates a Session with deliveryType Observation,
+        and links the two - so an accepted request without its session cannot exist.
+        The response carries both as they now stand, so the app can replace its copy
+        of the request and add the session without re-reading either. deductSession
+        is REQUIRED and is the Admin''s explicit BR-07 choice about whether attending
+        this observation will consume one package session. The athlete never had that
+        choice to make, which is why it is not on the request and must be answered
+        here. NOTHING IS DEDUCTED NOW: the session is created Scheduled, a booking
+        never deducts (BR-04), and the choice is stored and applied at Mark as Attended.
+        NO ACTIVE PACKAGE IS REQUIRED to accept - as with POST /sessions/observations,
+        the balance is only checked when attendance is recorded. requestedStartUtc,
+        location, details and requestedDurationMinutes are OVERRIDES: send one to
+        change what the athlete asked for, omit it to accept as requested. Whatever
+        is accepted is written back onto the request too, so it records what was agreed
+        rather than what was originally proposed. Deliberately NO future-date rule:
+        a request that waited until its date passed may still be accepted, exactly
+        as POST /sessions/observations permits a past observation. REPEATING IT IS
+        409 OBSERVATION_REQUEST_NOT_PENDING, never a second session. Note this is
+        stricter than POST /purchases/{id}/mark-paid, which answers a repeat with
+        the package it already made: an accept that timed out must RE-READ the request
+        to find its sessionId rather than being retried. This endpoint does not touch
+        Calendly. Observations are arranged in person and never appear on a booking
+        page (A-03), so the session it creates is local only and has no meetingUrl
+        or rescheduleUrl.'
+      operationId: AcceptObservationRequest
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptObservationRequestRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptObservationRequestResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/observation-requests/{id}/decline:
+    post:
+      tags:
+      - Observation requests
+      summary: Decline a request. No session is created.
+      description: PENDING ONLY, and 409 OBSERVATION_REQUEST_NOT_PENDING otherwise
+        - including on a repeat. NO SESSION IS CREATED and none ever will be for this
+        request; the request becomes read-only and the athlete files a new one if
+        they want to propose another time. There is no decline reason field. If the
+        coach needs to explain, that is a conversation, not a column.
+      operationId: DeclineObservationRequest
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservationRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '409':
+          description: Conflict
           content:
             application/problem+json:
               schema:
@@ -3345,6 +3953,43 @@ paths:
       - bearerAuth: []
 components:
   schemas:
+    AcceptObservationRequestRequest:
+      required:
+      - deductSession
+      type: object
+      properties:
+        deductSession:
+          type:
+          - 'null'
+          - boolean
+        requestedStartUtc:
+          type:
+          - 'null'
+          - string
+          format: date-time
+        location:
+          type:
+          - 'null'
+          - string
+        details:
+          type:
+          - 'null'
+          - string
+        requestedDurationMinutes:
+          type:
+          - 'null'
+          - integer
+          format: int32
+    AcceptObservationRequestResponse:
+      required:
+      - request
+      - session
+      type: object
+      properties:
+        request:
+          $ref: '#/components/schemas/ObservationRequestResponse'
+        session:
+          $ref: '#/components/schemas/SessionResponse'
     AdminDashboardResponse:
       required:
       - statistics
@@ -3432,7 +4077,10 @@ components:
           - LOCATION_INVALID
           - LOCATION_REQUIRED
           - NO_SESSIONS_REMAINING
+          - OBSERVATIONS_NOT_INCLUDED
           - OBSERVATION_RANGE_INVALID
+          - OBSERVATION_REQUEST_NOT_FOUND
+          - OBSERVATION_REQUEST_NOT_PENDING
           - PACKAGE_ALREADY_CLOSED
           - PACKAGE_NAME_CONFLICT
           - PACKAGE_NOT_ACTIVE
@@ -3820,7 +4468,7 @@ components:
         features:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/PackageFeature'
         priceMinor:
           type: integer
           format: int64
@@ -4057,8 +4705,7 @@ components:
           minItems: 1
           type: array
           items:
-            maxLength: 100
-            type: string
+            $ref: '#/components/schemas/PackageFeature'
         version:
           minimum: 1
           type: integer
@@ -4178,6 +4825,91 @@ components:
           $ref: '#/components/schemas/PurchasedPackageResponse'
         alreadyPaid:
           type: boolean
+    ObservationRequestResponse:
+      required:
+      - id
+      - athleteProfileId
+      - athleteUserId
+      - athleteName
+      - requestedStartUtc
+      - requestedEndUtc
+      - requestedDurationMinutes
+      - location
+      - details
+      - status
+      - sessionId
+      - createdAtUtc
+      - updatedAtUtc
+      - resolvedAtUtc
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        athleteProfileId:
+          type: string
+          format: uuid
+        athleteUserId:
+          type: string
+          format: uuid
+        athleteName:
+          type: string
+        requestedStartUtc:
+          type: string
+          format: date-time
+        requestedEndUtc:
+          type: string
+          format: date-time
+        requestedDurationMinutes:
+          type: integer
+          format: int32
+        location:
+          type: string
+        details:
+          type:
+          - 'null'
+          - string
+        status:
+          $ref: '#/components/schemas/ObservationRequestStatus'
+        sessionId:
+          type:
+          - 'null'
+          - string
+          format: uuid
+        createdAtUtc:
+          type: string
+          format: date-time
+        updatedAtUtc:
+          type: string
+          format: date-time
+        resolvedAtUtc:
+          type:
+          - 'null'
+          - string
+          format: date-time
+    ObservationRequestStatus:
+      enum:
+      - Pending
+      - Accepted
+      - Declined
+      - Cancelled
+      type: string
+    PackageFeature:
+      required:
+      - text
+      type: object
+      properties:
+        text:
+          maxLength: 100
+          type: string
+        code:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/PackageFeatureCode'
+    PackageFeatureCode:
+      enum:
+      - Observations
+      type: string
     PackageOptionResponse:
       required:
       - id
@@ -4209,7 +4941,7 @@ components:
         features:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/PackageFeature'
         isArchived:
           type: boolean
         archivedAtUtc:
@@ -4286,7 +5018,7 @@ components:
         features:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/PackageFeature'
         priceMinor:
           type: integer
           format: int64
@@ -4329,6 +5061,34 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AthleteListItem'
+        page:
+          type: integer
+          format: int32
+        pageSize:
+          type: integer
+          format: int32
+        totalCount:
+          type: integer
+          format: int32
+        totalPages:
+          type: integer
+          format: int32
+        hasNextPage:
+          type: boolean
+        hasPreviousPage:
+          type: boolean
+    PagedResultOfObservationRequestResponse:
+      required:
+      - items
+      - page
+      - pageSize
+      - totalCount
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObservationRequestResponse'
         page:
           type: integer
           format: int32
@@ -4454,6 +5214,7 @@ components:
       - totalSessions
       - usedSessions
       - remainingSessions
+      - includedFeatures
       - pricePaidMinor
       - currency
       - startDate
@@ -4486,6 +5247,10 @@ components:
         remainingSessions:
           type: integer
           format: int32
+        includedFeatures:
+          type: array
+          items:
+            $ref: '#/components/schemas/PackageFeatureCode'
         pricePaidMinor:
           type: integer
           format: int64
@@ -4592,6 +5357,26 @@ components:
           type: string
         newPassword:
           type: string
+    SaveObservationRequestRequest:
+      required:
+      - requestedStartUtc
+      - location
+      type: object
+      properties:
+        requestedStartUtc:
+          type: string
+          format: date-time
+        location:
+          type: string
+        details:
+          type:
+          - 'null'
+          - string
+        requestedDurationMinutes:
+          type:
+          - 'null'
+          - integer
+          format: int32
     SavePackageOptionRequest:
       required:
       - name
@@ -4618,8 +5403,7 @@ components:
           minItems: 1
           type: array
           items:
-            maxLength: 100
-            type: string
+            $ref: '#/components/schemas/PackageFeature'
     SaveSessionNoteRequest:
       required:
       - content
@@ -4923,4 +5707,5 @@ tags:
 - name: Sessions
 - name: Packages
 - name: Attendance
+- name: Observation requests
 - name: Session notes

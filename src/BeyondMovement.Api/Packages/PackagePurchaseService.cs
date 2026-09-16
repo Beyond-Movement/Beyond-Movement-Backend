@@ -1,4 +1,4 @@
-using BeyondMovement.Api.Endpoints;
+﻿using BeyondMovement.Api.Endpoints;
 using BeyondMovement.Infrastructure;
 using BeyondMovement.Modules.Finance.Domain;
 using BeyondMovement.Modules.Packages;
@@ -30,8 +30,9 @@ public sealed class PackagePurchaseService(AppDbContext db, IClock clock, IAudit
         if (athlete is null)
             return Result<PurchasedPackageResponse>.Failure(PricingErrors.AthleteNotFound);
 
-        // Features are loaded because the purchase record snapshots them alongside the name and
-        // the price - see the PackagePurchase created below.
+        // Features are loaded because both records below snapshot them alongside the name and the
+        // price: the purchase keeps the card the athlete read, and the package keeps the
+        // recognised codes that decide what it lets the athlete do.
         var option = await db.PackageOptions
             .Include(PackageOption.FeaturesNavigation)
             .FirstOrDefaultAsync(x => x.Id == request.PackageOptionId && x.CoachId == coachId, ct);
@@ -61,6 +62,7 @@ public sealed class PackagePurchaseService(AppDbContext db, IClock clock, IAudit
             option.Id,
             option.Name,
             option.Sessions,
+            option.FeatureCodes,
             priceMinor,
             request.StartDate ?? DateOnly.FromDateTime(now),
             request.EndDate,
@@ -80,7 +82,7 @@ public sealed class PackagePurchaseService(AppDbContext db, IClock clock, IAudit
             option.Id,
             option.Name,
             option.Sessions,
-            [.. option.OrderedFeatures.Select(feature => feature.Text)],
+            [.. option.OrderedFeatures.Select(feature => feature.ToFeature())],
             priceMinor,
             Currency.Egp,
             package.Id,
@@ -99,7 +101,8 @@ public sealed class PackagePurchaseService(AppDbContext db, IClock clock, IAudit
                 actorUserId,
                 $"package={package.Id} purchase={purchase.Id} athleteProfile={athlete.Id} " +
                 $"option={option.Id} sessions={package.TotalSessions} " +
-                $"pricePaidMinor={package.PricePaidMinor}",
+                $"pricePaidMinor={package.PricePaidMinor} " +
+                $"includedFeatures=[{string.Join(',', package.IncludedFeatures)}]",
                 ct);
             await transaction.CommitAsync(ct);
         }

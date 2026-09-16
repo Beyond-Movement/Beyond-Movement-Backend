@@ -1,4 +1,4 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using BeyondMovement.Api.Packages;
 using BeyondMovement.Infrastructure;
 using BeyondMovement.Modules.Identity.Contracts;
@@ -159,7 +159,16 @@ public static class PurchasedPackageEndpoints
             .WithDescription(
                 "Always the caller's own - there is no athlete id, and an athlete can never read " +
                 "another's package. 404 PACKAGE_NOT_FOUND when they have none, which includes an " +
-                "athlete who has not completed their profile yet.")
+                "athlete who has not completed their profile yet. " +
+                "includedFeatures lists the recognised package features this package GRANTS, " +
+                "frozen at purchase and OFTEN EMPTY - it is empty for every package bought " +
+                "before the codes existed. Read it to show or hide a feature's action: an " +
+                "athlete may file an Observation Request only while it contains Observations, " +
+                "and POST /me/observation-requests answers 403 OBSERVATIONS_NOT_INCLUDED " +
+                "otherwise, so hiding the action is UX and this is the rule. Editing the " +
+                "catalogue option afterwards never changes it, and the DISPLAY TEXT of a feature " +
+                "is never what decides - read the codes here, not the feature lines on the " +
+                "purchase.")
             .Produces<PurchasedPackageResponse>()
             .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
             .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson)

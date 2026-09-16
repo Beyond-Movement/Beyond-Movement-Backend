@@ -1,5 +1,6 @@
-using BeyondMovement.Modules.Packages.Contracts;
+﻿using BeyondMovement.Modules.Packages.Contracts;
 using BeyondMovement.Modules.Packages.Domain;
+using BeyondMovement.SharedKernel;
 using FluentValidation;
 
 namespace BeyondMovement.Modules.Packages.Features;
@@ -16,7 +17,7 @@ internal static class PackageOptionRules
         Func<T, string> name,
         Func<T, int> sessions,
         Func<T, long> priceMinor,
-        Func<T, IReadOnlyList<string>> features)
+        Func<T, IReadOnlyList<PackageFeature>> features)
     {
         validator.RuleFor(x => name(x))
             .Must(value => !string.IsNullOrWhiteSpace(value))
@@ -49,13 +50,37 @@ internal static class PackageOptionRules
                     .WithName("features")
                     .WithMessage($"A package needs {PackageOption.MinFeatures} to {PackageOption.MaxFeatures} features.");
 
+                // A null entry is "features": [null], which is a malformed list rather than a
+                // blank feature. Checked first so the rules below can read Text safely.
                 validator.RuleFor(x => features(x))
-                    .Must(list => list.All(f => !string.IsNullOrWhiteSpace(f)))
+                    .Must(list => list.All(f => f is not null))
                     .WithName("features")
-                    .WithMessage("A feature cannot be blank.")
-                    .Must(list => list.All(f => (f ?? string.Empty).Trim().Length <= PackageOptionFeature.MaxTextLength))
-                    .WithName("features")
-                    .WithMessage($"A feature can be at most {PackageOptionFeature.MaxTextLength} characters.");
+                    .WithMessage("A feature cannot be null.")
+                    .DependentRules(() =>
+                    {
+                        validator.RuleFor(x => features(x))
+                            .Must(list => list.All(f => !string.IsNullOrWhiteSpace(f.Text)))
+                            .WithName("features")
+                            .WithMessage("A feature cannot be blank.")
+                            .Must(list => list.All(f =>
+                                (f.Text ?? string.Empty).Trim().Length <= PackageOptionFeature.MaxTextLength))
+                            .WithName("features")
+                            .WithMessage($"A feature can be at most {PackageOptionFeature.MaxTextLength} characters.")
+                            // A code is the identity of a recognised feature, so claiming one
+                            // twice makes the card say two things about what the package grants.
+                            // The filtered unique index holds this under a race; this is the
+                            // polite path that names the field.
+                            .Must(list => list
+                                .Where(f => f.Code is not null)
+                                .GroupBy(f => f.Code!.Value)
+                                .All(group => group.Count() == 1))
+                            .WithName("features")
+                            .WithMessage("A package can include each recognised feature only once. "
+                                         + "Ordinary features, which have no code, are unlimited.");
+
+                        // An unrecognised code cannot be represented by PackageFeatureCode, so it
+                        // is refused during model binding and never reaches a rule here.
+                    });
             });
     }
 }

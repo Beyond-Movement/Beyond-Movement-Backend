@@ -1,5 +1,6 @@
 using BeyondMovement.Modules.Scheduling.Contracts;
 using BeyondMovement.Modules.Scheduling.Domain;
+using BeyondMovement.SharedKernel;
 using FluentValidation;
 
 namespace BeyondMovement.Modules.Scheduling.Features;
@@ -51,6 +52,85 @@ public sealed class CreateObservationValidator : AbstractValidator<CreateObserva
             .WithMessage($"An observation may not be longer than {MaxObservationHours} hours.");
 
         RuleFor(x => x.LocationOrPlatform).MaximumLength(500);
+    }
+}
+
+/// <summary>
+/// The athlete's own request, and the Admin's edit of it. Takes an <see cref="IClock"/> because
+/// one rule here is about now — unlike <see cref="CreateObservationValidator"/>, which
+/// deliberately has none: an Admin records an observation that has already happened, while an
+/// athlete asks for one that has not.
+/// </summary>
+public sealed class SaveObservationRequestValidator : AbstractValidator<SaveObservationRequestRequest>
+{
+    public SaveObservationRequestValidator(IClock clock)
+    {
+        RuleFor(x => x.RequestedStartUtc).Must(x => x.Kind == DateTimeKind.Utc)
+            .WithName("requestedStartUtc")
+            .WithMessage("requestedStartUtc must be UTC.")
+
+            // Only once the value is known to be UTC. Comparing a local or unspecified kind
+            // against a UTC now is the comparison that silently passes or fails by the offset.
+            .DependentRules(() =>
+                RuleFor(x => x.RequestedStartUtc).GreaterThan(_ => clock.UtcNow)
+                    .WithName("requestedStartUtc")
+                    .WithMessage("Ask for a time in the future."));
+
+        // Required, unlike the Admin's own observation form. An athlete asking to be observed is
+        // asking their coach to come somewhere, and where is the whole question.
+        RuleFor(x => x.Location)
+            .NotEmpty().WithMessage("Say where the observation is.")
+            .MaximumLength(ObservationRequest.MaxLocationLength);
+
+        // Optional. Nothing to say to the coach is a normal thing to have.
+        RuleFor(x => x.Details).MaximumLength(ObservationRequest.MaxDetailsLength);
+
+        // Only when one was sent: null means the default, not an invalid value.
+        When(x => x.RequestedDurationMinutes is not null, () =>
+            RuleFor(x => x.RequestedDurationMinutes!.Value)
+                .InclusiveBetween(ObservationRequest.MinDurationMinutes, ObservationRequest.MaxDurationMinutes)
+                .WithName("requestedDurationMinutes"));
+    }
+}
+
+/// <summary>
+/// The Admin's decision. Every field but the deduction choice is an override, so each is checked
+/// only when it was actually sent — an Admin accepting exactly what was asked for sends one field.
+/// <para>
+/// Deliberately <b>no rule that the start is in the future.</b> A request that waited in the
+/// queue until its date passed may still be accepted, and the session it creates is one the
+/// Admin is recording after the fact — which is exactly what
+/// <see cref="CreateObservationValidator"/> already permits.
+/// </para>
+/// </summary>
+public sealed class AcceptObservationRequestValidator : AbstractValidator<AcceptObservationRequestRequest>
+{
+    public AcceptObservationRequestValidator()
+    {
+        // BR-07. NotNull rather than NotEmpty, for the reason CreateObservationValidator gives:
+        // NotEmpty on a bool? treats false as empty, and false is a real answer.
+        RuleFor(x => x.DeductSession).NotNull()
+            .WithName("deductSession")
+            .WithMessage("deductSession is required: choose whether this observation consumes a session.");
+
+        When(x => x.RequestedStartUtc is not null, () =>
+            RuleFor(x => x.RequestedStartUtc!.Value).Must(x => x.Kind == DateTimeKind.Utc)
+                .WithName("requestedStartUtc")
+                .WithMessage("requestedStartUtc must be UTC."));
+
+        // An override that clears the location would leave the session with nowhere to be, so an
+        // Admin who sends the field has to put something in it. Omitting it keeps what was asked.
+        When(x => x.Location is not null, () =>
+            RuleFor(x => x.Location!)
+                .NotEmpty().WithMessage("Say where the observation is.")
+                .MaximumLength(ObservationRequest.MaxLocationLength));
+
+        RuleFor(x => x.Details).MaximumLength(ObservationRequest.MaxDetailsLength);
+
+        When(x => x.RequestedDurationMinutes is not null, () =>
+            RuleFor(x => x.RequestedDurationMinutes!.Value)
+                .InclusiveBetween(ObservationRequest.MinDurationMinutes, ObservationRequest.MaxDurationMinutes)
+                .WithName("requestedDurationMinutes"));
     }
 }
 

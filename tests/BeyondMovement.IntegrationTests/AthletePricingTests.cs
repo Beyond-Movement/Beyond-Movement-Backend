@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -64,7 +64,7 @@ public sealed class AthletePricingTests(AthletePricingApiFactory factory)
     {
         var response = await admin.PostAsJsonAsync("/api/v1/package-options", new
         {
-            name, sessions, defaultPriceMinor = priceMinor, features = new[] { "Weekly video call" }
+            name, sessions, defaultPriceMinor = priceMinor, features = Features.Open("Weekly video call")
         });
 
         if (response.StatusCode != HttpStatusCode.Created)

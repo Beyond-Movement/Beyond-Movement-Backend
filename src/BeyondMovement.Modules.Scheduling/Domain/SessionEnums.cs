@@ -9,3 +9,14 @@ public enum DeliveryType { Online, FaceToFace, Observation }
 public enum SessionStatus { Scheduled, Attended, Cancelled, NoShow }
 public enum WebhookProcessingStatus { Pending, Processing, Processed, Failed }
 public enum SchedulingChangeType { Booked, Cancelled, Rescheduled }
+
+/// <summary>
+/// The life of an athlete's request for an observation. Stored as a string, like every other
+/// enum in this database, so the order here is presentation only.
+/// <para>
+/// <b>Pending is the only state anything may be done from.</b> The other three are terminal and
+/// read-only: an accepted request has already produced its session and any later change of date
+/// belongs to that session, and a declined or cancelled one never will.
+/// </para>
+/// </summary>
+public enum ObservationRequestStatus { Pending, Accepted, Declined, Cancelled }

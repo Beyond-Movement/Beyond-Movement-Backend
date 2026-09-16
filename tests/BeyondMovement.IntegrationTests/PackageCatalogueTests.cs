@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -42,14 +42,14 @@ public sealed class PackageCatalogueTests(AthleteApiFactory factory) : IClassFix
     /// <summary>Creates an option with a name unique to the calling test, and returns it.</summary>
     private static async Task<JsonElement> CreateOptionAsync(
         HttpClient admin, string name, long priceMinor = 400_000, int sessions = 8,
-        string[]? features = null)
+        object[]? features = null)
     {
         var response = await admin.PostAsJsonAsync("/api/v1/package-options", new
         {
             name,
             sessions,
             defaultPriceMinor = priceMinor,
-            features = features ?? ["Weekly video call", "Session notes"]
+            features = features ?? Features.Open("Weekly video call", "Session notes")
         });
 
         if (response.StatusCode != HttpStatusCode.Created)
@@ -73,8 +73,8 @@ public sealed class PackageCatalogueTests(AthleteApiFactory factory) : IClassFix
     {
         var admin = await AdminClientAsync();
 
-        var created = await CreateOptionAsync(admin, "Round Trip", features:
-            ["Third", "First", "Second"]);
+        var created = await CreateOptionAsync(admin, "Round Trip",
+            features: Features.Open("Third", "First", "Second"));
 
         var id = created.GetProperty("id").GetGuid();
         var fetched = await admin.GetFromJsonAsync<JsonElement>($"/api/v1/package-options/{id}");
@@ -82,7 +82,13 @@ public sealed class PackageCatalogueTests(AthleteApiFactory factory) : IClassFix
         // Not sorted alphabetically, not reordered by the database - exactly as submitted.
         Assert.Equal(
             ["Third", "First", "Second"],
-            fetched.GetProperty("features").EnumerateArray().Select(f => f.GetString()));
+            fetched.GetProperty("features").EnumerateArray()
+                .Select(f => f.GetProperty("text").GetString()));
+
+        // Every one of them an ordinary feature: no code was sent, so none came back.
+        Assert.All(
+            fetched.GetProperty("features").EnumerateArray(),
+            f => Assert.Equal(JsonValueKind.Null, f.GetProperty("code").ValueKind));
 
         Assert.Equal("EGP", fetched.GetProperty("currency").GetString());
         Assert.Equal(1, fetched.GetProperty("version").GetInt32());
@@ -100,7 +106,7 @@ public sealed class PackageCatalogueTests(AthleteApiFactory factory) : IClassFix
             name = "  duplicate GUARD  ",
             sessions = 4,
             defaultPriceMinor = 100_000,
-            features = new[] { "One" }
+            features = Features.Open("One")
         });
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -127,7 +133,7 @@ public sealed class PackageCatalogueTests(AthleteApiFactory factory) : IClassFix
             name = "name held while archived",
             sessions = 4,
             defaultPriceMinor = 100_000,
-            features = new[] { "One" }
+            features = Features.Open("One")
         });
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -171,7 +177,7 @@ public sealed class PackageCatalogueTests(AthleteApiFactory factory) : IClassFix
             name = $"Invalid {sessions} {price} {features.Length}",
             sessions,
             defaultPriceMinor = price,
-            features
+            features = Features.Open(features)
         });
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -190,7 +196,7 @@ public sealed class PackageCatalogueTests(AthleteApiFactory factory) : IClassFix
             name = "Too Many Features",
             sessions = 8,
             defaultPriceMinor = 400_000,
-            features = Enumerable.Range(1, 11).Select(i => $"Feature {i}").ToArray()
+            features = Features.Open([.. Enumerable.Range(1, 11).Select(i => $"Feature {i}")])
         });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -239,7 +245,7 @@ public sealed class PackageCatalogueTests(AthleteApiFactory factory) : IClassFix
             name = "Frozen While Archived",
             sessions = 4,
             defaultPriceMinor = 200_000,
-            features = new[] { "Changed" },
+            features = Features.Open("Changed"),
             version
         });
 
@@ -260,7 +266,7 @@ public sealed class PackageCatalogueTests(AthleteApiFactory factory) : IClassFix
             name = "Frozen While Archived",
             sessions = 4,
             defaultPriceMinor = 200_000,
-            features = new[] { "Changed" },
+            features = Features.Open("Changed"),
             version = restoredVersion
         });
 
@@ -299,7 +305,7 @@ public sealed class PackageCatalogueTests(AthleteApiFactory factory) : IClassFix
             name = "Two Devices",
             sessions = 10,
             defaultPriceMinor = 500_000,
-            features = new[] { "From the phone" },
+            features = Features.Open("From the phone"),
             version = 1
         });
         firstSave.EnsureSuccessStatusCode();
@@ -310,7 +316,7 @@ public sealed class PackageCatalogueTests(AthleteApiFactory factory) : IClassFix
             name = "Two Devices",
             sessions = 6,
             defaultPriceMinor = 300_000,
-            features = new[] { "From the tablet" },
+            features = Features.Open("From the tablet"),
             version = 1
         });
 
@@ -500,4 +506,142 @@ public sealed class PackageCatalogueTests(AthleteApiFactory factory) : IClassFix
         var items = list.ValueKind == JsonValueKind.Array ? list : list.GetProperty("items");
         return items.EnumerateArray().Select(i => i.GetProperty("id").GetGuid());
     }
+
+    // ----------------------------------------------------- recognised features
+
+    /// <summary>
+    /// A feature may carry a <c>code</c>, which is what the backend acts on, while its text stays
+    /// the coach's to write. Both halves round-trip, and an ordinary feature beside it is
+    /// unaffected.
+    /// </summary>
+    [Fact]
+    public async Task A_feature_can_carry_a_recognised_code()
+    {
+        var admin = await AdminClientAsync();
+
+        var created = await CreateOptionAsync(admin, "Coded Feature", features: Features.List(
+            Features.One("Weekly video call"),
+            Features.One("Coach attends your competitions", Features.Observations)));
+
+        var id = created.GetProperty("id").GetGuid();
+        var fetched = await admin.GetFromJsonAsync<JsonElement>($"/api/v1/package-options/{id}");
+        var features = fetched.GetProperty("features").EnumerateArray().ToArray();
+
+        Assert.Equal("Weekly video call", features[0].GetProperty("text").GetString());
+        Assert.Equal(JsonValueKind.Null, features[0].GetProperty("code").ValueKind);
+
+        // The text is nothing like the code, which is the point: eligibility reads the code, so
+        // the coach can word the line however they like.
+        Assert.Equal("Coach attends your competitions", features[1].GetProperty("text").GetString());
+        Assert.Equal(Features.Observations, features[1].GetProperty("code").GetString());
+    }
+
+    /// <summary>
+    /// One option cannot claim the same recognised feature twice - it would make the card say two
+    /// things about what the package grants.
+    /// </summary>
+    [Fact]
+    public async Task The_same_code_twice_in_one_option_is_refused()
+    {
+        var admin = await AdminClientAsync();
+
+        var response = await admin.PostAsJsonAsync("/api/v1/package-options", new
+        {
+            name = "Twice Observed",
+            sessions = 8,
+            defaultPriceMinor = 400_000,
+            features = Features.List(
+                Features.One("Observations", Features.Observations),
+                Features.One("Competition observation", Features.Observations))
+        });
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("VALIDATION_FAILED", body.GetProperty("errorCode").GetString());
+        Assert.Contains("features", body.GetProperty("errors").EnumerateObject().Select(e => e.Name));
+    }
+
+    /// <summary>
+    /// The Open Feature model, unrestricted: repeated text, no codes, anything the coach types.
+    /// The uniqueness rule above applies to codes alone and must not leak onto ordinary features.
+    /// </summary>
+    [Fact]
+    public async Task Ordinary_features_are_not_restricted_by_the_code_rule()
+    {
+        var admin = await AdminClientAsync();
+
+        var created = await CreateOptionAsync(admin, "Open Features", features:
+            Features.Open("Anything at all", "Anything at all", "\u0645\u0644\u0627\u062d\u0638\u0627\u062a"));
+
+        var features = created.GetProperty("features").EnumerateArray().ToArray();
+
+        Assert.Equal(3, features.Length);
+        Assert.All(features, f => Assert.Equal(JsonValueKind.Null, f.GetProperty("code").ValueKind));
+    }
+
+    /// <summary>
+    /// An unknown code is refused rather than stored and ignored. A client that invents one must
+    /// find out at the call, not by wondering later why a feature does nothing.
+    /// </summary>
+    [Fact]
+    public async Task An_unrecognised_code_is_refused()
+    {
+        var admin = await AdminClientAsync();
+
+        var response = await admin.PostAsJsonAsync("/api/v1/package-options", new
+        {
+            name = "Invented Code",
+            sessions = 8,
+            defaultPriceMinor = 400_000,
+            features = Features.List(Features.One("Teleportation", "Teleportation"))
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    /// <summary>
+    /// Editing replaces the whole list, codes included - so a code can be added to an existing
+    /// option and taken away again, which is how the coach turns a package into one that includes
+    /// observations.
+    /// </summary>
+    [Fact]
+    public async Task Editing_can_add_and_remove_a_code()
+    {
+        var admin = await AdminClientAsync();
+        var created = await CreateOptionAsync(admin, "Recoded", features: Features.Open("Plain"));
+        var id = created.GetProperty("id").GetGuid();
+
+        var added = await admin.PutAsJsonAsync($"/api/v1/package-options/{id}", new
+        {
+            name = "Recoded",
+            sessions = 8,
+            defaultPriceMinor = 400_000,
+            features = Features.List(Features.One("Observations", Features.Observations)),
+            version = created.GetProperty("version").GetInt32()
+        });
+
+        added.EnsureSuccessStatusCode();
+        var withCode = await added.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(Features.Observations, withCode.GetProperty("features")
+            .EnumerateArray().Single().GetProperty("code").GetString());
+
+        // And back again: the same row is rewritten, so its code clears rather than lingering.
+        var removed = await admin.PutAsJsonAsync($"/api/v1/package-options/{id}", new
+        {
+            name = "Recoded",
+            sessions = 8,
+            defaultPriceMinor = 400_000,
+            features = Features.Open("Observations"),
+            version = withCode.GetProperty("version").GetInt32()
+        });
+
+        removed.EnsureSuccessStatusCode();
+
+        Assert.Equal(JsonValueKind.Null,
+            (await removed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("features")
+            .EnumerateArray().Single().GetProperty("code").ValueKind);
+    }
+
 }

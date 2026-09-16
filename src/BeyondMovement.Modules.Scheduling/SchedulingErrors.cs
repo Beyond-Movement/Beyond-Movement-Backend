@@ -12,7 +12,8 @@ public static class SchedulingErrors
         "LOCATION_REQUIRED", "SESSION_NOT_FOUND", "SLOT_UNAVAILABLE", "TIME_ZONE_INVALID",
         "SESSION_ALREADY_ATTENDED", "SESSION_ALREADY_RESOLVED", "SESSION_CANCELLED",
         "SESSION_NOT_STARTED",
-        "SESSION_NOTE_NOT_FOUND", "OBSERVATION_RANGE_INVALID"
+        "SESSION_NOTE_NOT_FOUND", "OBSERVATION_RANGE_INVALID",
+        "OBSERVATION_REQUEST_NOT_FOUND", "OBSERVATION_REQUEST_NOT_PENDING"
     ];
     /// <summary>
     /// Calendly's event_type_available_times refuses a window wider than seven days, so the same
@@ -64,6 +65,27 @@ public static class SchedulingErrors
     /// </summary>
     public static readonly Error ObservationRangeInvalid = new("OBSERVATION_RANGE_INVALID",
         "Use a UTC range that is in order, in the past, and no longer than a day.", 400);
+
+    /// <summary>
+    /// Also returned for a request belonging to another coach, and for an athlete asking for a
+    /// request that is not theirs — the API never confirms that an id it will not serve exists.
+    /// </summary>
+    public static readonly Error ObservationRequestNotFound = new("OBSERVATION_REQUEST_NOT_FOUND",
+        "Observation request not found.", 404);
+
+    /// <summary>
+    /// The one transition error this workflow has, and deliberately one rather than four. Edit,
+    /// cancel, accept and decline all require the same thing — that the request is still
+    /// Pending — and four codes for one condition is how a client ends up handling some of them.
+    /// <para>
+    /// It is what a <b>second accept</b> receives, which is what stops a repeat producing a
+    /// second session. Note this is stricter than <c>mark-paid</c>, which answers a repeat with
+    /// the package it already made: an accept that timed out must re-read the request to find
+    /// its <c>sessionId</c> rather than being retried.
+    /// </para>
+    /// </summary>
+    public static readonly Error ObservationRequestNotPending = new("OBSERVATION_REQUEST_NOT_PENDING",
+        "This observation request has already been accepted, declined or cancelled.", 409);
 
     public static Error CalendlyRateLimited(int? retryAfter) => new("CALENDLY_RATE_LIMITED", "Scheduling is temporarily busy. Try again shortly.", 503, retryAfter);
 }

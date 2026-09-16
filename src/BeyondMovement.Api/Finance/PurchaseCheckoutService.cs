@@ -1,4 +1,4 @@
-using BeyondMovement.Api.Endpoints;
+﻿using BeyondMovement.Api.Endpoints;
 using BeyondMovement.Infrastructure;
 using BeyondMovement.Modules.Finance;
 using BeyondMovement.Modules.Finance.Contracts;
@@ -75,7 +75,7 @@ public sealed class PurchaseCheckoutService(
         var priceMinor = PackagePricing.Effective(
             option.DefaultPriceMinor, athlete.IsLoyal, customPriceMinor);
 
-        string[] features = [.. option.OrderedFeatures.Select(feature => feature.Text)];
+        PackageFeature[] features = [.. option.OrderedFeatures.Select(feature => feature.ToFeature())];
         var now = clock.UtcNow;
 
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
@@ -84,8 +84,10 @@ public sealed class PurchaseCheckoutService(
         // is nothing to revise and both insert.
         await LockPendingAsync(athlete.Id, ct);
 
-        var existing = await db.PackagePurchases.FirstOrDefaultAsync(
-            x => x.AthleteProfileId == athlete.Id && x.Status == PurchasePaymentStatus.Pending, ct);
+        var existing = await db.PackagePurchases
+            .Include(PackagePurchase.FeaturesNavigation)
+            .FirstOrDefaultAsync(
+                x => x.AthleteProfileId == athlete.Id && x.Status == PurchasePaymentStatus.Pending, ct);
 
         PackagePurchase purchase;
         bool created;
@@ -171,8 +173,11 @@ public sealed class PurchaseCheckoutService(
         await db.Database.ExecuteSqlAsync(
             $"""SELECT 1 FROM "PackagePurchases" WHERE "Id" = {purchaseId} FOR UPDATE""", ct);
 
-        var purchase = await db.PackagePurchases.FirstOrDefaultAsync(
-            x => x.Id == purchaseId && x.CoachId == coachId, ct);
+        // The feature rows come with it: the package this creates is built from the snapshot,
+        // so the snapshot has to be whole before it is read.
+        var purchase = await db.PackagePurchases
+            .Include(PackagePurchase.FeaturesNavigation)
+            .FirstOrDefaultAsync(x => x.Id == purchaseId && x.CoachId == coachId, ct);
 
         // Another coach's purchase is a 404, the same as one that does not exist.
         if (purchase is null)
@@ -203,14 +208,16 @@ public sealed class PurchaseCheckoutService(
         var now = clock.UtcNow;
 
         // Built entirely from the snapshot. The catalogue is not consulted here, so an option
-        // renamed, repriced or archived between selection and confirmation cannot change what
-        // the athlete receives or what they are recorded as having paid.
+        // renamed, repriced, re-featured or archived between selection and confirmation cannot
+        // change what the athlete receives or what they are recorded as having paid - and that
+        // now includes which recognised features the package grants.
         var package = PurchasedPackage.Purchase(
             purchase.CoachId,
             purchase.AthleteProfileId,
             purchase.PackageOptionId,
             purchase.PackageName,
             purchase.SessionCount,
+            purchase.FeatureCodes,
             purchase.PriceMinor,
             DateOnly.FromDateTime(now),
             endDate: null,

@@ -1,4 +1,4 @@
-using BeyondMovement.SharedKernel;
+﻿using BeyondMovement.SharedKernel;
 
 namespace BeyondMovement.Modules.Finance.Domain;
 
@@ -58,9 +58,10 @@ public sealed class PackagePurchase
 {
     public const int MaxPackageNameLength = 100;
     public const int MaxFeatureLength = 100;
+    public const int MaxFeatureCodeLength = 40;
     public const int MaxFeatures = 10;
 
-    private List<string> _features = [];
+    private readonly List<PackagePurchaseFeature> _features = [];
 
     public Guid Id { get; private set; } = Guid.NewGuid();
     public Guid CoachId { get; private set; }
@@ -89,13 +90,30 @@ public sealed class PackagePurchase
     public int SessionCount { get; private set; }
 
     /// <summary>
-    /// The included features as the athlete read them down the card. Order is meaning, so this is
-    /// an ordered array rather than a set.
+    /// The included features as the athlete read them down the card, each with the
+    /// <see cref="PackageFeatureCode"/> it carried at the time, or null for an ordinary one. Order
+    /// is meaning, so this is an ordered list rather than a set, and it is sorted here rather than
+    /// left to whatever order the database returns rows in.
+    /// <para>
+    /// <b>Empty for every purchase backfilled onto a package that predates Phase 8.</b> The
+    /// snapshot must be what the athlete was shown, and the catalogue option may have been edited
+    /// since, so an empty list was recorded rather than a fabricated one. That is also why nothing
+    /// reads eligibility from here - <c>PurchasedPackage.IncludedFeatures</c> is the authority.
+    /// </para>
     /// </summary>
-    public IReadOnlyList<string> Features => _features;
+    public IReadOnlyList<PackageFeature> Features =>
+        [.. _features.OrderBy(f => f.Position).Select(f => f.ToFeature())];
 
-    /// <summary>The EF mapping reaches the list through this field. For configuration only.</summary>
-    public const string FeaturesField = nameof(_features);
+    /// <summary>
+    /// The <see cref="PackageFeatureCode"/>s in the snapshot, which is what confirming a payment
+    /// puts on the package it creates. Distinct - the code is the identity.
+    /// </summary>
+    public IReadOnlyList<PackageFeatureCode> FeatureCodes =>
+        [.. _features.OrderBy(f => f.Position)
+            .Where(f => f.Code is not null).Select(f => f.Code!.Value).Distinct()];
+
+    /// <summary>The EF navigation, by name. Used for Include, never for reading.</summary>
+    public const string FeaturesNavigation = "_features";
 
     /// <summary>
     /// Piastres — the output of the Phase 4 pricing rule (custom override, else loyalty, else
@@ -139,7 +157,7 @@ public sealed class PackagePurchase
     /// </summary>
     public static PackagePurchase Select(
         Guid coachId, Guid athleteProfileId, Guid athleteUserId, Guid packageOptionId,
-        string packageName, int sessionCount, IReadOnlyList<string> features,
+        string packageName, int sessionCount, IReadOnlyList<PackageFeature> features,
         long priceMinor, string currency, DateTime nowUtc)
     {
         var purchase = new PackagePurchase
@@ -163,9 +181,11 @@ public sealed class PackagePurchase
     /// </summary>
     public static PackagePurchase RecordAdminSale(
         Guid coachId, Guid athleteProfileId, Guid athleteUserId, Guid? packageOptionId,
-        string packageName, int sessionCount, IReadOnlyList<string> features,
+        string packageName, int sessionCount, IReadOnlyList<PackageFeature> features,
         long priceMinor, string currency, Guid purchasedPackageId, Guid actorUserId,
-        DateTime nowUtc) => new()
+        DateTime nowUtc)
+    {
+        var purchase = new PackagePurchase
         {
             CoachId = coachId,
             AthleteProfileId = athleteProfileId,
@@ -173,7 +193,6 @@ public sealed class PackagePurchase
             PackageOptionId = packageOptionId,
             PackageName = packageName.Trim(),
             SessionCount = sessionCount,
-            _features = [.. features.Select(feature => feature.Trim())],
             PriceMinor = priceMinor,
             Currency = currency,
             Origin = PurchaseOrigin.AdminDirect,
@@ -184,6 +203,10 @@ public sealed class PackagePurchase
             CreatedAtUtc = nowUtc,
             UpdatedAtUtc = nowUtc
         };
+
+        purchase.WriteFeatures(features);
+        return purchase;
+    }
 
     /// <summary>
     /// The athlete changed their mind before paying. Rather than leaving them stuck behind a
@@ -196,7 +219,7 @@ public sealed class PackagePurchase
     /// </summary>
     public Result ReviseSelection(
         Guid packageOptionId, string packageName, int sessionCount,
-        IReadOnlyList<string> features, long priceMinor, string currency, DateTime nowUtc)
+        IReadOnlyList<PackageFeature> features, long priceMinor, string currency, DateTime nowUtc)
     {
         if (Status == PurchasePaymentStatus.Paid)
             return Result.Failure(FinanceErrors.PurchaseAlreadyPaid);
@@ -233,14 +256,80 @@ public sealed class PackagePurchase
 
     private void ApplySnapshot(
         Guid packageOptionId, string packageName, int sessionCount,
-        IReadOnlyList<string> features, long priceMinor, string currency, DateTime nowUtc)
+        IReadOnlyList<PackageFeature> features, long priceMinor, string currency, DateTime nowUtc)
     {
         PackageOptionId = packageOptionId;
         PackageName = packageName.Trim();
         SessionCount = sessionCount;
-        _features = [.. features.Select(feature => feature.Trim())];
+        WriteFeatures(features);
         PriceMinor = priceMinor;
         Currency = currency;
         UpdatedAtUtc = nowUtc;
     }
+
+    /// <summary>
+    /// Replaces the snapshot's feature rows. Existing rows are rewritten in place and only the
+    /// difference is added or dropped, exactly as <c>PackageOption.Apply</c> does and for the same
+    /// reason: positions are unique per purchase, and the new rows are written before the old ones
+    /// are deleted, so clearing and re-adding makes the second new row collide with the second old
+    /// one.
+    /// </summary>
+    private void WriteFeatures(IReadOnlyList<PackageFeature> features)
+    {
+        var existing = _features.OrderBy(f => f.Position).ToList();
+
+        for (var i = 0; i < features.Count; i++)
+        {
+            var text = features[i].Text.Trim();
+            var code = features[i].Code;
+
+            if (i < existing.Count)
+                existing[i].MoveTo(i, text, code);
+            else
+                _features.Add(PackagePurchaseFeature.At(i, text, code));
+        }
+
+        // Whatever the new list did not use.
+        for (var i = features.Count; i < existing.Count; i++)
+            _features.Remove(existing[i]);
+    }
+}
+
+/// <summary>
+/// One line of a purchase's feature snapshot, at a fixed position in the list.
+/// <para>
+/// A child table, where this was an array column before recognised feature codes existed. A
+/// feature is now two values - the text the athlete read and the code it carried - and two
+/// parallel arrays that must be kept the same length is the trap this codebase avoids everywhere
+/// else. It is the shape <c>PackageOptionFeature</c> already has, for the same reason.
+/// </para>
+/// </summary>
+public sealed class PackagePurchaseFeature
+{
+    public Guid Id { get; private set; } = Guid.NewGuid();
+    public Guid PackagePurchaseId { get; private set; }
+
+    /// <summary>Zero-based, contiguous, and unique within the purchase.</summary>
+    public int Position { get; private set; }
+
+    /// <summary>What the athlete read. Never used to decide anything.</summary>
+    public string Text { get; private set; } = null!;
+
+    /// <summary>The recognised feature this line was, or null for an ordinary one.</summary>
+    public PackageFeatureCode? Code { get; private set; }
+
+    private PackagePurchaseFeature() { }   // EF Core
+
+    public static PackagePurchaseFeature At(int position, string text, PackageFeatureCode? code) =>
+        new() { Position = position, Text = text, Code = code };
+
+    /// <summary>Rewrites this row rather than replacing it, so its position never collides.</summary>
+    public void MoveTo(int position, string text, PackageFeatureCode? code)
+    {
+        Position = position;
+        Text = text;
+        Code = code;
+    }
+
+    public PackageFeature ToFeature() => new(Text, Code);
 }

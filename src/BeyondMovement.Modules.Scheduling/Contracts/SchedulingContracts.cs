@@ -71,6 +71,114 @@ public sealed record CreateObservationRequest(
     bool? DeductSession,
     string? LocationOrPlatform = null);
 
+/// <summary>
+/// What the athlete fills in on Request an Observation, and what the Admin sends when they
+/// adjust the proposal before accepting it. One shape for both, because they set the same
+/// values — see <see cref="ObservationRequest.Revise"/>.
+/// <para>
+/// A <b>full replacement</b>, not a patch: send every field every time, and a field left out is
+/// one being cleared rather than one being left alone. The same rule the profile and purchase
+/// endpoints follow.
+/// </para>
+/// </summary>
+/// <param name="RequestedStartUtc">
+/// When the athlete would like to be observed. Must be UTC and in the future — the app converts
+/// the local date and time it collected, exactly as it does when booking a session.
+/// </param>
+/// <param name="RequestedDurationMinutes">
+/// How long it runs. Optional, and <c>null</c> means
+/// <see cref="ObservationRequest.DefaultDurationMinutes"/>: the athlete's form does not ask, so
+/// the request carries a sensible proposal the Admin can change rather than an absent one that
+/// cannot be drawn on a schedule.
+/// </param>
+/// <param name="Details">
+/// Optional context for the coach — what is being trained or competed in, and what the athlete
+/// would like watched. Null and an empty string both clear it and both read back as null.
+/// </param>
+public sealed record SaveObservationRequestRequest(
+    DateTime RequestedStartUtc,
+    string Location,
+    string? Details = null,
+    int? RequestedDurationMinutes = null);
+
+/// <summary>
+/// The Admin's decision. Everything but <paramref name="DeductSession"/> is an override of what
+/// the athlete asked for, and <c>null</c> on any of them means "accept it as requested" — so an
+/// Admin who changes nothing sends only the one field they must.
+/// </summary>
+/// <param name="DeductSession">
+/// BR-07, and the reason this cannot be a bare accept. Whether attending the observation will
+/// consume one package session is the Admin's explicit choice, made when the session is
+/// recorded; an athlete can never make it, so it does not appear on the request and has to be
+/// answered here. Nullable with no default so that an omitted field and an explicit null are
+/// both rejected rather than silently becoming false, exactly as on
+/// <see cref="CreateObservationRequest"/>.
+/// <para>
+/// Nothing is deducted by accepting. The session is created Scheduled, a booking never deducts
+/// (BR-04), and the choice is applied later at Mark as Attended.
+/// </para>
+/// </param>
+public sealed record AcceptObservationRequestRequest(
+    bool? DeductSession,
+    DateTime? RequestedStartUtc = null,
+    string? Location = null,
+    string? Details = null,
+    int? RequestedDurationMinutes = null);
+
+/// <param name="AthleteUserId">
+/// The athlete's <b>user</b> id — the id <c>GET /athletes/{athleteId}</c> takes — so the Admin's
+/// queue can open a profile without a lookup per row. Not the profile id that sessions are
+/// keyed by, which is <paramref name="AthleteProfileId"/>.
+/// </param>
+/// <param name="AthleteName">
+/// Carried on the row for the same reason <c>SessionResponse.athleteName</c> is: an Admin queue
+/// should draw without a call per card. The athlete's full name, or their email address if they
+/// have not completed their profile yet.
+/// </param>
+/// <param name="SessionId">
+/// The observation this request produced. Non-null exactly when <paramref name="Status"/> is
+/// Accepted; read it to move on to <c>GET /sessions/{id}</c>, which is where every later change
+/// of date or cancellation happens.
+/// </param>
+/// <param name="ResolvedAtUtc">
+/// When the request stopped being Pending, whichever way it went. Null while it is still
+/// waiting, and non-null on all three terminal states.
+/// </param>
+public sealed record ObservationRequestResponse(
+    Guid Id,
+    Guid AthleteProfileId,
+    Guid AthleteUserId,
+    string AthleteName,
+    DateTime RequestedStartUtc,
+    DateTime RequestedEndUtc,
+    int RequestedDurationMinutes,
+    string Location,
+    string? Details,
+    ObservationRequestStatus Status,
+    Guid? SessionId,
+    DateTime CreatedAtUtc,
+    DateTime UpdatedAtUtc,
+    DateTime? ResolvedAtUtc);
+
+/// <summary>
+/// Both halves of an acceptance, so the app can replace its copy of the request and add the new
+/// session without re-reading either. They are written in one transaction, so what is returned
+/// here is what exists.
+/// </summary>
+public sealed record AcceptObservationRequestResponse(
+    ObservationRequestResponse Request,
+    SessionResponse Session);
+
+public static class ObservationRequestMapping
+{
+    public static ObservationRequestResponse ToResponse(
+        this ObservationRequest x, Guid athleteUserId, string athleteName) => new(
+        x.Id, x.AthleteProfileId, athleteUserId, athleteName,
+        x.RequestedStartUtc, x.RequestedEndUtc, x.RequestedDurationMinutes,
+        x.Location, x.Details, x.Status, x.SessionId,
+        x.CreatedAtUtc, x.UpdatedAtUtc, x.ResolvedAtUtc);
+}
+
 public sealed record SaveSessionNoteRequest(string Content);
 
 public sealed record SessionNoteResponse(

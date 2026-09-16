@@ -1,4 +1,4 @@
-using BeyondMovement.Infrastructure;
+﻿using BeyondMovement.Infrastructure;
 using BeyondMovement.Modules.Finance.Contracts;
 using BeyondMovement.Modules.Finance.Domain;
 using BeyondMovement.SharedKernel;
@@ -106,7 +106,10 @@ public sealed class PurchaseReader(AppDbContext db)
     /// change and being silent data loss.
     /// </summary>
     private IQueryable<PurchaseWithAthlete> Join(IQueryable<PackagePurchase> purchases) =>
-        from purchase in purchases
+        // The feature snapshot is a child table, and it is included here rather than at each of
+        // the three call sites so no screen can read a purchase whose features came back empty
+        // because one query forgot them.
+        from purchase in purchases.Include(PackagePurchase.FeaturesNavigation)
         join user in db.Users.AsNoTracking() on purchase.AthleteUserId equals user.Id into found
         from user in found.DefaultIfEmpty()
         select new PurchaseWithAthlete

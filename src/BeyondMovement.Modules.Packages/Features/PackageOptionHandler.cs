@@ -1,4 +1,4 @@
-using BeyondMovement.Modules.Packages.Contracts;
+﻿using BeyondMovement.Modules.Packages.Contracts;
 using BeyondMovement.Modules.Packages.Domain;
 using BeyondMovement.Modules.Packages.Persistence;
 using BeyondMovement.SharedKernel;
@@ -148,7 +148,7 @@ public static class PackageOptionMappings
         option.Sessions,
         option.DefaultPriceMinor,
         Currency.Egp,
-        [.. option.OrderedFeatures.Select(f => f.Text)],
+        [.. option.OrderedFeatures.Select(f => f.ToFeature())],
         option.IsArchived,
         option.ArchivedAtUtc,
         option.Version,

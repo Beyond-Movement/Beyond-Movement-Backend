@@ -1,4 +1,5 @@
-using BeyondMovement.Modules.Packages.Domain;
+﻿using BeyondMovement.Modules.Packages.Domain;
+using BeyondMovement.SharedKernel;
 
 namespace BeyondMovement.Modules.Packages.Contracts;
 
@@ -8,12 +9,19 @@ namespace BeyondMovement.Modules.Packages.Contracts;
 /// <param name="Features">
 /// Ordered. The order sent is the order stored and the order returned; there is no separate
 /// position field to keep in step.
+/// <para>
+/// Each entry is <c>{ text, code }</c>. <c>text</c> is the line the athlete reads and is always
+/// free-form. <c>code</c> is <b>null or omitted for an ordinary feature</b> — the original
+/// behaviour, and still the common case — or a <see cref="PackageFeatureCode"/> naming a feature
+/// the backend acts on. At most one entry may carry a given non-null code; a repeat is
+/// VALIDATION_FAILED.
+/// </para>
 /// </param>
 public sealed record SavePackageOptionRequest(
     string Name,
     int Sessions,
     long DefaultPriceMinor,
-    IReadOnlyList<string> Features);
+    IReadOnlyList<PackageFeature> Features);
 
 /// <param name="Version">
 /// The version the caller last read. Editing, archiving or restoring with a stale version is
@@ -23,7 +31,7 @@ public sealed record EditPackageOptionRequest(
     string Name,
     int Sessions,
     long DefaultPriceMinor,
-    IReadOnlyList<string> Features,
+    IReadOnlyList<PackageFeature> Features,
     int Version);
 
 /// <summary>Sent when archiving or restoring, which are also changes and also versioned.</summary>
@@ -36,7 +44,7 @@ public sealed record PackageOptionResponse(
     int Sessions,
     long DefaultPriceMinor,
     string Currency,
-    IReadOnlyList<string> Features,
+    IReadOnlyList<PackageFeature> Features,
     bool IsArchived,
     DateTime? ArchivedAtUtc,
     int Version,
@@ -65,7 +73,7 @@ public sealed record CatalogueItemResponse(
     Guid Id,
     string Name,
     int Sessions,
-    IReadOnlyList<string> Features,
+    IReadOnlyList<PackageFeature> Features,
     long PriceMinor,
     string Currency);
 
@@ -156,6 +164,21 @@ public sealed record PurchasePackageRequest(
 /// and must stay a number, or reports and deduction would each need a special case.
 /// </para>
 /// </summary>
+/// <param name="IncludedFeatures">
+/// The recognised features this package grants, frozen at purchase. <b>Often empty</b>, and empty
+/// for every package bought before the codes existed.
+/// <para>
+/// This is what the app should read to show or hide a feature's action — in particular, an
+/// athlete may ask to be observed only while their active package includes
+/// <see cref="PackageFeatureCode.Observations"/>. There is deliberately no display text here: the
+/// feature lines the athlete read are on the purchase
+/// (<c>GET /me/purchases/current</c>), and a second copy of them could disagree with it.
+/// </para>
+/// <para>
+/// Hiding the action is UX only. <c>POST /me/observation-requests</c> enforces the same rule and
+/// answers 403 OBSERVATIONS_NOT_INCLUDED regardless of what the app drew.
+/// </para>
+/// </param>
 public sealed record PurchasedPackageResponse(
     Guid Id,
     Guid AthleteProfileId,
@@ -164,6 +187,7 @@ public sealed record PurchasedPackageResponse(
     int TotalSessions,
     int UsedSessions,
     int RemainingSessions,
+    IReadOnlyList<PackageFeatureCode> IncludedFeatures,
     long PricePaidMinor,
     string Currency,
     DateOnly StartDate,
@@ -177,6 +201,6 @@ public static class PurchasedPackageMapping
 {
     public static PurchasedPackageResponse ToResponse(this PurchasedPackage x) => new(
         x.Id, x.AthleteProfileId, x.PackageOptionId, x.Name, x.TotalSessions, x.UsedSessions,
-        x.RemainingSessions, x.PricePaidMinor, x.Currency, x.StartDate, x.EndDate, x.Status,
-        x.Notes, x.CreatedAtUtc, x.UpdatedAtUtc);
+        x.RemainingSessions, x.IncludedFeatures, x.PricePaidMinor, x.Currency, x.StartDate,
+        x.EndDate, x.Status, x.Notes, x.CreatedAtUtc, x.UpdatedAtUtc);
 }

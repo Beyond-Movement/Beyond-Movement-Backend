@@ -1,4 +1,5 @@
-using BeyondMovement.Modules.Finance.Domain;
+﻿using BeyondMovement.Modules.Finance.Domain;
+using BeyondMovement.SharedKernel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -35,18 +36,21 @@ public sealed class PackagePurchaseConfiguration : IEntityTypeConfiguration<Pack
         b.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         b.Property(x => x.Origin).HasConversion<string>().HasMaxLength(20).IsRequired();
 
-        // The feature snapshot. A primitive collection reached through the backing field, so
-        // nothing outside the entity can rewrite the list that records what somebody bought.
-        // Ordered, because the order is what the athlete read down the card.
-        b.PrimitiveCollection<List<string>>(PackagePurchase.FeaturesField)
-            .HasColumnName("Features")
-            .IsRequired()
-            .ElementType()
-            .HasMaxLength(PackagePurchase.MaxFeatureLength);
+        // The feature snapshot, as child rows rather than the array column it used to be: a
+        // feature now carries a recognised code as well as its text, and two parallel arrays that
+        // have to stay the same length is exactly the trap the rest of this codebase avoids. A
+        // field-only navigation, so nothing outside the entity can rewrite the list that records
+        // what somebody bought.
+        b.HasMany<PackagePurchaseFeature>(PackagePurchase.FeaturesNavigation)
+            .WithOne()
+            .HasForeignKey(f => f.PackagePurchaseId)
+            .OnDelete(DeleteBehavior.Cascade);
 
-        // Computed view over the field above. Left alone, EF maps it as a second column and the
-        // snapshot becomes two lists that can disagree - the same trap PackageOption.OrderedFeatures hit.
+        // Both are computed views over that navigation. Left alone, EF maps them as columns and
+        // the snapshot becomes several lists that can disagree - the same trap
+        // PackageOption.OrderedFeatures hit.
         b.Ignore(x => x.Features);
+        b.Ignore(x => x.FeatureCodes);
 
         // Maps to Postgres' xmin rather than a column of its own, as PurchasedPackage does.
         b.Property(x => x.Version).IsRowVersion();
@@ -75,5 +79,27 @@ public sealed class PackagePurchaseConfiguration : IEntityTypeConfiguration<Pack
         // The relationships to PackageOption, PurchasedPackage and AthleteProfile are declared in
         // AppDbContext, not here. A module may not reference another module, so this file cannot
         // name those types - the composition root is the only place that sees the whole graph.
+    }
+}
+
+public sealed class PackagePurchaseFeatureConfiguration
+    : IEntityTypeConfiguration<PackagePurchaseFeature>
+{
+    public void Configure(EntityTypeBuilder<PackagePurchaseFeature> b)
+    {
+        b.ToTable("PackagePurchaseFeatures");
+        b.HasKey(x => x.Id);
+
+        b.Property(x => x.Text).IsRequired().HasMaxLength(PackagePurchase.MaxFeatureLength);
+        b.Property(x => x.Position).IsRequired();
+
+        // Nullable, and null is the ordinary case. Stored as the enum name, like every other enum
+        // in this database.
+        b.Property(x => x.Code)
+            .HasConversion<string>()
+            .HasMaxLength(PackagePurchase.MaxFeatureCodeLength);
+
+        // Order is meaning here, so two features cannot occupy one position even under a race.
+        b.HasIndex(x => new { x.PackagePurchaseId, x.Position }).IsUnique();
     }
 }

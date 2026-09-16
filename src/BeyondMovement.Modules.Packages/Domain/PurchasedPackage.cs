@@ -1,4 +1,4 @@
-using BeyondMovement.SharedKernel;
+﻿using BeyondMovement.SharedKernel;
 
 // The property below is called Currency, which hides the static Currency class from every
 // expression inside this file. The alias is how the class stays reachable.
@@ -30,6 +30,8 @@ public sealed class PurchasedPackage
     public const int MaxNameLength = 100;
     public const int MaxNotesLength = 1000;
 
+    private readonly List<PackageFeatureCode> _includedFeatures = [];
+
     public Guid Id { get; private set; } = Guid.NewGuid();
     public Guid CoachId { get; private set; }
     public Guid AthleteProfileId { get; private set; }
@@ -39,6 +41,27 @@ public sealed class PurchasedPackage
 
     /// <summary>Copied from the option at purchase. Renaming the option does not rename this.</summary>
     public string Name { get; private set; } = null!;
+
+    /// <summary>
+    /// The recognised features this package grants, <b>frozen at purchase</b> exactly as the name
+    /// and the price are. Editing the catalogue option afterwards — adding Observations to it,
+    /// or taking it away — never reaches back here, so what somebody bought keeps granting what
+    /// it granted.
+    /// <para>
+    /// This is the <b>only</b> thing any eligibility rule reads. Not the catalogue entry, which
+    /// may have changed; not the Finance purchase record, whose feature snapshot is empty for
+    /// every package that predates Phase 8; and never the display text of a feature, which is
+    /// the coach's to reword.
+    /// </para>
+    /// <para>
+    /// Empty for every package bought before this was introduced, which is correct rather than
+    /// lossy: no catalogue option carried a code until now, so no package was ever sold with one.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<PackageFeatureCode> IncludedFeatures => _includedFeatures;
+
+    /// <summary>The EF mapping reaches the list through this field. For configuration only.</summary>
+    public const string IncludedFeaturesField = nameof(_includedFeatures);
 
     public int TotalSessions { get; private set; }
     public int UsedSessions { get; private set; }
@@ -84,7 +107,10 @@ public sealed class PurchasedPackage
     /// </summary>
     public static PurchasedPackage Purchase(
         Guid coachId, Guid athleteProfileId, Guid? packageOptionId, string name, int totalSessions,
-        long pricePaidMinor, DateOnly startDate, DateOnly? endDate, string? notes, DateTime nowUtc) => new()
+        IReadOnlyList<PackageFeatureCode> includedFeatures, long pricePaidMinor,
+        DateOnly startDate, DateOnly? endDate, string? notes, DateTime nowUtc)
+    {
+        var package = new PurchasedPackage
         {
             CoachId = coachId,
             AthleteProfileId = athleteProfileId,
@@ -99,6 +125,19 @@ public sealed class PurchasedPackage
             CreatedAtUtc = nowUtc,
             UpdatedAtUtc = nowUtc
         };
+
+        // Distinct, because the code is the identity: a caller that passed Observations twice
+        // means the package grants Observations, not that it grants it twice.
+        package._includedFeatures.AddRange(includedFeatures.Distinct());
+
+        return package;
+    }
+
+    /// <summary>
+    /// Whether this package grants <paramref name="code"/>. The one question every eligibility
+    /// rule asks, answered from the snapshot above and from nothing else.
+    /// </summary>
+    public bool Includes(PackageFeatureCode code) => _includedFeatures.Contains(code);
 
     /// <summary>
     /// Takes <paramref name="count"/> sessions off the balance. The only way <see cref="UsedSessions"/>

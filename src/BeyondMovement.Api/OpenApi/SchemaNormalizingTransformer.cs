@@ -1,4 +1,5 @@
-using BeyondMovement.Api.Attendance;
+﻿using BeyondMovement.Api.Attendance;
+using BeyondMovement.Api.Scheduling;
 using System.Text.Json.Nodes;
 using BeyondMovement.Modules.Finance;
 using BeyondMovement.Modules.Identity.Contracts;
@@ -7,6 +8,7 @@ using BeyondMovement.Modules.Packages.Contracts;
 using BeyondMovement.Modules.Packages.Domain;
 using BeyondMovement.Modules.Scheduling;
 using BeyondMovement.Modules.Scheduling.Contracts;
+using BeyondMovement.SharedKernel;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.OpenApi;
 
@@ -135,11 +137,19 @@ public sealed class SchemaNormalizingTransformer : IOpenApiSchemaTransformer
                 s.MinItems = PackageOption.MinFeatures;
                 s.MaxItems = PackageOption.MaxFeatures;
 
-                if (s.Items is OpenApiSchema item)
-                    item.MaxLength = PackageOptionFeature.MaxTextLength;
+                // The per-feature text bound is declared on the PackageFeature schema below
+                // rather than here: the item is a $ref to that one component, so this is the only
+                // place the two requests can state how MANY features they take.
             });
 
             Limit(schema, "version", s => s.Minimum = "1");
+        }
+        else if (type == typeof(PackageFeature))
+        {
+            // One component serves every use of a feature, on requests and responses alike, so
+            // the text bound is stated once here. code needs none: it is an enum, and the schema
+            // already lists the values it accepts.
+            Limit(schema, "text", s => s.MaxLength = PackageOptionFeature.MaxTextLength);
         }
         else if (type == typeof(SetCustomPriceRequest))
         {
@@ -219,7 +229,8 @@ public sealed class SchemaNormalizingTransformer : IOpenApiSchemaTransformer
         // JSON Schema enum that repeats a value is invalid, which would break generation.
         string[] all =
             [.. ApiErrorCodes.All, .. PackageErrorCodes.All, .. SchedulingErrors.AllCodes,
-             .. AttendanceErrors.AllCodes, .. FinanceErrorCodes.All];
+             .. AttendanceErrors.AllCodes, .. ObservationEligibilityErrors.AllCodes,
+             .. FinanceErrorCodes.All];
 
         if (errorCode is OpenApiSchema property)
             property.Enum =

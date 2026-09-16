@@ -1,4 +1,5 @@
-using BeyondMovement.Modules.Packages.Domain;
+﻿using BeyondMovement.Modules.Packages.Domain;
+using BeyondMovement.SharedKernel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -29,6 +30,10 @@ public sealed class PackageOptionConfiguration : IEntityTypeConfiguration<Packag
         // the features table a second foreign key that nothing writes to.
         b.Ignore(x => x.OrderedFeatures);
 
+        // Also computed from the same list. Left alone, EF maps it as a column and the codes
+        // become a second stored fact that can disagree with the feature rows they come from.
+        b.Ignore(x => x.FeatureCodes);
+
         // A field-only navigation: the list is reachable through the backing field and nothing
         // else, so no caller can add a feature behind Edit's back. Exposing a public collection
         // property as well would map the same relationship twice and produce a second, shadow
@@ -50,8 +55,25 @@ public sealed class PackageOptionFeatureConfiguration : IEntityTypeConfiguration
         b.Property(x => x.Text).IsRequired().HasMaxLength(PackageOptionFeature.MaxTextLength);
         b.Property(x => x.Position).IsRequired();
 
+        // Nullable, and null is the ordinary case: a feature with no code is a plain line of
+        // text the coach wrote, which is what nearly every feature is. Stored as the enum name
+        // like every other enum here, so a support query reads 'Observations' and reordering the
+        // members cannot remap existing rows.
+        b.Property(x => x.Code)
+            .HasConversion<string>()
+            .HasMaxLength(PackageOptionFeature.MaxCodeLength);
+
         // Order is meaning here, so two features cannot occupy one position even under a race.
         b.HasIndex(x => new { x.PackageOptionId, x.Position }).IsUnique();
+
+        // One option cannot claim the same recognised feature twice - "Observations" listed under
+        // two different wordings would make the card lie about what it grants. Filtered, because
+        // every ordinary feature has a null code and nulls would otherwise collide constantly.
+        // The validator checks this first so the Admin gets VALIDATION_FAILED; this is what holds
+        // when two devices save at the same moment.
+        b.HasIndex(x => new { x.PackageOptionId, x.Code }).IsUnique()
+            .HasFilter("\"Code\" IS NOT NULL")
+            .HasDatabaseName("IX_PackageOptionFeatures_OneOfEachCodePerOption");
     }
 }
 
@@ -102,6 +124,21 @@ public sealed class PurchasedPackageConfiguration : IEntityTypeConfiguration<Pur
         b.Property(x => x.Currency).IsRequired().HasMaxLength(3);
         b.Property(x => x.Notes).HasMaxLength(PurchasedPackage.MaxNotesLength);
         b.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+
+        // The recognised-feature snapshot. A primitive collection reached through the backing
+        // field, so nothing outside the entity can rewrite what a package grants, and stored as
+        // the enum names for the same reasons every other enum here is. Empty for every package
+        // bought before this column existed, which is the truthful answer: no catalogue option
+        // carried a code until now.
+        b.PrimitiveCollection<List<PackageFeatureCode>>(PurchasedPackage.IncludedFeaturesField)
+            .HasColumnName("IncludedFeatures")
+            .IsRequired()
+            .ElementType()
+            .HasConversion<string>()
+            .HasMaxLength(PackageOptionFeature.MaxCodeLength);
+
+        // Computed view over the field above, as PackagePurchase.Features is over its own.
+        b.Ignore(x => x.IncludedFeatures);
 
         // Maps to Postgres' xmin rather than a column of its own, exactly as Session does.
         b.Property(x => x.Version).IsRowVersion();

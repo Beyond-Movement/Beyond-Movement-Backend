@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -41,14 +41,14 @@ public sealed class PurchaseTests(PurchaseApiFactory factory) : IClassFixture<Pu
 
     private static async Task<JsonElement> CreateOptionAsync(
         HttpClient admin, string name, long priceMinor = 400_000, int sessions = 8,
-        string[]? features = null)
+        object[]? features = null)
     {
         var response = await admin.PostAsJsonAsync("/api/v1/package-options", new
         {
             name,
             sessions,
             defaultPriceMinor = priceMinor,
-            features = features ?? ["Weekly video call", "Session notes"]
+            features = features ?? Features.Open("Weekly video call", "Session notes")
         });
 
         if (response.StatusCode != HttpStatusCode.Created)
@@ -86,7 +86,7 @@ public sealed class PurchaseTests(PurchaseApiFactory factory) : IClassFixture<Pu
         var admin = await AdminClientAsync();
         var option = await CreateOptionAsync(
             admin, "Snapshot 8", priceMinor: 400_000, sessions: 8,
-            features: ["Weekly video call", "Session notes", "Whiteboard access"]);
+            features: Features.Open("Weekly video call", "Session notes", "Whiteboard access"));
 
         var (_, email) = await factory.NewAthleteAsync();
         var athlete = await AthleteClientAsync(email);
@@ -103,7 +103,8 @@ public sealed class PurchaseTests(PurchaseApiFactory factory) : IClassFixture<Pu
         // Order is meaning - it is what the athlete read down the card.
         Assert.Equal(
             ["Weekly video call", "Session notes", "Whiteboard access"],
-            purchase.GetProperty("features").EnumerateArray().Select(f => f.GetString()!).ToArray());
+            purchase.GetProperty("features").EnumerateArray()
+                .Select(f => f.GetProperty("text").GetString()!).ToArray());
 
         // Pending means no package yet, and no evidence of payment.
         Assert.Equal(JsonValueKind.Null, purchase.GetProperty("purchasedPackageId").ValueKind);
@@ -153,7 +154,7 @@ public sealed class PurchaseTests(PurchaseApiFactory factory) : IClassFixture<Pu
         var admin = await AdminClientAsync();
         var option = await CreateOptionAsync(
             admin, "Repriced 8", priceMinor: 400_000, sessions: 8,
-            features: ["Weekly video call"]);
+            features: Features.Open("Weekly video call"));
         var optionId = option.GetProperty("id").GetGuid();
 
         var (_, email) = await factory.NewAthleteAsync();
@@ -167,7 +168,7 @@ public sealed class PurchaseTests(PurchaseApiFactory factory) : IClassFixture<Pu
             name = "Repriced 8 (new)",
             sessions = 12,
             defaultPriceMinor = 900_000,
-            features = new[] { "Something else entirely" },
+            features = Features.Open("Something else entirely"),
             version = option.GetProperty("version").GetInt32()
         });
         edit.EnsureSuccessStatusCode();
@@ -179,7 +180,8 @@ public sealed class PurchaseTests(PurchaseApiFactory factory) : IClassFixture<Pu
         Assert.Equal(400_000, reread.GetProperty("priceMinor").GetInt64());
         Assert.Equal(
             ["Weekly video call"],
-            reread.GetProperty("features").EnumerateArray().Select(f => f.GetString()!).ToArray());
+            reread.GetProperty("features").EnumerateArray()
+                .Select(f => f.GetProperty("text").GetString()!).ToArray());
 
         // ...and the package created from it carries the snapshot, not today's catalogue.
         var paid = await BodyAsync(await admin.PostAsync($"/api/v1/purchases/{purchaseId}/mark-paid", null));
@@ -507,7 +509,8 @@ public sealed class PurchaseTests(PurchaseApiFactory factory) : IClassFixture<Pu
     {
         var admin = await AdminClientAsync();
         var option = await CreateOptionAsync(
-            admin, "Off app 8", priceMinor: 400_000, features: ["Weekly video call", "Session notes"]);
+            admin, "Off app 8", priceMinor: 400_000,
+            features: Features.Open("Weekly video call", "Session notes"));
 
         var (userId, _) = await factory.NewAthleteAsync();
 
@@ -528,7 +531,8 @@ public sealed class PurchaseTests(PurchaseApiFactory factory) : IClassFixture<Pu
             purchase.GetProperty("purchasedPackageId").GetGuid());
         Assert.Equal(
             ["Weekly video call", "Session notes"],
-            purchase.GetProperty("features").EnumerateArray().Select(f => f.GetString()!).ToArray());
+            purchase.GetProperty("features").EnumerateArray()
+                .Select(f => f.GetProperty("text").GetString()!).ToArray());
     }
 
     // --- the Admin list ------------------------------------------------------
@@ -710,6 +714,182 @@ public sealed class PurchaseTests(PurchaseApiFactory factory) : IClassFixture<Pu
             Assert.Equal("INSTAPAY_NOT_CONFIGURED", ErrorCode(await BodyAsync(response)));
         }
     }
+    // --- the recognised-feature snapshot on the package ----------------------
+
+    /// <summary>
+    /// A package records which recognised features it was sold with, and that is what every
+    /// eligibility rule reads. The display text is not copied here: it is on the purchase, and a
+    /// second copy could disagree with it.
+    /// </summary>
+    [Fact]
+    public async Task An_admin_recorded_package_snapshots_the_recognised_feature_codes()
+    {
+        var admin = await AdminClientAsync();
+        var option = await CreateOptionAsync(admin, "Observed 8", features: Features.List(
+            Features.One("Weekly video call"),
+            Features.One("Coach attends your competitions", Features.Observations)));
+
+        var (userId, _) = await factory.NewAthleteAsync();
+
+        var package = await BodyAsync(await admin.PostAsJsonAsync(
+            $"/api/v1/athletes/{userId}/packages",
+            new { packageOptionId = option.GetProperty("id").GetGuid() }));
+
+        Assert.Equal(
+            [Features.Observations],
+            package.GetProperty("includedFeatures").EnumerateArray()
+                .Select(f => f.GetString()!).ToArray());
+    }
+
+    /// <summary>
+    /// A package sold from an option with no recognised features says so, rather than omitting the
+    /// field or answering null - an empty list is a real answer and the app renders it as one.
+    /// </summary>
+    [Fact]
+    public async Task A_package_with_no_recognised_features_reports_an_empty_list()
+    {
+        var admin = await AdminClientAsync();
+        var option = await CreateOptionAsync(admin, "Plain 8", features: Features.Open("Weekly video call"));
+
+        var (userId, _) = await factory.NewAthleteAsync();
+
+        var package = await BodyAsync(await admin.PostAsJsonAsync(
+            $"/api/v1/athletes/{userId}/packages",
+            new { packageOptionId = option.GetProperty("id").GetGuid() }));
+
+        Assert.Empty(package.GetProperty("includedFeatures").EnumerateArray());
+    }
+
+    /// <summary>
+    /// A feature whose TEXT says "Observations" but which carries no code grants nothing. This is
+    /// the whole reason the code exists, and the test that would fail if anyone ever decided
+    /// eligibility by comparing display text.
+    /// </summary>
+    [Fact]
+    public async Task A_feature_that_only_says_observations_grants_nothing()
+    {
+        var admin = await AdminClientAsync();
+        var option = await CreateOptionAsync(
+            admin, "Says Observations", features: Features.Open("Observations"));
+
+        var (userId, _) = await factory.NewAthleteAsync();
+
+        var package = await BodyAsync(await admin.PostAsJsonAsync(
+            $"/api/v1/athletes/{userId}/packages",
+            new { packageOptionId = option.GetProperty("id").GetGuid() }));
+
+        Assert.Empty(package.GetProperty("includedFeatures").EnumerateArray());
+    }
+
+    /// <summary>
+    /// The athlete's own path: the codes travel through the purchase snapshot, so confirming a
+    /// payment never has to consult the catalogue - and an option edited in between cannot change
+    /// what the athlete receives.
+    /// </summary>
+    [Fact]
+    public async Task Editing_the_option_after_selection_does_not_change_what_the_package_grants()
+    {
+        var admin = await AdminClientAsync();
+        var option = await CreateOptionAsync(admin, "Observed then stripped", features: Features.List(
+            Features.One("Observations", Features.Observations)));
+        var optionId = option.GetProperty("id").GetGuid();
+
+        var (_, email) = await factory.NewAthleteAsync();
+        var athlete = await AthleteClientAsync(email);
+        var purchase = await SelectAsync(athlete, optionId);
+        var purchaseId = purchase.GetProperty("id").GetGuid();
+
+        // The snapshot carried the code across at selection.
+        Assert.Equal(Features.Observations, purchase.GetProperty("features")
+            .EnumerateArray().Single().GetProperty("code").GetString());
+
+        // The coach now takes observations off the catalogue entry.
+        var edit = await admin.PutAsJsonAsync($"/api/v1/package-options/{optionId}", new
+        {
+            name = "Observed then stripped",
+            sessions = 8,
+            defaultPriceMinor = 400_000,
+            features = Features.Open("Nothing special"),
+            version = option.GetProperty("version").GetInt32()
+        });
+        edit.EnsureSuccessStatusCode();
+
+        // The package is still built from the snapshot, so it still grants observations.
+        var paid = await BodyAsync(
+            await admin.PostAsync($"/api/v1/purchases/{purchaseId}/mark-paid", null));
+
+        Assert.Equal(
+            [Features.Observations],
+            paid.GetProperty("package").GetProperty("includedFeatures").EnumerateArray()
+                .Select(f => f.GetString()!).ToArray());
+    }
+
+    /// <summary>
+    /// And the other direction: adding observations to the catalogue entry after the athlete chose
+    /// does not hand it to them. A package grants what it was sold with, both ways round.
+    /// </summary>
+    [Fact]
+    public async Task Adding_a_code_to_the_option_after_selection_does_not_grant_it()
+    {
+        var admin = await AdminClientAsync();
+        var option = await CreateOptionAsync(
+            admin, "Stripped then observed", features: Features.Open("Nothing special"));
+        var optionId = option.GetProperty("id").GetGuid();
+
+        var (_, email) = await factory.NewAthleteAsync();
+        var athlete = await AthleteClientAsync(email);
+        var purchaseId = (await SelectAsync(athlete, optionId)).GetProperty("id").GetGuid();
+
+        var edit = await admin.PutAsJsonAsync($"/api/v1/package-options/{optionId}", new
+        {
+            name = "Stripped then observed",
+            sessions = 8,
+            defaultPriceMinor = 400_000,
+            features = Features.List(Features.One("Observations", Features.Observations)),
+            version = option.GetProperty("version").GetInt32()
+        });
+        edit.EnsureSuccessStatusCode();
+
+        var paid = await BodyAsync(
+            await admin.PostAsync($"/api/v1/purchases/{purchaseId}/mark-paid", null));
+
+        Assert.Empty(paid.GetProperty("package").GetProperty("includedFeatures").EnumerateArray());
+    }
+
+    /// <summary>
+    /// Revising a pending selection re-snapshots the features, codes included - the athlete who
+    /// switches to a package with observations gets them when the coach confirms.
+    /// </summary>
+    [Fact]
+    public async Task Revising_a_selection_re_snapshots_the_codes()
+    {
+        var admin = await AdminClientAsync();
+        var plain = await CreateOptionAsync(
+            admin, "Revise from plain", features: Features.Open("Nothing special"));
+        var observed = await CreateOptionAsync(admin, "Revise to observed", features:
+            Features.List(Features.One("Observations", Features.Observations)));
+
+        var (_, email) = await factory.NewAthleteAsync();
+        var athlete = await AthleteClientAsync(email);
+
+        await SelectAsync(athlete, plain.GetProperty("id").GetGuid());
+
+        // 200, not 201: a second selection revises the pending request rather than opening
+        // another one - there is only ever one pending purchase per athlete.
+        var revised = await SelectAsync(
+            athlete, observed.GetProperty("id").GetGuid(), HttpStatusCode.OK);
+
+        Assert.Equal(Features.Observations, revised.GetProperty("features")
+            .EnumerateArray().Single().GetProperty("code").GetString());
+
+        var paid = await BodyAsync(await admin.PostAsync(
+            $"/api/v1/purchases/{revised.GetProperty("id").GetGuid()}/mark-paid", null));
+
+        Assert.Equal(
+            [Features.Observations],
+            paid.GetProperty("package").GetProperty("includedFeatures").EnumerateArray()
+                .Select(f => f.GetString()!).ToArray());
+    }
 }
 
 /// <summary>
@@ -767,4 +947,5 @@ public sealed class PaymentInstructionsTests(InstaPayApiFactory factory)
                 body.GetProperty("instructions").EnumerateArray().Select(x => x.GetString()!).ToArray());
         }
     }
+
 }

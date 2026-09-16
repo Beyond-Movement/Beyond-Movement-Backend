@@ -1,9 +1,405 @@
-# API contract changelog
+﻿# API contract changelog
 
 Every change to a request or response shape is a breaking change for the Flutter app.
 Record it here, regenerate `openapi.yaml`, and tell the mobile developer.
 
 To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML.
+
+---
+
+## Phase 13b — Recognised package features, and Observation eligibility
+
+**BREAKING for the package screens.** `features` changes shape everywhere it appears, and the
+athlete may no longer file an Observation Request unless their active package includes the
+Observations feature. Nothing else moves: no endpoint is added or removed, and the Observation
+Request flow itself — Pending, revise, cancel, adjust, accept, decline — is exactly as Phase 13
+shipped it.
+
+A package feature used to be a line of text and nothing else, so there was no way to say "this
+package lets the athlete ask to be observed" except by reading the text — which the coach is free
+to reword, translate, or capitalise differently. A feature now carries an optional **code**: a
+stable name the backend acts on, beside the text the athlete reads.
+
+### The feature model
+
+```jsonc
+// was
+"features": ["Weekly video call", "Observations"]
+
+// now
+"features": [
+  { "text": "Weekly video call", "code": null },
+  { "text": "Coach attends your competitions", "code": "Observations" }
+]
+```
+
+- **`text`** — required, non-blank, at most 100 characters, free-form in any language. What the
+  athlete reads. **Never** used to decide anything.
+- **`code`** — `null` or omitted for an **ordinary feature**, which is what nearly every feature
+  is and exactly what a feature was before this change. Arbitrary text, up to ten of them,
+  repeated wording allowed, no restrictions of any kind. The Admin goes on adding whatever they
+  like.
+- A non-null `code` names a feature the backend acts on. **`Observations` is the only one so far.**
+  Treat the field as an **open enum**: more will be added, and a client that throws on an unknown
+  value breaks on a backend deployment.
+- **At most one feature per option may carry a given code** — `400 VALIDATION_FAILED` on `features`
+  otherwise. Ordinary features are unaffected by that rule.
+- An unrecognised code is refused with `400`, rather than stored and silently doing nothing.
+
+The order of the list is still meaning — it is what the athlete reads down the card — and the order
+sent is the order stored and returned.
+
+### Where `features` changed shape
+
+Requests (Admin):
+
+```
+POST /api/v1/package-options
+PUT  /api/v1/package-options/{id}
+```
+
+Responses — `PackageOptionResponse`:
+
+```
+GET  /api/v1/package-options
+GET  /api/v1/package-options/{id}
+POST /api/v1/package-options                    201
+PUT  /api/v1/package-options/{id}
+POST /api/v1/package-options/{id}/archive
+POST /api/v1/package-options/{id}/restore
+```
+
+Responses — `CatalogueItemResponse`:
+
+```
+GET  /api/v1/catalogue                          the athlete's own catalogue
+GET  /api/v1/athletes/{athleteId}/catalogue      the Admin's preview of it
+```
+
+Responses — `PackagePurchaseResponse`:
+
+```
+POST /api/v1/me/purchases                       201 selected, 200 revised
+GET  /api/v1/me/purchases/current
+GET  /api/v1/purchases                          items
+GET  /api/v1/purchases/{id}
+POST /api/v1/purchases/{id}/mark-paid           the nested purchase
+```
+
+`AthletePricingItem` (`GET /api/v1/athletes/{athleteId}/pricing`) carries no features and is
+unchanged.
+
+### NEW — `includedFeatures` on a purchased package
+
+`PurchasedPackageResponse` gains one field:
+
+```jsonc
+"includedFeatures": ["Observations"]   // array of codes, OFTEN EMPTY
+```
+
+The recognised features the package **grants**, snapshotted at purchase. There is deliberately no
+display text here — the feature lines the athlete read are on the purchase, and a second copy of
+them could disagree with it.
+
+It appears on every endpoint that returns a purchased package:
+
+```
+GET  /api/v1/me/package
+GET  /api/v1/me/packages                        items
+GET  /api/v1/athletes/{athleteId}/packages/active
+GET  /api/v1/athletes/{athleteId}/packages       items
+POST /api/v1/athletes/{athleteId}/packages       201
+GET  /api/v1/packages/{id}
+POST /api/v1/packages/{id}/close
+POST /api/v1/purchases/{id}/mark-paid            the nested package
+POST /api/v1/sessions/{id}/attend                the nested package, nullable
+```
+
+**Expect `[]` on every package that already exists**, active ones included. That is correct rather
+than lossy: no catalogue option could carry a code before this change, so nothing was ever sold
+with one. An athlete on a package bought last month becomes eligible when the coach sells them a
+new one that includes the feature.
+
+### The snapshot, and why it is the authority
+
+`includedFeatures` is **frozen at purchase** and is the only thing any eligibility rule reads.
+
+- Editing the catalogue option afterwards changes nothing about a package somebody bought — adding
+  Observations to the template does not hand it to them, and removing it does not take it away.
+- Confirming a payment builds the package from the **purchase snapshot**, so an option edited
+  between selecting and confirming cannot change what the athlete receives. Revising a pending
+  selection re-snapshots it, as it already did for the name, session count and price.
+- The display text of a feature is never consulted. A package whose line reads `"Observations"`
+  with `code: null` grants **nothing**; a package whose line reads `"I come and watch you compete"`
+  with `code: "Observations"` grants it.
+
+### NEW error — `OBSERVATIONS_NOT_INCLUDED`, HTTP 403
+
+```
+POST /api/v1/me/observation-requests             403 OBSERVATIONS_NOT_INCLUDED
+```
+
+Returned when the athlete has **no active package**, or their active package's `includedFeatures`
+does not contain `Observations`. **One code for both cases**: the athlete's next step is the same
+either way, and two codes for one condition is how a client ends up handling only one of them.
+
+`403` rather than `409` — nothing conflicts, there is no version to re-read that would make it
+succeed, and the athlete is simply not permitted this action. It is **not** a role or sign-in
+failure: the caller is a perfectly valid athlete, and the app must not treat it as an auth problem.
+
+Read `includedFeatures` from `GET /api/v1/me/package` to show or hide **Request an Observation**.
+That is UX; this endpoint enforces the rule whatever the app drew.
+
+### What the rule deliberately does NOT touch
+
+| Endpoint | Behaviour |
+|---|---|
+| `POST /api/v1/sessions/observations` | **Unchanged.** The Admin recording an observation directly needs no package and no feature (A-03). The coach decides what the coach observes. |
+| `POST /api/v1/observation-requests/{id}/accept` | **Unchanged.** No package required, and no feature check. The coach agreed to be somewhere; a package that lapsed in between is not a reason to withdraw that. |
+| `PUT /api/v1/me/observation-requests/{id}` | **Unchanged.** A Pending request stays the athlete's to edit even after eligibility lapses — they may still need to correct the venue. |
+| `POST /api/v1/me/observation-requests/{id}/cancel` | **Unchanged.** Always theirs to withdraw. |
+| `GET` on any observation request | **Unchanged.** Reading is never gated. |
+
+Asking is still free of charge in sessions: nothing is deducted by filing a request or by accepting
+one, and the balance still moves only at Mark as Attended (BR-04, BR-07).
+
+### One migration
+
+`AddRecognisedPackageFeatures`:
+
+- `PackageOptionFeatures.Code`, nullable, with a filtered unique index per option. Every existing
+  row keeps a null code and is correct as it stands.
+- `PurchasedPackages.IncludedFeatures`, an array of codes, empty for every existing package.
+- `PackagePurchases.Features` moves from an array column to a `PackagePurchaseFeatures` child
+  table, because a feature is now two values. **Existing snapshots are copied across, in order,
+  before the old column is dropped** — including the empty ones belonging to packages that predate
+  Phase 8.
+
+### For the app
+
+1. One `PackageFeature { text, code }` model, used by package options, the catalogue and purchases.
+2. Parse `code` leniently — unknown values must not throw.
+3. A feature editor that lets the Admin add ordinary features exactly as before, plus a way to mark
+   one as Observations. Unlimited ordinary features; at most one of each code.
+4. Show or hide **Request an Observation** from `includedFeatures` on `GET /me/package`, and handle
+   `403 OBSERVATIONS_NOT_INCLUDED` as a message rather than an error state.
+5. Nothing on the Admin's own observation screens changes.
+
+---
+
+## Phase 13 — Observation Requests
+
+**Additive for every existing caller.** No shape any client already reads has changed, and
+nothing about `POST /sessions/observations` moves: the Admin's own way of recording an
+observation is untouched and still there. One new table, one migration, nine new endpoints.
+
+The athlete asks their coach to come and watch them — a competition, a training session — and the
+coach answers. Until now an observation could only start with the Admin (**A-03**); this is the
+second way one comes to exist, and both end in the same place: a `Session` with
+`deliveryType: Observation`, after which attendance, notes, cancellation and package progress are
+the behaviour that session already has.
+
+```
+athlete creates → Pending → athlete edits or cancels   → Cancelled
+                          → Admin adjusts, still Pending
+                          → Admin declines             → Declined
+                          → Admin accepts              → Accepted + a real Session
+```
+
+### A request is not a session
+
+Nothing appears on any schedule and nothing can be attended until the Admin accepts. A Pending
+request is **not** returned by `GET /sessions`, `GET /sessions/upcoming`, or the dashboard's
+`todaySessions` — those are sessions, and a request is not one yet. The app draws the athlete's
+pending asks from `GET /me/observation-requests` and the coach's queue from
+`GET /observation-requests?status=Pending`.
+
+### NEW — the athlete's own requests (Athlete only)
+
+```
+POST   /api/v1/me/observation-requests             201
+GET    /api/v1/me/observation-requests             200  paged
+GET    /api/v1/me/observation-requests/{id}        200
+PUT    /api/v1/me/observation-requests/{id}        200  Pending only
+POST   /api/v1/me/observation-requests/{id}/cancel 200  Pending only
+```
+
+Always the caller's own. **There is no athlete id** in any of these routes or bodies, so there is
+nothing to authorise beyond being signed in as an athlete, and a request cannot be filed against
+or read from anyone else. Another athlete's request is `404 OBSERVATION_REQUEST_NOT_FOUND`, never
+403 — an id must not be probed for existence.
+
+```jsonc
+// POST, and the same body for PUT
+{
+  "requestedStartUtc": "2026-10-04T10:00:00Z",    // UTC, and in the FUTURE
+  "location": "Cairo International Stadium",      // REQUIRED
+  "details": "National final — watch my starts.", // optional
+  "requestedDurationMinutes": 90                  // optional, defaults to 60
+}
+```
+
+- **`location` is required.** An athlete asking to be observed is asking their coach to come
+  somewhere, and where is the whole question. This differs from the Admin's own
+  `POST /sessions/observations`, where it is optional.
+- **`details` is optional.** Nothing to say to the coach is a normal thing to have. Null and `""`
+  both clear it and both read back as `null`.
+- **`requestedDurationMinutes` defaults to 60.** The athlete's form collects a date, a time, a
+  place and some context — not a duration — so the request carries a proposal the Admin can
+  change rather than an absent one that cannot be drawn as a block. 15 to 1440 when sent.
+- **`requestedStartUtc` must be in the future**, unlike `POST /sessions/observations`, which
+  deliberately permits a past date: the Admin records what happened, the athlete asks for what
+  has not.
+- **An athlete may have several pending requests at once.** Two competitions are two things to
+  ask for. Deliberately unlike a package purchase, where only one may be pending and a second
+  selection revises the first.
+- **No package is required to ask, and none is consumed by asking.**
+
+`PUT` is a **full replacement, not a patch**, like the profile and purchase endpoints: send every
+field every time. **Omitting `details` clears it**, and omitting `requestedDurationMinutes`
+returns the request to 60.
+
+### NEW — the Admin's queue (Admin only)
+
+```
+GET    /api/v1/observation-requests               200  paged, ?status= &athleteId=
+GET    /api/v1/observation-requests/{id}          200
+PUT    /api/v1/observation-requests/{id}          200  adjust, still Pending
+POST   /api/v1/observation-requests/{id}/accept   200  → creates the Session
+POST   /api/v1/observation-requests/{id}/decline  200  → no Session, ever
+```
+
+Paged in the same envelope as every other list here — `items` plus `page`, `pageSize`,
+`totalCount`, `totalPages`, `hasNextPage`, `hasPreviousPage`; `page` from 1, `pageSize` 20 by
+default and capped at 100, clamped rather than rejected. `athleteId` is the athlete's **user** id,
+matching every other `/athletes/{athleteId}` route; an unknown one is `404 ATHLETE_NOT_FOUND`
+rather than an empty page, because an empty page is a real answer here.
+
+**Ordered soonest first** by `requestedStartUtc`, id breaking ties. A review queue is a list of
+things about to happen, and the one the coach has least time to answer belongs at the top. Note
+this differs from the purchase and package lists, which are newest first.
+
+Every row carries `athleteName` and `athleteUserId`, so the queue needs no second call to label
+itself — the same reason `SessionResponse` carries `athleteName`. The name falls back to the email
+address for an athlete who has not completed their profile.
+
+### The response
+
+```jsonc
+{
+  "id": "…",
+  "athleteProfileId": "…",   // what sessions and packages are keyed by
+  "athleteUserId": "…",      // what GET /athletes/{athleteId} takes
+  "athleteName": "Alex Thompson",
+  "requestedStartUtc": "2026-10-04T10:00:00Z",
+  "requestedEndUtc": "2026-10-04T11:30:00Z",   // start + duration, so the app never adds it
+  "requestedDurationMinutes": 90,
+  "location": "Cairo International Stadium",
+  "details": "National final — watch my starts.",
+  "status": "Pending",       // Pending | Accepted | Declined | Cancelled
+  "sessionId": null,         // non-null EXACTLY when status is Accepted
+  "createdAtUtc": "…",
+  "updatedAtUtc": "…",
+  "resolvedAtUtc": null      // null while Pending, non-null on all three terminal states
+}
+```
+
+### Accepting
+
+`deductSession` is **required** and is the only field with no fallback:
+
+```jsonc
+{
+  "deductSession": true,          // REQUIRED — BR-07, the Admin's explicit choice
+  "requestedStartUtc": "…",       // optional override
+  "location": "…",                // optional override
+  "details": "…",                 // optional override
+  "requestedDurationMinutes": 120 // optional override
+}
+```
+
+Whether attending the observation will consume a package session is the Admin's decision to make
+(BR-07), and an athlete never had it to inherit — which is why it is not on the request and must
+be answered here. There is no default, exactly as on `POST /sessions/observations`: an omitted
+field and an explicit null are both rejected rather than silently becoming `false`.
+
+**Nothing is deducted by accepting.** The session is created `Scheduled`, a booking never deducts
+(BR-04), and the choice is stored as `observationDeductsSession` and applied at Mark as Attended.
+**No active package is required to accept**, matching `POST /sessions/observations` — the balance
+is only checked when attendance is recorded.
+
+Everything else is an **override**: send a field to change what the athlete asked for, omit it to
+accept as requested. Whatever is accepted is **written back onto the request**, so the request
+records what was agreed rather than what was originally proposed, and the athlete reading it back
+sees the same observation the coach put on the schedule.
+
+The response carries both halves, written in one transaction:
+
+```jsonc
+{ "request": { "…": "…", "status": "Accepted", "sessionId": "…" }, "session": { "…": "…" } }
+```
+
+**Deliberately no future-date rule on accept.** A request that waited in the queue until its date
+passed may still be accepted — that is the past-dated observation `POST /sessions/observations`
+already permits.
+
+### Repeating an accept is a conflict, not an idempotent success
+
+`409 OBSERVATION_REQUEST_NOT_PENDING`, and **never a second session**. Three things hold that: a
+`SELECT … FOR UPDATE` row lock, so a concurrent repeat waits and then reads a row that is already
+Accepted; the Pending guard on the entity; and the `xmin` row version behind both.
+
+**This is stricter than `POST /purchases/{id}/mark-paid`**, which answers a repeat with the
+package it already made and `alreadyPaid: true`. An accept that timed out must **re-read the
+request** to find its `sessionId` rather than being retried.
+
+### Once it leaves Pending
+
+Accepted, Declined and Cancelled are all **terminal and read-only**. Edit, cancel, accept and
+decline are all `409 OBSERVATION_REQUEST_NOT_PENDING` — one code for one condition, rather than
+four codes a client would have to handle separately.
+
+After an acceptance, **the date and time belong to the session, not the request.** Change them
+through the ordinary session behaviour and cancel through `POST /sessions/{id}/cancel`; the
+request keeps the record of what was agreed. An athlete cannot cancel a request the coach has
+already accepted — by then there is a real session, and that has its own cancel.
+
+Declined and Cancelled produce **no session, now or ever**. The athlete files a new request if
+they want to propose another time.
+
+### New error codes
+
+| Code | Status | When |
+|---|---|---|
+| `OBSERVATION_REQUEST_NOT_FOUND` | 404 | Unknown id, another athlete's, or another coach's |
+| `OBSERVATION_REQUEST_NOT_PENDING` | 409 | Any edit, cancel, accept or decline on a request that has already been answered |
+
+Date, length and required-field rules are ordinary `VALIDATION_FAILED` 400s, as on
+`POST /sessions/observations`.
+
+### Calendly is not involved
+
+Observations are arranged in person and never appear on a booking page (**A-03**), so accepting
+creates a **purely local** session: no `meetingUrl`, no `rescheduleUrl`, no Calendly event, and
+nothing sent to or read from Calendly at any point in this flow. Cancelling that session later
+takes the branch in `SchedulingService.CancelAsync` that skips Calendly because there is no event
+to cancel.
+
+### Not implemented, deliberately
+
+- **No decline reason.** The coach declining is not asked to explain in a column; if they need to,
+  that is a conversation. Add one only if the client asks.
+- **No notifications.** Nothing tells the coach a request has arrived or the athlete that it was
+  answered — `Modules.Notifications` does not exist yet. Both apps discover the change by reading.
+  This is the most visible gap in the flow and should be revisited when notifications land.
+- **No attachments.** Out of scope with the rest of file storage.
+
+### Supersedes a closed decision
+
+**A-03 said observations are created manually by the Admin, and only that.** That is still true of
+`POST /sessions/observations`, which is unchanged — but it is no longer the whole story, and
+`software-architecture.md` A-03, C-02 and `CLAUDE.md` §9 all still describe the narrower rule.
+This flow appears in none of the four source documents; it was specified directly by the client.
 
 ---
 

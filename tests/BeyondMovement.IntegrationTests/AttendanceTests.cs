@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -79,7 +79,7 @@ public sealed class AttendanceTests(AthleteApiFactory factory) : IClassFixture<A
             name = optionName,
             sessions,
             defaultPriceMinor = 400_000L,
-            features = new[] { "Weekly video call" }
+            features = Features.Open("Weekly video call")
         });
 
         if (option.StatusCode != HttpStatusCode.Created)
@@ -168,7 +168,7 @@ public sealed class AttendanceTests(AthleteApiFactory factory) : IClassFixture<A
             name = "Attend – BR-03 second",
             sessions = 4,
             defaultPriceMinor = 400_000L,
-            features = new[] { "Weekly video call" }
+            features = Features.Open("Weekly video call")
         });
         var optionId = (await option.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
 

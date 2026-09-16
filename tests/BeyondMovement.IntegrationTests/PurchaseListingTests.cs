@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -55,7 +55,7 @@ public sealed class PurchaseListingTests(PurchaseListingApiFactory factory)
             name,
             sessions = 8,
             defaultPriceMinor = 400_000L,
-            features = new[] { "Weekly video call" }
+            features = Features.Open("Weekly video call")
         });
 
         if (response.StatusCode != HttpStatusCode.Created)
