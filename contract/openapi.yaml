@@ -3792,12 +3792,16 @@ paths:
       tags:
       - Session notes
       summary: Add a note to a session.
-      description: 'A session holds many notes rather than one editable block: the
-        screen offers add as well as edit, and a record that can only be overwritten
+      description: 'title AND content are both REQUIRED. title is what a history row
+        shows first: non-blank, trimmed, at most 200 characters. content is non-blank
+        and at most 4000. A session holds many notes rather than one editable block:
+        the screen offers add as well as edit, and a record that can only be overwritten
         loses what was written last time the first time something is added this time.
         Notes can be added to a session in any status - the coach often writes them
         up after it has been marked attended, and a cancelled session can still be
-        worth a line saying why.'
+        worth a line saying why. THE ATHLETE CAN READ THIS. Session notes are shared:
+        whatever is written here appears in the athlete''s own GET /me/notes. They
+        cannot change or delete it.'
       operationId: CreateSessionNote
       parameters:
       - name: sessionId
@@ -3850,10 +3854,13 @@ paths:
       tags:
       - Session notes
       summary: Rewrite a note.
-      description: Replaces the text. createdAtUtc deliberately stays put so the history
-        keeps its order when a note written days ago is corrected today; updatedAtUtc
-        moves. 404 SESSION_NOTE_NOT_FOUND covers a note that does not exist and one
-        that belongs to a different session alike.
+      description: Replaces BOTH title and content, and both are required every time
+        - there is no partial update, so sending only one is 400 VALIDATION_FAILED
+        rather than a change to that field alone. createdAtUtc deliberately stays
+        put so the history keeps its order when a note written days ago is corrected
+        today; updatedAtUtc moves, and comparing the two is how a client shows that
+        a note was edited. 404 SESSION_NOTE_NOT_FOUND covers a note that does not
+        exist and one that belongs to a different session alike.
       operationId: EditSessionNote
       parameters:
       - name: sessionId
@@ -3945,6 +3952,134 @@ paths:
                 $ref: '#/components/schemas/ApiProblemDetails'
         '404':
           description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/athletes/{athleteId}/notes:
+    get:
+      tags:
+      - Session notes
+      summary: An athlete's Session Notes History, newest first.
+      description: 'Every session note belonging to one athlete, gathered across ALL
+        their sessions in one call - the Admin''s Session Notes History screen. These
+        are the same notes POST and PUT /sessions/{sessionId}/notes write; there is
+        no second notes system. ALL DELIVERY TYPES appear together: Online, FaceToFace
+        and Observation. An observation is simply one sessionDeliveryType, so there
+        is no separate observation history and no isObservation flag - compare sessionDeliveryType
+        to "Observation" if the screen marks them. athleteId is the athlete''s USER
+        id, matching every other /athletes/{athleteId} route. An unknown one, or an
+        athlete belonging to another coach, is 404 ATHLETE_NOT_FOUND rather than an
+        empty page, because an empty page is a real answer and a bad id must not be
+        mistaken for one. PAGED in the usual envelope: items plus page, pageSize,
+        totalCount, totalPages, hasNextPage and hasPreviousPage. page starts at 1,
+        pageSize defaults to 20 and is capped at 100, and values outside the range
+        are clamped rather than rejected. Ordered by createdAtUtc DESCENDING with
+        the id breaking ties, so the order is total and a note cannot appear on two
+        pages. createdAtUtc does NOT move when a note is edited, so correcting an
+        old note does not jump it to the top; updatedAtUtc is what shows it was edited.
+        EVERY ROW CARRIES ITS SESSION - sessionId, sessionStartUtc, sessionEndUtc,
+        sessionDeliveryType, sessionStatus and sessionLocationOrPlatform - so the
+        screen renders a page without a second call per session, and sessionId is
+        what links a row back to GET /sessions/{sessionId}. An athlete who has never
+        had a note gets an EMPTY PAGE, not a 404.'
+      operationId: ListAthleteSessionNotes
+      parameters:
+      - name: athleteId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: page
+        in: query
+        schema:
+          type: integer
+          format: int32
+          default: 1
+      - name: pageSize
+        in: query
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedResultOfAthleteSessionNoteResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/me/notes:
+    get:
+      tags:
+      - Session notes
+      summary: The calling athlete's own Session Notes History, newest first.
+      description: 'The athlete''s own view of what their coach wrote about their
+        sessions. THE SAME RESPONSE AS THE ADMIN''S GET /api/v1/athletes/{athleteId}/notes,
+        item for item and field for field, so the two screens share one model. ALWAYS
+        THE CALLER''S OWN - there is no athlete id in the route or the body, so there
+        is nothing to authorise beyond being signed in as an athlete, and one athlete
+        can never read another''s notes. READ-ONLY. There is no POST, PUT or DELETE
+        here: notes are written by the Admin on Session Details and nowhere else,
+        and an athlete cannot add, edit or remove one. ALL DELIVERY TYPES appear together
+        - Online, FaceToFace and Observation - and EVERY note is included, those written
+        before notes were shared with athletes as well. PAGED in the usual envelope,
+        page from 1, pageSize 20 by default and capped at 100, clamped rather than
+        rejected. Ordered by createdAtUtc DESCENDING with the id breaking ties. An
+        athlete who has no notes, or who has not completed their profile yet, gets
+        an EMPTY PAGE rather than a 404.'
+      operationId: ListMySessionNotes
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          format: int32
+          default: 1
+      - name: pageSize
+        in: query
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedResultOfAthleteSessionNoteResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
           content:
             application/problem+json:
               schema:
@@ -4306,6 +4441,55 @@ components:
           - string
         profileCompleted:
           type: boolean
+    AthleteSessionNoteResponse:
+      required:
+      - id
+      - sessionId
+      - title
+      - content
+      - authorUserId
+      - createdAtUtc
+      - updatedAtUtc
+      - sessionStartUtc
+      - sessionEndUtc
+      - sessionDeliveryType
+      - sessionStatus
+      - sessionLocationOrPlatform
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        sessionId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        content:
+          type: string
+        authorUserId:
+          type: string
+          format: uuid
+        createdAtUtc:
+          type: string
+          format: date-time
+        updatedAtUtc:
+          type: string
+          format: date-time
+        sessionStartUtc:
+          type: string
+          format: date-time
+        sessionEndUtc:
+          type: string
+          format: date-time
+        sessionDeliveryType:
+          $ref: '#/components/schemas/DeliveryType'
+        sessionStatus:
+          $ref: '#/components/schemas/SessionStatus'
+        sessionLocationOrPlatform:
+          type:
+          - 'null'
+          - string
     AthleteStatusFilter:
       enum:
       - All
@@ -5077,6 +5261,34 @@ components:
           type: boolean
         hasPreviousPage:
           type: boolean
+    PagedResultOfAthleteSessionNoteResponse:
+      required:
+      - items
+      - page
+      - pageSize
+      - totalCount
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AthleteSessionNoteResponse'
+        page:
+          type: integer
+          format: int32
+        pageSize:
+          type: integer
+          format: int32
+        totalCount:
+          type: integer
+          format: int32
+        totalPages:
+          type: integer
+          format: int32
+        hasNextPage:
+          type: boolean
+        hasPreviousPage:
+          type: boolean
     PagedResultOfObservationRequestResponse:
       required:
       - items
@@ -5406,16 +5618,22 @@ components:
             $ref: '#/components/schemas/PackageFeature'
     SaveSessionNoteRequest:
       required:
+      - title
       - content
       type: object
       properties:
+        title:
+          maxLength: 200
+          type: string
         content:
+          maxLength: 4000
           type: string
     SessionNoteResponse:
       required:
       - id
       - sessionId
       - authorUserId
+      - title
       - content
       - createdAtUtc
       - updatedAtUtc
@@ -5430,6 +5648,8 @@ components:
         authorUserId:
           type: string
           format: uuid
+        title:
+          type: string
         content:
           type: string
         createdAtUtc:

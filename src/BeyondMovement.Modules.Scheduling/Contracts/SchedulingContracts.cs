@@ -179,12 +179,22 @@ public static class ObservationRequestMapping
         x.CreatedAtUtc, x.UpdatedAtUtc, x.ResolvedAtUtc);
 }
 
-public sealed record SaveSessionNoteRequest(string Content);
+/// <summary>
+/// Adding or rewriting a note. Both fields are required and both are replaced every time — the
+/// screen edits them together, so there is no partial update and no way to leave a note
+/// half-changed.
+/// </summary>
+/// <param name="Title">
+/// What the note is called, and what a history row shows first. Required, non-blank, trimmed, at
+/// most <see cref="SessionNote.MaxTitleLength"/> characters.
+/// </param>
+public sealed record SaveSessionNoteRequest(string Title, string Content);
 
 public sealed record SessionNoteResponse(
     Guid Id,
     Guid SessionId,
     Guid AuthorUserId,
+    string Title,
     string Content,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc);
@@ -192,5 +202,5 @@ public sealed record SessionNoteResponse(
 public static class SessionNoteMapping
 {
     public static SessionNoteResponse ToResponse(this SessionNote x) =>
-        new(x.Id, x.SessionId, x.AuthorUserId, x.Content, x.CreatedAtUtc, x.UpdatedAtUtc);
+        new(x.Id, x.SessionId, x.AuthorUserId, x.Title, x.Content, x.CreatedAtUtc, x.UpdatedAtUtc);
 }

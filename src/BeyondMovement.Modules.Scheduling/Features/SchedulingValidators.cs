@@ -138,6 +138,18 @@ public sealed class SaveSessionNoteValidator : AbstractValidator<SaveSessionNote
 {
     public SaveSessionNoteValidator()
     {
+        // Same shape as the content rule below: blankness first, then length on the trimmed
+        // value, so "   " is reported as empty rather than as a one-character title.
+        RuleFor(x => x.Title)
+            .Must(value => !string.IsNullOrWhiteSpace(value))
+            .WithName("title")
+            .WithMessage("A note needs a title.")
+            .DependentRules(() =>
+                RuleFor(x => x.Title.Trim())
+                    .MaximumLength(SessionNote.MaxTitleLength)
+                    .WithName("title")
+                    .WithMessage($"A title can be at most {SessionNote.MaxTitleLength} characters."));
+
         RuleFor(x => x.Content)
             .Must(value => !string.IsNullOrWhiteSpace(value))
             .WithName("content")

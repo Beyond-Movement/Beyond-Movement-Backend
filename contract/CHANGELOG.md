@@ -7,6 +7,224 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ---
 
+## Phase 13d — Session note titles, and notes shared with the athlete
+
+**BREAKING for Add/Edit Session Note.** `title` is now required on both write calls. Also: session
+notes are no longer private to the coach — the athlete reads their own.
+
+### BREAKING — a note has a required title
+
+```jsonc
+// POST and PUT /api/v1/sessions/{sessionId}/notes
+// was
+{ "content": "Held her line under pressure." }
+// now
+{ "title": "Composure", "content": "Held her line under pressure." }
+```
+
+- **`title`** — required, non-blank, trimmed, **at most 200 characters**. What a history row shows
+  first.
+- **`content`** — unchanged: required, non-blank, at most 4000.
+- **`PUT` replaces both.** There is no patch: sending only one field is `400 VALIDATION_FAILED`,
+  not a change to that field alone. The screen edits them together, and no order of two setters
+  leaves a note half-changed.
+- A missing or blank title is `400 VALIDATION_FAILED` with `Title` in `errors`.
+
+`title` is added to **every** note response: `SessionNoteResponse` (all four per-session routes)
+and `AthleteSessionNoteResponse` (both histories).
+
+**Ship the Admin app in step.** The moment this deploys, an app build that does not send `title`
+gets `400` on every Add and Edit.
+
+### Existing notes already have titles
+
+The migration backfilled every note that predates this from **its own first line**, cut to 200
+characters, falling back to `"Untitled note"` only if that yields nothing. Nothing was invented
+from outside the note, and the coach can rewrite any of them like any other title.
+
+### NEW — the athlete reads their own Session Notes History
+
+```
+GET /api/v1/me/notes?page=1&pageSize=20     200  paged     AthleteOnly
+```
+
+**Item for item and field for field the same response** as the Admin's
+`GET /api/v1/athletes/{athleteId}/notes`, so the two screens share one model.
+
+Always the caller's own: there is **no athlete id** in the route or the body, so there is nothing
+to authorise beyond being signed in as an athlete, and one athlete can never read another's notes.
+
+| Case | Answer |
+|---|---|
+| Athlete with notes | `200`, newest first, paged |
+| Athlete with no notes, or no completed profile | `200` with an **empty page** — not a 404 |
+| Admin calling it | `403` — it is athlete-only, like every other `/me` route |
+| Paused athlete | `403 ACCOUNT_PAUSED`, as everywhere |
+| No token | `401` |
+
+### Session notes are now shared — read this
+
+Notes were Admin-only when they were introduced. **They are not any more.** The athlete sees
+everything their coach has written about their sessions, and there is **no cutoff**: notes written
+before this decision are visible too.
+
+There is deliberately **no private note, no visibility flag and no per-note toggle**. A coach
+writing a note should assume the athlete will read it.
+
+**Read-only for the athlete.** There is no `POST`, `PUT` or `DELETE` under `/me/notes`, and the
+per-session write routes stay Admin-only and answer `403` to an athlete. Notes are written on
+Session Details and nowhere else.
+
+`GET /api/v1/sessions/{sessionId}/notes` **stays Admin-only** — it is the coach's working view of
+one session, and it is not the route that was opened up.
+
+### Unchanged
+
+- **Many notes per session.** No unique constraint on the session, no relationship change. The UX
+  may normally produce one note per session; the backend still stores as many as it is given.
+- `createdAtUtc` still does not move when a note is edited; `updatedAtUtc` still does. Both
+  histories are still ordered `createdAtUtc DESC` with the id breaking ties.
+- `GET /api/v1/athletes/{athleteId}/notes` is exactly as Phase 13c shipped it, plus `title`.
+- All delivery types still appear together, and there is still no `isObservation`.
+- **Still no attachments** — no `attachments` field, not even an empty one. That is a later slice
+  on shared Files infrastructure.
+
+### Migration
+
+`AddSessionNoteTitle` — adds the column nullable, backfills from each note's own first line, then
+makes it required. Three steps rather than one because the table already has rows: added
+`NOT NULL DEFAULT ''` in a single step, as the scaffolder proposed, every existing note would have
+been given an empty title, which the validator rejects — so the coach could not have edited such a
+note without first inventing a title for it. Verified against real rows, including a multi-line
+note, which took its first line.
+
+### For the app
+
+1. **Admin:** add a title field to Add/Edit Session Note. Both fields required; send both on edit.
+2. **Admin:** show `title` in the per-session list and in the Session Notes History.
+3. **Athlete:** new screen reading `GET /api/v1/me/notes` — the same model as the Admin history.
+   Read-only; no add, edit or delete affordance.
+4. Empty `items` is the empty state; there is no 404 for an athlete with no notes.
+5. Nothing else about notes changes.
+
+---
+
+## Phase 13c — Session Notes History
+
+**Purely additive.** One new read endpoint, no migration, no schema change, and **nothing about
+the existing session-note endpoints moves**. Add, edit, list-per-session and delete behave exactly
+as they did, including `createdAtUtc` staying frozen when a note is edited.
+
+The Admin can now open an athlete and see **every session note for that athlete in one place**,
+newest first, instead of opening each session in turn.
+
+### NEW — an athlete's Session Notes History (Admin only)
+
+```
+GET /api/v1/athletes/{athleteId}/notes?page=1&pageSize=20     200  paged
+```
+
+`athleteId` is the athlete's **USER** id, matching every other `/athletes/{athleteId}` route.
+
+```jsonc
+{
+  "items": [
+    {
+      "id": "…",                                  // the note
+      "sessionId": "…",                           // the session it belongs to
+      "content": "Worked on pre-race routine.",
+      "authorUserId": "…",
+      "createdAtUtc": "2026-09-14T11:02:00Z",
+      "updatedAtUtc": "2026-09-14T11:02:00Z",
+      "sessionStartUtc": "2026-09-14T09:00:00Z",  // the session, inlined
+      "sessionEndUtc":   "2026-09-14T10:00:00Z",
+      "sessionDeliveryType": "Observation",       // Online | FaceToFace | Observation
+      "sessionStatus": "Attended",                // Scheduled | Attended | Cancelled | NoShow
+      "sessionLocationOrPlatform": "Cairo International Stadium"
+    }
+  ],
+  "page": 1, "pageSize": 20, "totalCount": 37,
+  "totalPages": 2, "hasNextPage": true, "hasPreviousPage": false
+}
+```
+
+### These are the same notes, not a second system
+
+Every row here was written by `POST` or `PUT /api/v1/sessions/{sessionId}/notes`. There is no
+separate notes entity, no copy, and nothing to keep in step: editing a note through the per-session
+endpoint changes what this returns, and deleting one removes it from here. This endpoint is
+**read-only** — notes are still written on Session Details and nowhere else.
+
+### All delivery types, one list
+
+`Online`, `FaceToFace` and `Observation` notes appear **together**, ordered as one history.
+
+**An observation is simply one `sessionDeliveryType`.** There is no separate observation history
+and **no `isObservation` field** — it would be `sessionDeliveryType` compared to one value, and a
+second copy of one fact is how two fields end up disagreeing. If the screen marks observations,
+compare `sessionDeliveryType` to `"Observation"`.
+
+### Ordering
+
+`createdAtUtc` **descending**, with the note `id` breaking ties so the order is total and a note
+cannot appear on two pages or be skipped between them.
+
+`createdAtUtc` **does not move when a note is edited** — this is existing behaviour and the reason
+the history stays stable: correcting a note written last week does not jump it to the top.
+`updatedAtUtc` is what shows it was edited, and the app can render "edited" by comparing the two.
+
+### Why the session fields are inlined
+
+Each row carries its session, so the screen renders a page **without a second call per session**.
+
+It is deliberately **not** a nested `SessionResponse`: that model carries `athleteName`, which is
+redundant on a screen already scoped to one athlete, and `meetingUrl` / `rescheduleUrl`, which are
+join links that would invite the app to offer "join" against a session that finished months ago.
+
+`sessionId` is on every row and is what links a note back to Session Details —
+`GET /api/v1/sessions/{sessionId}`. **No note-details endpoint exists or is needed**; everything
+about a note is already in the row.
+
+### Paging
+
+The usual envelope: `items`, `page`, `pageSize`, `totalCount`, `totalPages`, `hasNextPage`,
+`hasPreviousPage`. `page` starts at 1, `pageSize` defaults to 20 and is capped at 100. Values
+outside the range are **clamped, not rejected** — `page=0` reads as 1, `pageSize=5000` as 100.
+
+Page until `hasNextPage` is false rather than until a short page.
+
+### Errors and access
+
+| Case | Answer |
+|---|---|
+| Athlete not found, or belongs to another coach | `404 ATHLETE_NOT_FOUND` |
+| Athlete exists, has no notes | `200` with an **empty page** — a real answer, not an error |
+| Caller is an athlete | `403` |
+| No token | `401` |
+
+Admin only, as the per-session note endpoints already are. **Session notes remain invisible to
+athletes**; nothing in this change exposes them. The coach identity comes from the token and never
+from the route, so another coach's athlete is a `404` rather than a `403` — an id must not be
+probed for existence.
+
+### No image attachments
+
+Notes carry **no attachments**, and there is deliberately no `attachments` field on this response
+— not even an empty placeholder. Image support will be designed separately on shared Files
+infrastructure, and adding it later is an additive change.
+
+### For the app
+
+1. One `SessionNote` model for this screen, flat, with the `session*` fields inlined.
+2. Call `GET /api/v1/athletes/{athleteId}/notes` from the Athlete Profile with the same athlete id
+   the profile screen already holds.
+3. Render newest first; page until `hasNextPage` is false.
+4. Use `sessionDeliveryType` to label the row, and `sessionId` to navigate to Session Details.
+5. `404 ATHLETE_NOT_FOUND` is a real error; an empty `items` array is the empty state.
+6. Nothing about Session Details or its Add/Edit note behaviour changes.
+
+---
+
 ## Phase 13b — Recognised package features, and Observation eligibility
 
 **BREAKING for the package screens.** `features` changes shape everywhere it appears, and the

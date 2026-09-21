@@ -474,18 +474,24 @@ public sealed class AttendanceTests(AthleteApiFactory factory) : IClassFixture<A
         var sessionId = await ObservationAsync(admin, profileId, minutes: 75, deductSession: true);
 
         var created = await admin.PostAsJsonAsync(
-            $"/api/v1/sessions/{sessionId}/notes", new { content = "Held her line under pressure." });
+            $"/api/v1/sessions/{sessionId}/notes",
+            new { title = "Composure", content = "Held her line under pressure." });
 
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         var note = await created.Content.ReadFromJsonAsync<JsonElement>();
         var noteId = note.GetProperty("id").GetGuid();
 
+        Assert.Equal("Composure", note.GetProperty("title").GetString());
+
         var edited = await admin.PutAsJsonAsync(
-            $"/api/v1/sessions/{sessionId}/notes/{noteId}", new { content = "Held her line under real pressure." });
+            $"/api/v1/sessions/{sessionId}/notes/{noteId}",
+            new { title = "Composure under pressure", content = "Held her line under real pressure." });
 
         Assert.Equal(HttpStatusCode.OK, edited.StatusCode);
         var updated = await edited.Content.ReadFromJsonAsync<JsonElement>();
 
+        // Both are replaced together - the edit is a full replacement, not a patch.
+        Assert.Equal("Composure under pressure", updated.GetProperty("title").GetString());
         Assert.Equal("Held her line under real pressure.", updated.GetProperty("content").GetString());
 
         // Editing keeps the note where it sits in the history. Compared with a tolerance
@@ -510,8 +516,13 @@ public sealed class AttendanceTests(AthleteApiFactory factory) : IClassFixture<A
             (await admin.DeleteAsync($"/api/v1/sessions/{sessionId}/notes/{noteId}")).StatusCode);
     }
 
+    /// <summary>
+    /// The per-session endpoint stays Admin-only. Session notes ARE shared with the athlete since
+    /// 2026-09-21, but they read them through their own <c>GET /me/notes</c> — this route is the
+    /// coach's working view of one session and is not the one that was opened up.
+    /// </summary>
     [Fact]
-    public async Task An_athlete_cannot_read_the_coachs_session_notes()
+    public async Task An_athlete_cannot_use_the_per_session_notes_endpoint()
     {
         var admin = await AdminClientAsync();
         var profileId = await ProfileIdAsync("alex@nowhere.test");

@@ -199,6 +199,7 @@ builder.Services.AddScoped<SchedulingService>();
 builder.Services.AddScoped<ObservationRequestService>();
 builder.Services.AddScoped<ObservationRequestReader>();
 builder.Services.AddScoped<ObservationEligibility>();
+builder.Services.AddScoped<SessionNoteHistoryReader>();
 builder.Services.AddSingleton<ICalendlyWebhookVerifier, CalendlyWebhookVerifier>();
 builder.Services.AddSingleton<ICalendlyWebhookParser, CalendlyWebhookParser>();
 builder.Services.AddHttpClient<ICalendlyClient, CalendlyClient>((sp, client) =>

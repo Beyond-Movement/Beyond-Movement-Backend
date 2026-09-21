@@ -263,7 +263,37 @@ The exact workflow and level of integration will be finalized during implementat
 
 - ​ This may initially function as a simple external link from the athlete's profile.
 
-- ​ No separate in-app Whiteboard & Notes screen is required at this stage.
+- ​ ~~No separate in-app Whiteboard & Notes screen is required at this stage.~~ **Superseded — see Session Notes History below.**
+
+**Session Notes History (client decision, 2026-09-16 — supersedes the struck-through line above)**
+
+The Admin has an in-app screen showing **all session notes for one athlete**, reached from the
+Athlete Profile. It is called **Session Notes History**, and the product term for an individual
+entry is a **Session Note**. Note that this is *not* the same thing as the external Whiteboard &
+Notes link above, which remains as described; the two sit side by side.
+
+- ​ The notes are exactly the ones Coach Session Notes writes on Session Details. There is no
+second notes system and no independent notes entity.
+
+- ​ **All session delivery types appear together** — Online, Face-to-Face and Observation. An
+observation is simply one delivery type; there is no separate observation-notes history.
+
+- ​ Newest first, paged, and every entry names the session it belongs to so the screen can link
+back to Session Details.
+
+- ​ ~~Admin only. Session notes remain invisible to athletes.~~ **Superseded (2026-09-21): session
+notes are shared.** The Admin sees an athlete's history at
+`GET /api/v1/athletes/{athleteId}/notes`; the **athlete reads their own** at
+`GET /api/v1/me/notes`, including notes written before this decision. Reading only — an athlete
+can never add, edit or delete a note, and Add/Edit on Session Details stays Admin-only.
+
+- ​ **Each note has a required Title** (up to 200 characters) as well as its content. The title is
+what a history row shows first. Older notes were given a title taken from their own first line.
+
+- ​ Image attachments on notes are **not** part of this screen. They will be designed separately,
+on shared Files infrastructure rather than a note-specific upload.
+
+Backend: `GET /api/v1/athletes/{athleteId}/notes` — see `contract/CHANGELOG.md`, Phase 13c.
 
 Account Management Account-level actions are accessed through the three-dot (•••) menu on the Athlete Profile.
 
@@ -393,7 +423,7 @@ Session Status Possible statuses include:
 
 - ​ Cancelled
 
-Coach Session Notes The coach can add or edit notes related specifically to this session. These notes become part of the athlete’s overall Whiteboard & Notes history.
+Coach Session Notes The coach can add or edit notes related specifically to this session. Each note has a **Title** and content, both required, and editing replaces both. These notes become part of the athlete’s overall **Session Notes History** (see Athlete Profile → Quick Actions), read by the Admin at `GET /api/v1/athletes/{athleteId}/notes` and **by the athlete themselves** at `GET /api/v1/me/notes`. This screen remains the only place notes are written; both histories are reads over these same rows. **Whatever the coach writes here, the athlete can read.**
 
 Mark as Attended The main action button is: Mark as Attended.
 

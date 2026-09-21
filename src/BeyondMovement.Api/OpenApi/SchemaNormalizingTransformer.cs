@@ -8,6 +8,7 @@ using BeyondMovement.Modules.Packages.Contracts;
 using BeyondMovement.Modules.Packages.Domain;
 using BeyondMovement.Modules.Scheduling;
 using BeyondMovement.Modules.Scheduling.Contracts;
+using BeyondMovement.Modules.Scheduling.Domain;
 using BeyondMovement.SharedKernel;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.OpenApi;
@@ -143,6 +144,11 @@ public sealed class SchemaNormalizingTransformer : IOpenApiSchemaTransformer
             });
 
             Limit(schema, "version", s => s.Minimum = "1");
+        }
+        else if (type == typeof(SaveSessionNoteRequest))
+        {
+            Limit(schema, "title", s => s.MaxLength = SessionNote.MaxTitleLength);
+            Limit(schema, "content", s => s.MaxLength = SessionNote.MaxContentLength);
         }
         else if (type == typeof(PackageFeature))
         {

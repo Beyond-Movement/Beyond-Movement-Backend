@@ -240,6 +240,56 @@ on every row that could exist. **Do not add one.** See `contract/CHANGELOG.md` �
 
 So `product-specification.md` §4.5, `software-architecture.md` §14.3 and `development-roadmap.md` Phase 4 describe work that is now **partly built** — read `contract/CHANGELOG.md` → "Phase 6" for what actually shipped.
 
+### 8.2 Session Notes History — the UX document is superseded
+
+`ui-ux-design-decisions.md` said *"No separate in-app Whiteboard & Notes screen is required at
+this stage."* **The client has since decided otherwise (2026-09-16).** The Admin now has an in-app
+**Session Notes History** screen on the Athlete Profile, showing every session note for one
+athlete. The UX document has been annotated in place; this is the register entry.
+
+- The product terms are **Session Note** and **Session Notes History**. It is *not*
+  "Notes & Observations" — an observation is one delivery type, not a category of note.
+- It reads the **existing** `SessionNote` rows. Add/Edit Session Note on Session Details remains
+  the only way a note is written, and there is **no second notes entity or module**. Do not create
+  one.
+- All delivery types appear in one list: `Online`, `FaceToFace`, `Observation`. There is no
+  separate observation history and deliberately **no `isObservation` flag** — it would be
+  `sessionDeliveryType` compared to one value.
+- ~~Admin only. Session notes are still never shown to athletes.~~ **Superseded — see §8.3.**
+- **Image attachments on notes are not built and are not in the product specification.** When they
+  come, they use shared Files infrastructure (architecture §4.7, the pre-signed upload pipeline),
+  not a note-specific upload. Do not build a note attachment table.
+
+`GET /api/v1/athletes/{athleteId}/notes` — see `contract/CHANGELOG.md` → "Phase 13c".
+
+### 8.3 Session notes are shared with the athlete, and carry a title
+
+**Client decision, 2026-09-21.** Two changes to the notes model, both deliberate and both
+reversing something an earlier comment in this codebase asserted.
+
+**Notes are no longer private to the coach.** The athlete reads their own through
+`GET /api/v1/me/notes`, and that includes **every note, with no cutoff** — notes written before
+this decision are visible too. The client was shown the alternatives (a visibility flag, a date
+cutoff, a per-note toggle) and chose full exposure. **Do not add `VisibleToAthlete`, a private-note
+concept, or any cutoff.** A coach writing a note should assume the athlete will read it.
+
+- **Reading** is open to the athlete for their own notes only. **Writing stays Admin-only** — an
+  athlete can never create, edit or delete one, and there is no write route under `/me/notes`.
+- `GET /api/v1/sessions/{sessionId}/notes` stays Admin-only. It is the coach's working view of one
+  session; the athlete's route is `/me/notes`.
+
+**A note now has a required `Title`** (max 200), alongside `Content` (max 4000). `POST` and `PUT
+/sessions/{sessionId}/notes` both require it — a **breaking change** for the Admin app. The edit is
+a full replacement of both fields; there is no patch.
+
+Notes that predate titles were backfilled in `AddSessionNoteTitle` from **their own first line**,
+falling back to `'Untitled note'`. That is a restatement of the note's own text, not a fact copied
+from elsewhere, and it is editable like any other title.
+
+**The many-notes-per-session model is unchanged and must stay.** There is no unique constraint on
+`SessionId` and the product may store several notes against one session, whatever the UX usually
+produces.
+
 **`contract/CHANGELOG.md` is the working source of truth for API behaviour.** It is regenerated and reviewed with every change; the four source documents are not. When they disagree, the changelog is what shipped.
 
 ---

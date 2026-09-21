@@ -191,6 +191,7 @@ public sealed class SessionNoteConfiguration : IEntityTypeConfiguration<SessionN
     {
         b.ToTable("SessionNotes");
         b.HasKey(x => x.Id);
+        b.Property(x => x.Title).IsRequired().HasMaxLength(SessionNote.MaxTitleLength);
         b.Property(x => x.Content).IsRequired().HasMaxLength(SessionNote.MaxContentLength);
 
         // The two reads: one session's notes, and the athlete's history assembled from the
