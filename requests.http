@@ -5,10 +5,13 @@
 @host = http://localhost:5229
 @email = lillysynchro@gmail.com
 
-# Fill this in locally and do not commit the value. It is whatever you set as
-#   dotnet user-secrets set "Seed:AdminPassword" "<value>" --project src/BeyondMovement.Api
-# Read it back with: dotnet user-secrets list --project src/BeyondMovement.Api
-@password = PUT_YOUR_LOCAL_SEED_PASSWORD_HERE
+# No password is stored in this file. The requests that need one prompt for it
+# and mask the input. User secrets stay the single source of truth - read the
+# value back with:
+#   dotnet user-secrets list --project src/BeyondMovement.Api
+
+# Synthetic fixture for the password-policy happy paths. Never a real credential.
+@newPassword = Example-Not-A-Real-Password-1
 
 ### health — proves the database connection
 GET {{host}}/health
@@ -18,6 +21,7 @@ GET {{host}}/api/v1/ping
 
 ### ---------------------------------------------------------------- login
 # @name login
+# @prompt password  Seed:AdminPassword from user secrets - input is masked
 POST {{host}}/api/v1/auth/login
 Content-Type: application/json
 
@@ -117,7 +121,7 @@ Content-Type: application/json
 POST {{host}}/api/v1/auth/reset-password
 Content-Type: application/json
 
-{ "token": "PASTE_TOKEN_FROM_THE_API_CONSOLE", "newPassword": "Replacement#Pass2026" }
+{ "token": "PASTE_TOKEN_FROM_THE_API_CONSOLE", "newPassword": "{{newPassword}}" }
 
 ### rejected: shorter than 8 characters
 POST {{host}}/api/v1/auth/reset-password
@@ -133,11 +137,12 @@ Content-Type: application/json
 
 ### ----------------------------------------------------- change password
 # Revokes every refresh token, including this device's.
+# @prompt password  The current Seed:AdminPassword - input is masked
 POST {{host}}/api/v1/auth/change-password
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
-{ "currentPassword": "{{password}}", "newPassword": "Replacement#Pass2026" }
+{ "currentPassword": "{{password}}", "newPassword": "{{newPassword}}" }
 
 ### --------------------------------------------------------- the contract
 # Save this response as contract/openapi.yaml after converting it to YAML.
