@@ -174,6 +174,10 @@ builder.Services.AddScoped<SetLoyaltyHandler>();
 builder.Services.AddScoped<CatalogueReader>();
 builder.Services.AddScoped<PackagePurchaseService>();
 
+// What a purchased package was spent on. Spans Packages, Scheduling and Athletes, so it lives
+// here for the same reason CatalogueReader does, and reads only.
+builder.Services.AddScoped<PackageSessionHistoryReader>();
+
 // Purchase and payment - Phase 8. Writes to Finance and Packages at once, so it lives in the
 // Api project for the same reason attendance does.
 builder.Services.Configure<InstaPayOptions>(

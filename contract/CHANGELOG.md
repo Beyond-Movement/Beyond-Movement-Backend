@@ -7,6 +7,128 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ---
 
+## Phase 13e — Package Session History
+
+**Additive. Nothing existing changed.** Two new read endpoints answer "what was this package spent
+on?", for the Admin on Athlete Profile and for the athlete on their own Package History.
+
+```
+GET /api/v1/packages/{packageId}/sessions?page=1&pageSize=20        200  paged  AdminOnly
+GET /api/v1/me/packages/{packageId}/sessions?page=1&pageSize=20     200  paged  AthleteOnly
+```
+
+The two are **item for item and field for field the same response**, so one screen serves both.
+
+### `packageId` is the purchased package, never the catalogue entry
+
+This is the likeliest mistake to make, so it is worth saying plainly. There are two ids in play:
+
+| Field | What it is | Use it here? |
+|---|---|---|
+| `PurchasedPackageResponse.id` | The package **this athlete owns** | **Yes** |
+| `PurchasedPackageResponse.packageOptionId` | The **catalogue entry** it was bought from | **No** |
+
+A `packageOptionId` is shared by every athlete who ever bought that option. Passing one returns
+`404 PACKAGE_NOT_FOUND` rather than anybody's sessions.
+
+Reach `packageId` from the active-package card (`GET /athletes/{athleteId}/packages/active`, or
+`GET /me/package`) or from any row of the history (`GET /athletes/{athleteId}/packages`, or
+`GET /me/packages`). Historical packages work exactly as the active one does.
+
+### Only sessions that CONSUMED from the package appear
+
+A session is in the list **exactly when it took one session off that package**. This is the whole
+definition, and it is what makes the list trustworthy:
+
+> **`totalCount` equals the package's `usedSessions`.** Always.
+
+| Session | In the list? | Why |
+|---|---|---|
+| Attended | **Yes** | BR-05 — it consumed one |
+| No-show the coach **charged** | **Yes** | The coach chose to deduct it |
+| Observation the coach chose **deducts** | **Yes** | BR-07 — it consumed one |
+| **Scheduled** | No | BR-04 — a booking deducts nothing |
+| **Cancelled** | No | BR-06 — a cancellation deducts nothing |
+| No-show the coach did **not** charge | No | It cost the athlete nothing |
+| Observation the coach chose does **not** deduct | No | It cost the athlete nothing |
+
+So `status` is always `Attended` or `NoShow`, and never `Scheduled` or `Cancelled`.
+
+**This is not a list of everything that was arranged around a package.** A session the athlete
+cancelled is real history and is simply not what this endpoint answers — use
+`GET /api/v1/sessions` for that. There is deliberately no flag to include the others: the count
+matching `usedSessions` is the property the screen relies on, and an option to break it would
+make that guarantee conditional.
+
+### The row
+
+```jsonc
+{
+  "id": "…",                              // the session → GET /api/v1/sessions/{id}
+  "startUtc": "2026-03-02T09:00:00Z",
+  "endUtc":   "2026-03-02T10:00:00Z",
+  "durationMinutes": 60,
+  "deliveryType": "Online",               // Online | FaceToFace | Observation
+  "status": "Attended",                   // Attended | NoShow — never anything else
+  "locationOrPlatform": "Zoom",           // nullable
+  "consumedPackagePosition": 3,           // the N in "Session N" — always present
+  "attendedAtUtc": "2026-03-02T10:05:11Z",// null on a no-show
+  "hasNotes": true
+}
+```
+
+- **`consumedPackagePosition`** is one-based and always present — a row without a deduction is not
+  in this list at all. It records the order the sessions were **deducted** in, which is the order
+  the coach resolved them. That is almost always the order they happened in, but a coach who marks
+  Thursday attended before Tuesday gives Thursday the lower position. **Render the row order for
+  "Session 1, 2, 3…" and treat this as the recorded position**, or the two can disagree.
+- **`attendedAtUtc`** is `null` on a no-show, which did not attend anything.
+- **`hasNotes`** says whether there is anything to expand into, so a list renders without a call
+  per session. The notes themselves stay at `GET /sessions/{sessionId}/notes` (Admin) and
+  `GET /me/notes` (athlete) — a second copy here could disagree with those.
+
+Deliberately absent, on **both** routes: `meetingUrl`, `rescheduleUrl`, `cancelUrl`,
+`attendedByUserId`, the Calendly identifiers and `athleteName`. Join links have no business in a
+history view, and a screen already scoped to one athlete's package does not need their name.
+
+### Ordering — oldest first
+
+`startUtc` **ASCENDING**, with the id breaking ties so the order is total and a session cannot
+appear on two pages.
+
+**This is the opposite of the package history and the notes history**, which are newest first. It
+is deliberate: a package reads as the course it was — Session 1, then 2, then 3.
+
+Paged in the usual envelope: `items` plus `page`, `pageSize`, `totalCount`, `totalPages`,
+`hasNextPage`, `hasPreviousPage`. `page` starts at 1, `pageSize` defaults to 20 and is capped at
+100, and values outside the range are clamped rather than rejected.
+
+### Answers
+
+| Case | Answer |
+|---|---|
+| Package with deductions | `200`, oldest first, paged |
+| Package nothing has been spent from yet | `200` with an **empty page** — not a 404 |
+| Closed or completed package | `200` — history is the point |
+| Unknown `packageId`, or a `packageOptionId` | `404 PACKAGE_NOT_FOUND` |
+| Another coach's package (Admin route) | `404 PACKAGE_NOT_FOUND` — indistinguishable |
+| Another athlete's package (`/me` route) | `404 PACKAGE_NOT_FOUND` — indistinguishable |
+| Athlete calling the Admin route | `403` |
+| Admin calling the `/me` route | `403` |
+| Paused athlete | `403 ACCOUNT_PAUSED`, as everywhere |
+| No token | `401` |
+
+A foreign package is a **404, not a 403**, on both routes, so a package id cannot be probed for
+existence — the same rule every other resource in this API follows.
+
+### Historical accuracy
+
+Editing or archiving the catalogue option a package came from **does not touch this list**. The
+package carries its own snapshot of what was bought and nothing here is looked up from the
+option, so a package sold a year ago still reads exactly as it was.
+
+---
+
 ## Phase 13d — Session note titles, and notes shared with the athlete
 
 **BREAKING for Add/Edit Session Note.** `title` is now required on both write calls. Also: session

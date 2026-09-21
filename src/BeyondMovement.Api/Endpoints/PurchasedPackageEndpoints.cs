@@ -109,6 +109,49 @@ public static class PurchasedPackageEndpoints
             .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson)
             .Produces<ApiProblemDetails>(StatusCodes.Status404NotFound, ProblemJson);
 
+        packages.MapGet("/{packageId:guid}/sessions", Sessions)
+            .WithName("ListPackageSessions")
+            .WithSummary("The sessions one package was spent on, oldest first.")
+            .WithDescription(
+                "packageId is the id of the PURCHASED PACKAGE - the id on this athlete's active " +
+                "package or on any row of their package history - and NOT packageOptionId, which " +
+                "is the catalogue entry and is shared by every athlete who ever bought it. " +
+                "Passing a packageOptionId here is 404 PACKAGE_NOT_FOUND. " +
+                "ONLY SESSIONS THAT CONSUMED FROM THIS PACKAGE APPEAR. A session is in this list " +
+                "exactly when it took one session off the package, so the total count of the " +
+                "whole list equals the package's usedSessions. An attended session is included; " +
+                "a no-show is included when the coach chose to charge it; an observation is " +
+                "included when the coach chose that it deducts. A SCHEDULED session, a CANCELLED " +
+                "one, a no-show the coach chose not to charge and a non-deducting observation " +
+                "are all ABSENT - they took nothing off the package, so they are not part of " +
+                "what it was spent on. Use GET /api/v1/sessions to list what is merely arranged. " +
+                "status is therefore always Attended or NoShow and never Scheduled or Cancelled. " +
+                "consumedPackagePosition is the one-based position the deduction took - the N in " +
+                "\"Session N\" - and is always present. It records the order the sessions were " +
+                "DEDUCTED in, which is the order the coach resolved them; that is almost always " +
+                "the order they happened in, but a coach who marks Thursday attended before " +
+                "Tuesday gives Thursday the lower position, so read it as the recorded position " +
+                "rather than as the row number. " +
+                "attendedAtUtc is null on a no-show, which did not attend anything. hasNotes " +
+                "says whether the session has at least one note, so a row can show there is " +
+                "something to expand into without a call per session; the notes themselves are " +
+                "at GET /api/v1/sessions/{sessionId}/notes. " +
+                "PAGED in the usual envelope: items plus page, pageSize, totalCount, totalPages, " +
+                "hasNextPage and hasPreviousPage. page starts at 1, pageSize defaults to 20 and " +
+                "is capped at 100, and values outside the range are clamped rather than " +
+                "rejected. " +
+                "Ordered by startUtc ASCENDING - oldest first, so the package reads as the course " +
+                "it was - with the id breaking ties so the order is total and a session cannot " +
+                "appear on two pages. That is the OPPOSITE of the package history and the notes " +
+                "history, which are newest first. " +
+                "A package nobody has spent anything from yet gets an EMPTY PAGE, not a 404: it " +
+                "is a real answer and the screen should show its empty view. An unknown package, " +
+                "or one belonging to another coach, is 404 PACKAGE_NOT_FOUND.")
+            .Produces<PagedResult<PackageSessionResponse>>()
+            .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
+            .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson)
+            .Produces<ApiProblemDetails>(StatusCodes.Status404NotFound, ProblemJson);
+
         packages.MapPost("/{id:guid}/close", Close)
             .WithName("ClosePackage")
             .WithSummary("End a package early.")
@@ -152,6 +195,26 @@ public static class PurchasedPackageEndpoints
             .Produces<PagedResult<PurchasedPackageResponse>>()
             .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
             .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson);
+
+        mine.MapGet("/packages/{packageId:guid}/sessions", MyPackageSessions)
+            .WithName("ListMyPackageSessions")
+            .WithSummary("The sessions one of the calling athlete's own packages was spent on.")
+            .WithDescription(
+                "THE SAME RESPONSE AS THE ADMIN'S GET /api/v1/packages/{packageId}/sessions, " +
+                "item for item and field for field, so the two screens share one model. Read " +
+                "that endpoint for what the list means; everything it says applies here. " +
+                "packageId is the id of one of the caller's OWN purchased packages - from GET " +
+                "/api/v1/me/package or any row of GET /api/v1/me/packages - and not a " +
+                "packageOptionId. " +
+                "ALWAYS THE CALLER'S OWN. A package belonging to another athlete is 404 " +
+                "PACKAGE_NOT_FOUND, exactly as an id that does not exist is, so one athlete can " +
+                "neither read another's sessions nor learn that their package id is real. " +
+                "READ-ONLY, and it exposes nothing the athlete cannot already read about their " +
+                "own sessions through GET /api/v1/sessions/{sessionId}.")
+            .Produces<PagedResult<PackageSessionResponse>>()
+            .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
+            .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson)
+            .Produces<ApiProblemDetails>(StatusCodes.Status404NotFound, ProblemJson);
 
         mine.MapGet("/package", MyPackage)
             .WithName("GetMyPackage")
@@ -283,6 +346,62 @@ public static class PurchasedPackageEndpoints
         return package is null
             ? PackageErrors.PackageNotFound.ToProblem(http)
             : Results.Ok(package.ToResponse());
+    }
+
+    /// <summary>
+    /// What one package was spent on. The coach id comes from the token and never from the
+    /// route, so a package belonging to somebody else does not resolve and the caller gets the
+    /// same 404 as for an id that does not exist.
+    /// </summary>
+    private static async Task<IResult> Sessions(
+        Guid packageId, PackageSessionHistoryReader reader, ClaimsPrincipal principal,
+        HttpContext http, CancellationToken ct,
+        int page = 1, int pageSize = PagedResult<PackageSessionResponse>.DefaultPageSize)
+    {
+        if (!principal.TryGetIdentity(out _, out var coachId)) return Results.Unauthorized();
+
+        var (normalizedPage, normalizedSize) =
+            PagedResult<PackageSessionResponse>.Normalize(page, pageSize);
+
+        var result = await reader.ReadAsync(coachId, packageId, normalizedPage, normalizedSize, ct);
+
+        return result is null
+            ? PackageErrors.PackageNotFound.ToProblem(http)
+            : Results.Ok(result);
+    }
+
+    /// <summary>
+    /// The same list for one of the calling athlete's own packages. The profile id comes from the
+    /// token, so the ownership test the reader applies cannot be pointed at anyone else.
+    /// <para>
+    /// An athlete with no profile — registered but never completed — cannot own a package, so
+    /// every id is a 404 for them. That is the same answer they would get for someone else's
+    /// package, which is what it effectively is.
+    /// </para>
+    /// </summary>
+    private static async Task<IResult> MyPackageSessions(
+        Guid packageId, PackageSessionHistoryReader reader, AppDbContext db,
+        ClaimsPrincipal principal, HttpContext http, CancellationToken ct,
+        int page = 1, int pageSize = PagedResult<PackageSessionResponse>.DefaultPageSize)
+    {
+        if (!principal.TryGetIdentity(out var userId, out var coachId)) return Results.Unauthorized();
+
+        var (normalizedPage, normalizedSize) =
+            PagedResult<PackageSessionResponse>.Normalize(page, pageSize);
+
+        var athleteProfileId = await db.AthleteProfiles.AsNoTracking()
+            .Where(x => x.UserId == userId && x.CoachId == coachId && x.DeletedAtUtc == null)
+            .Select(x => (Guid?)x.Id)
+            .SingleOrDefaultAsync(ct);
+
+        var result = athleteProfileId is null
+            ? null
+            : await reader.ReadForAthleteAsync(
+                coachId, athleteProfileId.Value, packageId, normalizedPage, normalizedSize, ct);
+
+        return result is null
+            ? PackageErrors.PackageNotFound.ToProblem(http)
+            : Results.Ok(result);
     }
 
     private static async Task<IResult> Close(
