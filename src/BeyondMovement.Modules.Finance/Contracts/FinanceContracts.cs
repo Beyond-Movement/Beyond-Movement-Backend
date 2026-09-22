@@ -60,8 +60,15 @@ public sealed record CreatePurchaseRequest(Guid PackageOptionId);
 /// This is the id to hand to <c>GET /api/v1/packages/{id}</c>.
 /// </param>
 /// <param name="PaidByUserId">
-/// The Admin who confirmed payment. Null while Pending, and also null on the purchases
-/// backfilled onto packages that pre-date this phase, where the confirming user is unknown.
+/// The Admin who confirmed payment. Null in three cases, and <b>never a reason to disbelieve
+/// <see cref="Status"/></b>: while Pending; on the purchases backfilled onto packages that
+/// pre-date this phase, where the confirming user is unknown; and on a purchase whose
+/// <see cref="PriceMinor"/> was zero, which completed itself because there was no payment to
+/// confirm and so has no confirming Admin to name.
+/// <para>
+/// Read <see cref="Status"/> and <see cref="PurchasedPackageId"/> to know whether a purchase is
+/// done. This field says who, not whether.
+/// </para>
 /// </param>
 public sealed record PackagePurchaseResponse(
     Guid Id,

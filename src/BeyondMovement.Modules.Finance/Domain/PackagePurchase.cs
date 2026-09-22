@@ -231,8 +231,8 @@ public sealed class PackagePurchase
     }
 
     /// <summary>
-    /// The Admin confirms the money arrived, and the package the athlete bought comes into
-    /// existence. The single allowed transition.
+    /// The money arrived, and the package the athlete bought comes into existence. The single
+    /// allowed transition.
     /// <para>
     /// Repeating it is not an error at the API surface: the endpoint hands back the package this
     /// purchase already produced rather than making a second one. This guard is what tells the
@@ -241,7 +241,20 @@ public sealed class PackagePurchase
     /// confirmation path takes.
     /// </para>
     /// </summary>
-    public Result MarkPaid(Guid purchasedPackageId, Guid actorUserId, DateTime nowUtc)
+    /// <param name="actorUserId">
+    /// The Admin who confirmed the payment, or <b>null when there was no payment to confirm</b> —
+    /// a purchase whose resolved price is zero, which completes itself at selection because
+    /// waiting for somebody to confirm that nothing arrived is waiting forever.
+    /// <para>
+    /// Null is recorded rather than the athlete's own id. An athlete can never confirm a payment,
+    /// and writing their id into a field called <see cref="PaidByUserId"/> would put a claim in
+    /// payment history that nobody made. The column is already nullable for the purchases
+    /// backfilled onto pre-Phase-8 packages, and
+    /// <c>CK_PackagePurchases_PaidConsistency</c> deliberately does not mention it: what a Paid
+    /// row must carry is the moment and the package, not a confirming user.
+    /// </para>
+    /// </param>
+    public Result MarkPaid(Guid purchasedPackageId, Guid? actorUserId, DateTime nowUtc)
     {
         if (Status == PurchasePaymentStatus.Paid)
             return Result.Failure(FinanceErrors.PurchaseAlreadyPaid);

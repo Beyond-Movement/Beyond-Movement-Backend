@@ -43,7 +43,7 @@ public static class PurchaseEndpoints
 
         mine.MapPost(string.Empty, Select)
             .WithName("CreatePurchase")
-            .WithSummary("Select a package to buy, creating a pending purchase request.")
+            .WithSummary("Select a package to buy.")
             .WithDescription(
                 "Send only the packageOptionId. The name, session count, features, price and " +
                 "currency are resolved server-side and snapshotted onto the purchase - the price " +
@@ -51,14 +51,29 @@ public static class PurchaseEndpoints
                 "app never calculates loyalty, custom pricing, discounts or rounding, and a " +
                 "later edit to the option or to this athlete's pricing cannot change a purchase " +
                 "that already exists. " +
-                "The purchase starts Pending; no package exists yet and an athlete can never " +
-                "activate one. Show the athlete GET /api/v1/payments/instapay-instructions next. " +
+                "BRANCH ON status IN THE RESPONSE - it is NOT always Pending. " +
+                "status Pending, which is the ordinary case for any price above zero: no " +
+                "package exists yet and an athlete can never activate one, so show them " +
+                "GET /api/v1/payments/instapay-instructions next and wait for the coach to " +
+                "confirm. " +
+                "status Paid, which happens when the resolved priceMinor is 0: a free package " +
+                "has no payment to confirm, so it completes immediately and the athlete's " +
+                "package ALREADY EXISTS AND IS ACTIVE. purchasedPackageId is filled in and is " +
+                "the id for GET /api/v1/packages/{id}; paidAtUtc is set; paidByUserId is NULL, " +
+                "because nobody confirmed anything. Do not send them to InstaPay and do not wait " +
+                "for the coach - go straight to the package. GET /api/v1/me/package returns it " +
+                "on the next call. A price reaches zero when the coach sets a custom price of 0 " +
+                "for this athlete, or when the option's own price is 0; the app does not need to " +
+                "know which, only to read status. " +
                 "An athlete may have only ONE pending purchase: posting a different option while " +
                 "one is pending REPLACES the selection on it and returns 200 with the same " +
-                "purchase id, re-priced at today's rules. A new request returns 201. There is no " +
-                "cancel - replacing is how a wrong choice is corrected. " +
+                "purchase id, re-priced at today's rules - and if that re-pricing lands on 0, " +
+                "the revised purchase completes on the spot and comes back Paid. A new request " +
+                "returns 201. There is no cancel - replacing is how a wrong choice is corrected. " +
                 "409 ACTIVE_PACKAGE_EXISTS when the athlete still has an active package: they " +
-                "cannot buy the next one until it is closed or runs out.")
+                "cannot buy the next one until it is closed or runs out. This applies to free " +
+                "packages exactly as it does to paid ones, so selecting a free package twice is " +
+                "a conflict the second time rather than a second package.")
             .Produces<PackagePurchaseResponse>(StatusCodes.Status201Created)
             .Produces<PackagePurchaseResponse>(StatusCodes.Status200OK)
             .Produces<ApiProblemDetails>(StatusCodes.Status400BadRequest, ProblemJson)

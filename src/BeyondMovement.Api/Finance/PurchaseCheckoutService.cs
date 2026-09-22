@@ -136,6 +136,18 @@ public sealed class PurchaseCheckoutService(
 
         await transaction.CommitAsync(ct);
 
+        // A package that costs nothing has nothing to confirm, so it completes itself here
+        // rather than joining the queue of purchases waiting for an Admin to agree that no money
+        // arrived - which would never happen, leaving the athlete stuck behind a payment that
+        // cannot be made. Zero is a real price: the coach sets it deliberately, as a comped or
+        // trial package, and SetCustomPriceValidator has always allowed it.
+        //
+        // Only the price decides. Origin stays Athlete - who started the purchase is not
+        // affected by what it cost - and a paid purchase still follows the InstaPay flow
+        // untouched.
+        if (purchase.PriceMinor == 0)
+            return await CompleteFreePurchaseAsync(athlete.CoachId, purchase.Id, created, ct);
+
         // Read after the commit: the response labels the purchase with the athlete's name as it
         // stands now, which is not part of the snapshot the transaction protects.
         var label = await reader.LabelAsync(athleteUserId, ct);
@@ -145,7 +157,38 @@ public sealed class PurchaseCheckoutService(
     }
 
     /// <summary>
-    /// The Admin confirms the money arrived. The only status transition this product has.
+    /// Completes a purchase that costs nothing, by running the ordinary confirmation with no
+    /// confirming Admin.
+    /// <para>
+    /// <b>It reuses <see cref="MarkPaidAsync"/> whole rather than repeating it.</b> A free
+    /// package needs the row lock, the BR-03 re-check, the package built from the stored snapshot
+    /// and the unique-index conflict handling for exactly the same reasons a paid one does, and a
+    /// second copy of that reasoning would be the thing that drifts.
+    /// </para>
+    /// <para>
+    /// It runs in its own transaction, after the selection has committed, because
+    /// <see cref="MarkPaidAsync"/> owns one and EF Core will not nest them. The purchase is
+    /// therefore briefly Pending - which is a state it genuinely passes through, not a lie, and
+    /// the same state a free purchase used to stop at permanently. If this call fails or the
+    /// process dies between the two, the athlete is left with a pending free purchase: no worse
+    /// than the behaviour this replaces, recoverable by the Admin, and self-healing, because
+    /// selecting again revises that same pending row and completes it.
+    /// </para>
+    /// </summary>
+    private async Task<Result<PurchaseSelectionResult>> CompleteFreePurchaseAsync(
+        Guid coachId, Guid purchaseId, bool created, CancellationToken ct)
+    {
+        var completed = await MarkPaidAsync(coachId, purchaseId, actorUserId: null, ct);
+
+        return completed.IsSuccess
+            ? Result<PurchaseSelectionResult>.Success(
+                new PurchaseSelectionResult(completed.Value.Purchase, created))
+            : Result<PurchaseSelectionResult>.Failure(completed.Error!);
+    }
+
+    /// <summary>
+    /// The money arrived, and the athlete's package comes into existence. The only status
+    /// transition this product has.
     /// <para>
     /// <b>Idempotent.</b> A repeat returns the purchase and the package the first request
     /// created, with <c>alreadyPaid: true</c>, and never makes a second package. Three things
@@ -159,10 +202,17 @@ public sealed class PurchaseCheckoutService(
     /// the coach closes the current package and confirms again.
     /// </para>
     /// </summary>
+    /// <param name="actorUserId">
+    /// The Admin confirming, or <b>null when nothing had to be confirmed</b> — the free-package
+    /// path in <see cref="SelectAsync"/>. The whole method is shared between the two rather than
+    /// copied for the second: the row lock, the BR-03 re-check, building the package from the
+    /// snapshot and the conflict handling are the parts that are hard to get right, and a free
+    /// package needs every one of them for the same reasons a paid one does.
+    /// </param>
     public async Task<Result<MarkPurchasePaidResponse>> MarkPaidAsync(
         Guid coachId,
         Guid purchaseId,
-        Guid actorUserId,
+        Guid? actorUserId,
         CancellationToken ct)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
@@ -243,8 +293,12 @@ public sealed class PurchaseCheckoutService(
             return Result<MarkPurchasePaidResponse>.Failure(PackageErrors.ActivePackageExists);
         }
 
+        // Two actions rather than one with a flag, because they are two different events and a
+        // payment history should say which happened: an Admin confirmed money, or the platform
+        // completed a purchase that had nothing to confirm. The actor is null for the second -
+        // see PackagePurchase.MarkPaid for why the athlete's id is not written there.
         await audit.WriteAsync(
-            "PackagePurchasePaid",
+            actorUserId is null ? "PackagePurchaseAutoCompleted" : "PackagePurchasePaid",
             actorUserId,
             $"purchase={purchase.Id} package={package.Id} athleteProfile={purchase.AthleteProfileId} " +
             $"sessions={package.TotalSessions} priceMinor={purchase.PriceMinor}",

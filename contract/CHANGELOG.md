@@ -7,6 +7,81 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ---
 
+## Phase 13f — A free package completes itself
+
+**No shape changed. No new field, route or status code.** `POST /api/v1/me/purchases` can now come
+back `Paid` instead of `Pending`, using fields the response has always carried.
+
+**The app must branch on `status` here.** If it assumes `Pending` — which was safe until now — a
+free package leaves the athlete on a payment screen for a package they already own.
+
+### What was wrong
+
+Every athlete-originated purchase was born `Pending`, whatever it cost. That is right for any
+price above zero: the athlete pays by InstaPay and the coach confirms receipt.
+
+A price of **zero** is legitimate — the coach sets a custom price of `0` to comp an athlete, or
+prices an option at `0` outright, and both have always been allowed. But a free purchase waited
+for an Admin to confirm that no money had arrived, which is not something anybody can confirm. The
+athlete sat behind a payment they could not make, and the package their coach had given them never
+came into existence.
+
+### What happens now
+
+When the **resolved** price is `0`, the purchase completes at selection: the package is created
+and activated in the same call, and the athlete needs nothing from the Admin.
+
+```jsonc
+// POST /api/v1/me/purchases  ->  201, an option that resolves to 0
+{
+  "status": "Paid",                     // NOT Pending
+  "priceMinor": 0,
+  "purchasedPackageId": "…",            // the package EXISTS — GET /api/v1/packages/{id}
+  "paidAtUtc": "2026-09-21T14:02:11Z",
+  "paidByUserId": null,                 // nobody confirmed anything
+  "origin": "Athlete"                   // unchanged — price does not decide who started it
+}
+```
+
+- **`purchasedPackageId` is filled in**, and `GET /api/v1/me/package` returns that package on the
+  very next call. No Admin action, no refresh, no waiting.
+- **`paidByUserId` is `null`.** No Admin confirmed a payment, and the athlete's own id is not
+  written there — that would be a claim nobody made. `paidByUserId` was already nullable and
+  already null for backfilled purchases. **Read `status` and `purchasedPackageId` to know whether
+  a purchase is done; `paidByUserId` says *who*, not *whether*.**
+- **`origin` stays `Athlete`.** What a package cost does not change who started buying it.
+- **No fake payment is recorded.** There is no transaction, no reference and no amount that did
+  not move.
+
+### Nothing else changed
+
+| Case | Behaviour |
+|---|---|
+| Resolved price **> 0** (default, loyalty or custom) | **Exactly as before** — `Pending`, InstaPay, Admin confirms |
+| Resolved price **= 1 piastre** | `Pending`. Only exactly zero is free |
+| `POST /purchases/{id}/mark-paid` | Unchanged, and still idempotent |
+| Admin-direct sale (`POST /athletes/{id}/packages`) | Unchanged — already immediate, and still names the Admin in `paidByUserId` |
+| BR-03, one active package per athlete | **Still enforced.** A free selection while a package is active is `409 ACTIVE_PACKAGE_EXISTS`, and selecting a free package twice is a conflict the second time rather than a second package |
+
+Revising counts too: a pending purchase re-pointed at an option that now resolves to `0` completes
+on the spot and comes back `200` with `status: "Paid"` and the same purchase id.
+
+### What the Flutter app needs to do
+
+1. After `POST /api/v1/me/purchases`, **read `status`**.
+   - `"Pending"` → the existing flow: show InstaPay instructions, wait for the coach.
+   - `"Paid"` → skip payment entirely. The package is active; route to it using
+     `purchasedPackageId`, or re-read `GET /api/v1/me/package`.
+2. Do not treat `paidByUserId == null` as "not really paid". It is null for every free purchase by
+   design.
+3. Nothing to regenerate beyond the usual client refresh — no model changed.
+
+The endpoint's `summary` and `description` in `openapi.yaml` were rewritten to say all of this.
+That is the only contract diff, and it is documentation: no schema, path, field or status code
+moved.
+
+---
+
 ## Phase 13e — Package Session History
 
 **Additive. Nothing existing changed.** Two new read endpoints answer "what was this package spent
