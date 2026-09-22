@@ -2,7 +2,7 @@
 
 // The property below is called Currency, which hides the static Currency class from every
 // expression inside this file. The alias is how the class stays reachable.
-using PlatformCurrency = BeyondMovement.Modules.Packages.Currency;
+using PlatformCurrency = BeyondMovement.SharedKernel.Currency;
 
 namespace BeyondMovement.Modules.Packages.Domain;
 

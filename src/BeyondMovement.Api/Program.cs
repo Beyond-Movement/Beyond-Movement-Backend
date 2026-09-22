@@ -186,6 +186,14 @@ builder.Services.AddScoped<IFinanceDbContext>(sp => sp.GetRequiredService<AppDbC
 builder.Services.AddScoped<PurchaseReader>();
 builder.Services.AddScoped<PurchaseCheckoutService>();
 
+// Expenses need nothing from another module - no athlete, no package, no relationship to
+// declare - so unlike the two above, the handler lives inside Finance itself.
+builder.Services.AddScoped<ExpenseHandler>();
+
+// Money in and money out together. Spans Finance and Identity (the Admin's time zone), so
+// it lives here like AdminDashboardReader, and reads only.
+builder.Services.AddScoped<FinanceSummaryReader>();
+
 // Admin Home - Phase 9. Reads across Scheduling, Athletes and Identity, so it is a read model
 // in the composition root like AthleteDirectory and CatalogueReader.
 builder.Services.AddScoped<AdminDashboardReader>();
@@ -318,6 +326,7 @@ app.MapPreferenceEndpoints();
 app.MapSchedulingEndpoints();
 app.MapPurchasedPackageEndpoints();
 app.MapPurchaseEndpoints();
+app.MapFinanceEndpoints();
 app.MapAttendanceEndpoints();
 app.MapObservationRequestEndpoints();
 app.MapSessionNoteEndpoints();

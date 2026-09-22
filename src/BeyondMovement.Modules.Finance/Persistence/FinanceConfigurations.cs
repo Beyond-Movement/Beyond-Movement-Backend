@@ -103,3 +103,35 @@ public sealed class PackagePurchaseFeatureConfiguration
         b.HasIndex(x => new { x.PackagePurchaseId, x.Position }).IsUnique();
     }
 }
+
+public sealed class ExpenseConfiguration : IEntityTypeConfiguration<Expense>
+{
+    public void Configure(EntityTypeBuilder<Expense> b)
+    {
+        b.ToTable("Expenses", t =>
+            // Strictly positive, where CK_PackagePurchases_Price is >= 0. A package may
+            // legitimately cost nothing - a comped athlete - but an expense of zero is a typo,
+            // and one that slipped through would quietly distort every summary it appeared in.
+            t.HasCheckConstraint("CK_Expenses_Amount", "\"AmountMinor\" > 0"));
+
+        b.HasKey(x => x.Id);
+
+        b.Property(x => x.Title).IsRequired().HasMaxLength(Expense.MaxTitleLength);
+        b.Property(x => x.AmountMinor).IsRequired();
+        b.Property(x => x.Currency).IsRequired().HasMaxLength(3);
+        b.Property(x => x.IncurredOn).IsRequired();
+        b.Property(x => x.Note).HasMaxLength(Expense.MaxNoteLength);
+
+        // Maps to Postgres' xmin rather than a column of its own, as PackagePurchase does.
+        b.Property(x => x.Version).IsRowVersion();
+
+        // Serves both reads there are: the Admin's list, which is this coach's expenses in date
+        // order, and the summary, which sums this coach's expenses between two dates. Leading
+        // with CoachId because every query is scoped to one coach before it is anything else.
+        b.HasIndex(x => new { x.CoachId, x.IncurredOn });
+
+        // No relationship to Users is declared. CoachId is carried as a bare id, exactly as it
+        // is on PackagePurchase and PurchasedPackage, because a module may not reference another
+        // module (CLAUDE.md section 4).
+    }
+}

@@ -7,6 +7,170 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ---
 
+## Phase 14 — Finance: Expenses and the summary
+
+**Purely additive. No existing path, schema or field changed** — the regenerated contract is 425
+insertions and **no deletions**. Purchases, payment confirmation and InstaPay are untouched.
+
+Finance answers three questions now: how much came in, how much went out, what is the difference.
+
+### NEW — the coach's expenses
+
+```
+GET    /api/v1/expenses?from=&to=&page=&pageSize=   200  paged   AdminOnly
+POST   /api/v1/expenses                             201          AdminOnly
+PUT    /api/v1/expenses/{id}                        200          AdminOnly
+DELETE /api/v1/expenses/{id}                        204          AdminOnly
+```
+
+```jsonc
+// POST /api/v1/expenses
+{ "title": "Office rental", "amountMinor": 50000, "incurredOn": "2026-04-01", "note": null }
+
+// ExpenseResponse
+{
+  "id": "…",
+  "title": "Office rental",
+  "amountMinor": 50000,          // piastres
+  "currency": "EGP",             // server-controlled
+  "incurredOn": "2026-04-01",
+  "note": null,
+  "createdAtUtc": "…", "updatedAtUtc": "…"
+}
+```
+
+**There is no category, and none is coming in this phase.** The coach asked to write down "Office
+rental — EGP 500", not to keep books. There is also no receipt, no supplier and **no athlete** — an
+expense belongs to the coach and names nobody.
+
+| Field | Rule |
+|---|---|
+| `title` | **Required**, non-blank, trimmed, **max 200** characters |
+| `amountMinor` | **Required**, integer piastres, **strictly > 0**, max **1,000,000,000** (ten million EGP) |
+| `incurredOn` | **Required**, `YYYY-MM-DD`. The date on the receipt |
+| `note` | Optional, **max 1000**. Null and an empty string both clear it and both read back as `null` |
+
+`amountMinor > 0` differs from a package price, where `0` is a real decision (a comped athlete). A
+zero-value expense is a typo, and one that got through would quietly distort every summary it
+appeared in.
+
+`incurredOn` is **deliberately unbounded** in both directions: entering last year's receipts and
+recording a cost already committed for next month are both legitimate.
+
+**`incurredOn` decides which period an expense counts in — not when it was typed.** A receipt
+entered late still lands in the month it belongs to.
+
+**`coachId` and `currency` are not in the request and cannot be.** The coach comes from the token;
+the currency is server-controlled `EGP`, exactly as every package price is. An unexpected `coachId`
+in the body is ignored, not honoured.
+
+#### Listing
+
+`from` and `to` filter on `incurredOn` and are **BOTH INCLUSIVE** — unlike the half-open UTC
+windows the session endpoints use. These are dates a person typed: `from=2026-03-01&to=2026-03-31`
+means the whole of March **including the 31st**. Either may be sent alone.
+
+Paged in the usual envelope, `page` from 1, `pageSize` 20 by default and capped at 100, clamped
+rather than rejected. Ordered by `incurredOn` **DESCENDING** with the id breaking ties. A coach
+with no expenses, or none in range, gets an **empty page**, not a 404.
+
+#### PUT is a full replacement
+
+Send `title`, `amountMinor` and `incurredOn` every time, and send `note` every time you intend to
+keep it — a field left out is **cleared**, not left alone. The same rule the profile, purchase and
+session-note endpoints follow, and the reason this is `PUT` and not `PATCH`. The same validation as
+`POST` applies, so an expense cannot be edited into a state it could not have been created in.
+
+#### DELETE is a hard delete
+
+The row is gone and stops counting towards every summary immediately, **including past periods it
+used to appear in**. Safe here in a way it would not be for a purchase: an expense is the coach's
+own note to themselves, nothing references it, and a mistyped one they could not remove would sit
+in their totals forever. The deletion is audited with the amount and date **first**, so what was
+removed survives in the log even though the row does not. Deleting twice is `404`, not a silent
+success.
+
+#### Answers
+
+| Case | Answer |
+|---|---|
+| Unknown id, or another coach's | `404 EXPENSE_NOT_FOUND` — indistinguishable |
+| Athlete calling any of the four | `403` |
+| No token | `401` |
+| Invalid field | `400 VALIDATION_FAILED`, naming the field |
+
+### NEW — the finance summary
+
+```
+GET /api/v1/finance/summary?period=Weekly|Monthly|Yearly|AllTime   200   AdminOnly
+```
+
+```jsonc
+{
+  "period": "Monthly",
+  "timeZone": "Africa/Cairo",
+  "fromUtc": "2026-02-28T22:00:00Z",   // null for AllTime
+  "toUtc":   "2026-03-31T22:00:00Z",   // null for AllTime
+  "currency": "EGP",
+  "incomeMinor": 700000,
+  "expensesMinor": 560000,
+  "netMinor": 140000,                  // SIGNED — may be negative
+  "incomeCount": 3,
+  "expenseCount": 4,
+  "pendingMinor": 500000,              // OUTSTANDING, never income
+  "pendingCount": 1
+}
+```
+
+`period` defaults to **Monthly** and takes the same four values as the dashboard, computed by the
+**same code**: Weekly is the current week starting **Monday**, Monthly the current month from the
+1st, Yearly the current year from 1 January, AllTime has no bound. Boundaries are the **Admin's own
+time zone** converted to UTC, so a late-evening payment falls in the month the coach was working
+rather than the one UTC says. The zone used is echoed back and falls back to `UTC` if unrecognised.
+
+#### What counts
+
+| Figure | Source | Dated by |
+|---|---|---|
+| `incomeMinor` / `incomeCount` | Purchases with `status: "Paid"` | `paidAtUtc` |
+| `expensesMinor` / `expenseCount` | Expenses | `incurredOn` |
+| `pendingMinor` / `pendingCount` | Purchases with `status: "Pending"` | `createdAtUtc` |
+
+- **A PENDING PURCHASE IS NEVER INCOME.** The money has not arrived. It is reported separately, and
+  **`pendingMinor` must never be added to `incomeMinor`** — it is what athletes still owe. It is
+  dated by `createdAtUtc` because a pending purchase has no payment date; that is the whole of what
+  makes it pending.
+- **A zero-price paid purchase counts once and contributes nothing** — `+1` to `incomeCount`, `+0`
+  to `incomeMinor`. A comped package is a real transaction that brought in no money.
+- **An Admin-recorded sale is income like any other.** It is money the coach took in person, and
+  excluding it would make this screen disagree with their bank.
+- **`netMinor` is `incomeMinor` minus `expensesMinor`, signed, and legitimately negative** in a
+  period the coach spent more than they took. **Do not clamp it.**
+- Every amount is an integer count of **piastres**, and `currency` is returned once for the whole
+  response rather than on each figure.
+- **A period with nothing in it returns zeros, not a 404.**
+
+#### Still separate from Admin Home
+
+`GET /api/v1/dashboard/admin` is delivery statistics and **carries no money**; this is money and
+carries no sessions. The two share only their period machinery. **No financial cards were added to
+Home in this phase** — a test asserts the dashboard has none.
+
+### Not in this phase, deliberately
+
+Expense categories, receipts and file attachments, refunds and reversals, per-Admin InstaPay,
+multi-Admin permissions, notifications, charts or trends, income broken down by athlete or package,
+and financial cards on Admin Home.
+
+### Nothing was renamed
+
+`PackagePurchase`, `PackagePurchaseResponse`, `PurchasePaymentStatus`, every `/purchases` route and
+`/payments/instapay-instructions` are **unchanged**. "Income" is a derived figure on the new summary
+— there is no Income entity and no Income table, because a paid purchase already records the
+amount, the currency and the moment it was paid.
+
+---
+
 ## Phase 13f — A free package completes itself
 
 **No shape changed. No new field, route or status code.** `POST /api/v1/me/purchases` can now come

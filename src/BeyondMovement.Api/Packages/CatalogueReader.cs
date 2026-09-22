@@ -2,6 +2,7 @@
 using BeyondMovement.Modules.Packages;
 using BeyondMovement.Modules.Packages.Contracts;
 using BeyondMovement.Modules.Packages.Domain;
+using BeyondMovement.SharedKernel;
 using Microsoft.EntityFrameworkCore;
 
 namespace BeyondMovement.Api.Packages;

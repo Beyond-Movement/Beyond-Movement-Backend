@@ -1,4 +1,4 @@
-using BeyondMovement.SharedKernel;
+﻿using BeyondMovement.SharedKernel;
 
 namespace BeyondMovement.Modules.Finance;
 
@@ -18,6 +18,7 @@ public static class FinanceErrorCodes
 {
     public const string PurchaseNotFound = "PURCHASE_NOT_FOUND";
     public const string InstaPayNotConfigured = "INSTAPAY_NOT_CONFIGURED";
+    public const string ExpenseNotFound = "EXPENSE_NOT_FOUND";
 
     /// <summary>
     /// Deliberately <b>absent from <see cref="All"/></b>, so it is not published in the contract.
@@ -37,7 +38,7 @@ public static class FinanceErrorCodes
 
     public static readonly string[] All =
     [
-        PurchaseNotFound, InstaPayNotConfigured
+        PurchaseNotFound, InstaPayNotConfigured, ExpenseNotFound
     ];
 }
 
@@ -57,6 +58,14 @@ public static class FinanceErrors
     public static readonly Error PurchaseAlreadyPaid = new(
         FinanceErrorCodes.PurchaseAlreadyPaid,
         "This purchase has already been paid and can no longer be changed.", 409);
+
+    /// <summary>
+    /// Also returned for an expense belonging to another coach. An expense is the coach's
+    /// own record of what they spent, so somebody else's is indistinguishable from one that
+    /// does not exist - the same rule every other resource in this API follows.
+    /// </summary>
+    public static readonly Error ExpenseNotFound = new(
+        FinanceErrorCodes.ExpenseNotFound, "No such expense.", 404);
 
     /// <summary>
     /// 503 rather than 404: the endpoint exists and will work once the coach's InstaPay details

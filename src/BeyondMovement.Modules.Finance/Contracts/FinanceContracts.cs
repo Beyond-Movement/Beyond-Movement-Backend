@@ -130,3 +130,65 @@ public static class PackagePurchaseMapping
         x.SessionCount, x.Features, x.PriceMinor, x.Currency, x.Status, x.Origin,
         x.CreatedAtUtc, x.UpdatedAtUtc, x.PaidAtUtc, x.PaidByUserId, x.PurchasedPackageId);
 }
+
+/// <summary>
+/// Records or rewrites an expense. One shape for both, because they set the same fields and a
+/// second would only drift.
+/// <para>
+/// A <b>full replacement</b> on PUT, not a patch: send every field every time, and a field left
+/// out is one being cleared rather than one being left alone. The same rule the profile, purchase
+/// and session-note endpoints follow.
+/// </para>
+/// <para>
+/// There is deliberately no <c>coachId</c> and no <c>currency</c>. The coach comes from the
+/// token — an Admin who could send one could file a cost against somebody else — and the currency
+/// is server-controlled, exactly as every package price is.
+/// </para>
+/// </summary>
+/// <param name="Title">
+/// What the money went on: "Office rental". Required, non-blank, trimmed, at most
+/// <see cref="Expense.MaxTitleLength"/> characters.
+/// </param>
+/// <param name="AmountMinor">
+/// Piastres, and strictly <b>greater than zero</b> — a zero-value expense is a typo, not a
+/// record. At most <see cref="Expense.MaxAmountMinor"/>, which is ten million pounds and is a
+/// guard against a fat-fingered number rather than a business rule.
+/// </param>
+/// <param name="IncurredOn">
+/// The date on the receipt, as <c>YYYY-MM-DD</c>. This is the date the expense counts towards in
+/// the summary, not the date it was typed in, so a receipt entered late still lands in the month
+/// it belongs to.
+/// </param>
+/// <param name="Note">
+/// Optional context, at most <see cref="Expense.MaxNoteLength"/> characters. Null and an empty
+/// string both clear it and both read back as null.
+/// </param>
+public sealed record SaveExpenseRequest(
+    string Title,
+    long AmountMinor,
+    DateOnly IncurredOn,
+    string? Note = null);
+
+/// <summary>
+/// One recorded expense.
+/// <para>
+/// There is no category, no receipt and no athlete on it, and none is coming in this phase: the
+/// coach wanted to write down what they spent, not to keep books.
+/// </para>
+/// </summary>
+public sealed record ExpenseResponse(
+    Guid Id,
+    string Title,
+    long AmountMinor,
+    string Currency,
+    DateOnly IncurredOn,
+    string? Note,
+    DateTime CreatedAtUtc,
+    DateTime UpdatedAtUtc);
+
+public static class ExpenseMapping
+{
+    public static ExpenseResponse ToResponse(this Expense x) => new(
+        x.Id, x.Title, x.AmountMinor, x.Currency, x.IncurredOn, x.Note,
+        x.CreatedAtUtc, x.UpdatedAtUtc);
+}

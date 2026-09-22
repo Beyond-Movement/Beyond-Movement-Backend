@@ -35,6 +35,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     // Finance module
     public DbSet<PackagePurchase> PackagePurchases => Set<PackagePurchase>();
     public DbSet<PackagePurchaseFeature> PackagePurchaseFeatures => Set<PackagePurchaseFeature>();
+    public DbSet<Expense> Expenses => Set<Expense>();
 
     // Scheduling module
     public DbSet<Session> Sessions => Set<Session>();
