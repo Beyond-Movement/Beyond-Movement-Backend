@@ -7,6 +7,82 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ---
 
+## Phase 14c — Phone numbers are required, validated properly and stored in E.164
+
+**Breaking for both profile saves: `phone` is now required.** No field was added, removed or
+renamed. In both request schemas, `phone` moved into `required` and changed from `null | string`
+to `string`. Response shapes are unchanged. `phone` also now comes back in E.164. Two existing
+routes write it and three return it. They are the only places phone appears, and they are the
+same as before:
+
+| Route | Phone |
+|---|---|
+| `PUT /api/v1/auth/me/profile` (Admin) | written |
+| `POST /api/v1/athletes/me/profile` (athlete) | written |
+| `GET /api/v1/auth/me/profile`, `GET /api/v1/athletes/me/profile`, `GET /api/v1/athletes/{id}` | returned |
+
+It is still **not** on `/auth/me`, login, refresh or the athlete list, and tests now pin that.
+
+### Phone comes back in E.164, not as typed
+
+```jsonc
+// PUT /api/v1/auth/me/profile   { "fullName": "…", "phone": "010 1234 5678" }
+{ "phone": "+201012345678" }   // before this change: "010 1234 5678"
+```
+
+The app already renders `phone` from the response rather than from what it sent, so nothing
+breaks. **For display, format the E.164 value yourself**, e.g. `+20 10 1234 5678`; showing it
+raw is readable, just not pretty.
+
+### Real numbers only
+
+Input is still free-form: digits, spaces and `+ ( ) - .`, up to 40 characters, the same as the
+app's own check. It must now also be a **real number for its country**, checked with
+libphonenumber (Google's numbering-plan data). Otherwise the response is the usual
+`400 VALIDATION_FAILED` with one message under `errors.Phone`:
+
+| Typed | Result |
+|---|---|
+| `010 1234 5678`, `+20 10 1234 5678`, `0020 10 1234 5678` | `+201012345678` |
+| `+44 20 7031 3000`, `+1 (650) 253-0000`, `+971 50 123 4567` | accepted, E.164 |
+| `12345`, `010 1234`, `+999 1234 5678`, `0000000000` | **400** (all passed before) |
+
+A number **without** `+` or `00` is read as Egyptian. Any other country's number needs its
+country code. The validation message says so, and the app can show it as it is.
+
+### Required on every profile save, for both roles
+
+`POST /api/v1/athletes/me/profile` covers both Complete Profile and every later edit.
+`PUT /api/v1/auth/me/profile` is the Admin's. On both, the following are
+`400 VALIDATION_FAILED` with the error under `errors.Phone` and nothing saved:
+
+- `phone` left out of the body
+- `phone: null`
+- `phone: ""`
+- whitespace only
+
+A number can be changed but can no longer be cleared. **The app must collect a phone number
+on Complete Profile and on both Edit Profile screens.** Until it does, Complete Profile
+returns `400`, and the athlete stays on `profileCompleted: false`.
+
+**Reads can still return `phone: null`.** The column stays nullable, and no number is invented
+for an account that has none: the seeded Admin, and anyone who saved their profile before
+this change. Those accounts sign in, read `/auth/me` and read their profile as before. The
+next save has to include a phone. Handle a null `phone` on all three read routes, and send the
+user to fill it in rather than failing.
+
+Phone is contact data. It is **not unique**, **not verified**, and **not a way to sign in**.
+
+### Existing data
+
+Migration `NormalizeUserPhoneToE164` shrinks `Users.Phone` to `varchar(16)` (`+` and at most
+15 digits). It removes separators, turns a leading `00` into `+`, and stores blank values as
+null. A number saved in local format, like `010…`, keeps its digits and is converted to E.164
+the next time that profile is saved. If a stored value has more than 15 digits, the migration
+stops with an error and changes nothing. It never truncates or discards a number.
+
+---
+
 ## Phase 14 — Finance: Expenses and the summary
 
 **Purely additive. No existing path, schema or field changed** — the regenerated contract is 425

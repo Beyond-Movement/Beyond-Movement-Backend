@@ -99,8 +99,9 @@ public static class AthleteEndpoints
             "athlete's personal details - that was deferred by the client. The athlete edits " +
             "their own through POST /api/v1/athletes/me/profile, so what this returns can change " +
             "underneath the coach. " +
-            "phone is null until the athlete gives one, and is optional even for a completed " +
-            "profile - it is no longer null for every athlete, so render what is stored. " +
+            "phone is E.164, and every athlete profile save requires one - but it is null for " +
+            "an athlete who has not saved their profile since phone numbers became required, " +
+            "so a screen must handle both. " +
             "Profile photo is deferred until file storage exists. An unknown id, another " +
             "coach's athlete and a deleted athlete all return 404 ATHLETE_NOT_FOUND.")
         .Produces<AthleteDetail>()

@@ -73,10 +73,9 @@ public sealed record AthleteListItem(
 /// </param>
 /// <param name="FullName">Null until the athlete completes their profile. See <see cref="AthleteListItem"/>.</param>
 /// <param name="Phone">
-/// Null until the athlete gives one on their own Edit Profile screen
-/// (<c>POST /athletes/me/profile</c>). Optional there and optional here, so an athlete who has
-/// completed their profile may still have none — but it is no longer null for everyone, and a
-/// screen must render whatever is stored rather than assuming the field is empty.
+/// E.164, so format it for display rather than showing it raw. Required on every save of the
+/// athlete's own profile (<c>POST /athletes/me/profile</c>), but still null for an athlete who
+/// has not saved it since phone numbers became required — render whatever is stored.
 /// </param>
 public sealed record AthleteDetail(
     Guid Id,

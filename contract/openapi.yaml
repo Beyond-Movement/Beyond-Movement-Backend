@@ -722,14 +722,20 @@ paths:
       description: 'A full replacement of both editable fields, not a patch: send
         fullName and phone every time. Always the caller''s own profile - there is
         no id in the route or body. fullName is required; blank is 400 VALIDATION_FAILED.
-        phone is optional - send null or an empty string to clear it, and it reads
-        back as null either way. Digits and + ( ) - . only, up to 40 characters; the
-        format is otherwise unconstrained because numbers are international and displayed,
-        not dialled. EMAIL CANNOT BE CHANGED HERE. It is the login identity and the
-        unique key on the user, so changing it needs re-verification and re-issued
+        phone is REQUIRED on every save: missing, null, an empty string or whitespace
+        is 400 VALIDATION_FAILED under errors.Phone. An account that has none yet
+        - one created before phone numbers were collected - still signs in and reads
+        its profile with phone null, and must supply one the next time it saves. phone
+        is accepted as people write it - digits, spaces and + ( ) - . up to 40 characters
+        - and must be a real number for its country, or 400 VALIDATION_FAILED. A number
+        without a country code (+ or 00) is read as Egyptian; any other country''s
+        number needs its code. It is STORED AND RETURNED IN E.164 (+201012345678),
+        not as typed. It is contact data only: not unique, not verified, and not a
+        sign-in method. EMAIL CANNOT BE CHANGED HERE. It is the login identity and
+        the unique key on the user, so changing it needs re-verification and re-issued
         tokens - a feature of its own. It is absent from this request and untouched
-        by this call. The response is the profile as stored, after trimming, so render
-        from it rather than from what was sent.'
+        by this call. The response is the profile as stored - name trimmed, phone
+        in E.164 - so render from it rather than from what was sent.'
       operationId: UpdateMyProfile
       requestBody:
         content:
@@ -986,9 +992,11 @@ paths:
         can be null, and an athlete who has registered but not finished Complete Profile
         has all of them null at once - that is the state profileCompleted: false describes,
         not an error. Once profileCompleted is true, fullName, dateOfBirth, gender
-        and sport are all non-null; phone stays optional and is null until the athlete
-        gives one. Profile photo is not part of this response: it needs file storage,
-        upload and public serving, which is a phase of its own. Show initials.'
+        and sport are all non-null. phone is E.164 once saved, and still null for
+        an athlete who completed their profile before phone numbers were required
+        - the POST below will make them supply one. Profile photo is not part of this
+        response: it needs file storage, upload and public serving, which is a phase
+        of its own. Show initials.'
       operationId: GetMyAthleteProfile
       responses:
         '200':
@@ -1020,23 +1028,27 @@ paths:
         Complete Profile and Edit Profile: they set the same fields, and a second
         edit endpoint could only drift from this one. Safe to call as often as the
         athlete edits. A FULL REPLACEMENT, NOT A PATCH: send fullName, dateOfBirth,
-        gender and sport every time, and send phone every time you intend to keep
-        it - a field left out of the body is cleared, not left alone. fullName, dateOfBirth,
-        gender and sport are all required and enforced here, not only in the app.
-        phone is optional: send null or an empty string to clear it, and it reads
-        back as null either way. Digits and + ( ) - . only, up to 40 characters; the
-        format is otherwise unconstrained because numbers are international and displayed,
-        not dialled - the same rule the Admin''s profile applies. EMAIL CANNOT BE
-        CHANGED HERE. It is the login identity, the unique key on the user and what
-        Google sign-in matches on, so changing it needs re-verification and re-issued
-        tokens - a feature of its own. It is absent from this request and untouched
-        by this call. Sets profileCompleted to true, after which both /auth/me and
-        every later authentication response report it as true and guarantee a non-null
-        fullName, so the app routes to Home instead of Complete Profile. The response
-        carries phone as stored, after trimming, so render that field from the response
-        rather than from what was sent. Profile photo is not accepted yet; it needs
-        file storage, upload and public serving, which is a phase of its own, and
-        the app shows initials until then.'
+        gender, sport and phone every time. All five are required and enforced here,
+        not only in the app. phone is REQUIRED on every save: missing, null, an empty
+        string or whitespace is 400 VALIDATION_FAILED under errors.Phone. An account
+        that has none yet - one created before phone numbers were collected - still
+        signs in and reads its profile with phone null, and must supply one the next
+        time it saves. phone is accepted as people write it - digits, spaces and +
+        ( ) - . up to 40 characters - and must be a real number for its country, or
+        400 VALIDATION_FAILED. A number without a country code (+ or 00) is read as
+        Egyptian; any other country''s number needs its code. It is STORED AND RETURNED
+        IN E.164 (+201012345678), not as typed. It is contact data only: not unique,
+        not verified, and not a sign-in method. The same rule the Admin''s profile
+        applies. EMAIL CANNOT BE CHANGED HERE. It is the login identity, the unique
+        key on the user and what Google sign-in matches on, so changing it needs re-verification
+        and re-issued tokens - a feature of its own. It is absent from this request
+        and untouched by this call. Sets profileCompleted to true, after which both
+        /auth/me and every later authentication response report it as true and guarantee
+        a non-null fullName, so the app routes to Home instead of Complete Profile.
+        The response carries phone as stored, in E.164, so render that field from
+        the response rather than from what was sent. Profile photo is not accepted
+        yet; it needs file storage, upload and public serving, which is a phase of
+        its own, and the app shows initials until then.'
       operationId: CompleteAthleteProfile
       requestBody:
         content:
@@ -1149,11 +1161,11 @@ paths:
       description: 'Read-only for the ADMIN: there is still no endpoint for a coach
         to change an athlete''s personal details - that was deferred by the client.
         The athlete edits their own through POST /api/v1/athletes/me/profile, so what
-        this returns can change underneath the coach. phone is null until the athlete
-        gives one, and is optional even for a completed profile - it is no longer
-        null for every athlete, so render what is stored. Profile photo is deferred
-        until file storage exists. An unknown id, another coach''s athlete and a deleted
-        athlete all return 404 ATHLETE_NOT_FOUND.'
+        this returns can change underneath the coach. phone is E.164, and every athlete
+        profile save requires one - but it is null for an athlete who has not saved
+        their profile since phone numbers became required, so a screen must handle
+        both. Profile photo is deferred until file storage exists. An unknown id,
+        another coach''s athlete and a deleted athlete all return 404 ATHLETE_NOT_FOUND.'
       operationId: GetAthlete
       parameters:
       - name: id
@@ -5123,6 +5135,7 @@ components:
       - dateOfBirth
       - gender
       - sport
+      - phone
       type: object
       properties:
         fullName:
@@ -5135,9 +5148,7 @@ components:
         sport:
           type: string
         phone:
-          type:
-          - 'null'
-          - string
+          type: string
     CreateInvitationRequest:
       required:
       - email
@@ -6487,9 +6498,7 @@ components:
         fullName:
           type: string
         phone:
-          type:
-          - 'null'
-          - string
+          type: string
     UpdatePreferencesRequest:
       required:
       - athleteListSort

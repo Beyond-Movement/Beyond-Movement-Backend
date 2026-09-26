@@ -56,14 +56,42 @@ public class UserProfileMutationTests
     }
 
     [Fact]
-    public void A_phone_number_is_stored_trimmed()
+    public void A_phone_number_is_stored_in_E164_not_as_typed()
     {
         var admin = NewAdmin();
 
         admin.SetPhone("  +20 100 123 4567 ", Later);
 
-        Assert.Equal("+20 100 123 4567", admin.Phone);
+        Assert.Equal("+201001234567", admin.Phone);
         Assert.Equal(Later, admin.UpdatedAtUtc);
+    }
+
+    [Fact]
+    public void An_athlete_phone_goes_through_the_same_normalization()
+    {
+        var athlete = User.CreateAthlete("a@example.com", "Ath Lete", "hash", null, Guid.NewGuid(), Now);
+
+        athlete.SetPhone("+44 7400 123456", Later);
+
+        Assert.Equal("+447400123456", athlete.Phone);
+    }
+
+    /// <summary>
+    /// Endpoints validate first, so reaching the domain with an unparseable number is a caller
+    /// bug. Storing it as typed would quietly break the E.164 guarantee for everyone who reads it.
+    /// </summary>
+    [Theory]
+    [InlineData("call me maybe")]
+    [InlineData("12345")]
+    public void An_invalid_phone_number_is_a_caller_bug_and_the_stored_one_survives(string invalid)
+    {
+        var admin = NewAdmin();
+        admin.SetPhone("010 1234 5678", Now);
+
+        Assert.Throws<ArgumentException>(() => admin.SetPhone(invalid, Later));
+
+        Assert.Equal("+201012345678", admin.Phone);
+        Assert.Equal(Now, admin.UpdatedAtUtc);
     }
 
     [Theory]

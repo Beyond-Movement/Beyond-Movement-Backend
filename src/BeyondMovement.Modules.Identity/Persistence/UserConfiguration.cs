@@ -21,7 +21,12 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         // profile, and has no name during that window. The invariant "completed implies named"
         // is kept by User.MarkProfileCompleted, which a column constraint cannot express.
         b.Property(x => x.FullName).HasMaxLength(200);
-        b.Property(x => x.Phone).HasMaxLength(40);
+
+        // E.164, written only through User.SetPhone. Nullable on purpose, and for two reasons: the
+        // seeded Admin and every account created before phone numbers were collected have none,
+        // and a NOT NULL column would need an invented number for each of them. Not unique:
+        // families share numbers, and this is contact data rather than a login.
+        b.Property(x => x.Phone).HasMaxLength(PhonePolicy.MaximumStoredLength);
         b.Property(x => x.TimeZone).IsRequired().HasMaxLength(64);
 
         // enums as strings — readable in the database, immune to reordering

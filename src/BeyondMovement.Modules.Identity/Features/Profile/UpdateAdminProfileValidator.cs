@@ -12,7 +12,7 @@ public sealed class UpdateAdminProfileValidator : AbstractValidator<UpdateAdminP
             .NotEmpty().WithMessage("Enter your full name.")
             .MaximumLength(200);
 
-        // Shared with the athlete's profile edit — see PhonePolicy for why the format is loose.
+        // Shared with the athlete's profile edit — one parser, one set of rules, in PhonePolicy.
         RuleFor(x => x.Phone).ApplyPhoneRules();
     }
 }

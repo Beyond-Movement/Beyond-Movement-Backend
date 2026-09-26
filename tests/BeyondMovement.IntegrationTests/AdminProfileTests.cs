@@ -81,15 +81,15 @@ public sealed class AdminProfileTests(AdminProfileApiFactory factory) : IClassFi
 
         var returned = (await response.Content.ReadFromJsonAsync<Profile>(Json))!;
         Assert.Equal("Nadia Hassan", returned.FullName);
-        Assert.Equal("+20 100 123 4567", returned.Phone);
+        Assert.Equal("+201001234567", returned.Phone);
 
         var reread = await GetProfileAsync(client);
         Assert.Equal("Nadia Hassan", reread.FullName);
-        Assert.Equal("+20 100 123 4567", reread.Phone);
+        Assert.Equal("+201001234567", reread.Phone);
     }
 
     [Fact]
-    public async Task Both_fields_are_stored_trimmed_so_the_app_should_render_from_the_response()
+    public async Task The_name_is_trimmed_and_the_phone_normalized_so_the_app_should_render_from_the_response()
     {
         var client = await AdminClientAsync();
 
@@ -99,14 +99,14 @@ public sealed class AdminProfileTests(AdminProfileApiFactory factory) : IClassFi
         var returned = (await response.Content.ReadFromJsonAsync<Profile>(Json))!;
 
         Assert.Equal("Trimmed Coach", returned.FullName);
-        Assert.Equal("+20 111 222 3333", returned.Phone);
+        Assert.Equal("+201112223333", returned.Phone);
     }
 
     [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public async Task Clearing_the_phone_stores_null_rather_than_an_empty_string(string? blank)
+    public async Task A_blank_phone_is_refused_and_the_stored_one_survives(string? blank)
     {
         var client = await AdminClientAsync();
 
@@ -116,11 +116,26 @@ public sealed class AdminProfileTests(AdminProfileApiFactory factory) : IClassFi
         var response = await client.PutAsJsonAsync("/api/v1/auth/me/profile",
             new { fullName = "Nadia Hassan", phone = blank });
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("VALIDATION_FAILED", problem.GetProperty("errorCode").GetString());
+        Assert.True(problem.GetProperty("errors").TryGetProperty("Phone", out _));
 
-        // "" would render in the app as a number that is set but empty.
-        Assert.Null((await response.Content.ReadFromJsonAsync<Profile>(Json))!.Phone);
-        Assert.Null((await GetProfileAsync(client)).Phone);
+        Assert.Equal("+201001234567", (await GetProfileAsync(client)).Phone);
+    }
+
+    [Fact]
+    public async Task Omitting_the_phone_is_refused()
+    {
+        var client = await AdminClientAsync();
+
+        var response = await client.PutAsJsonAsync("/api/v1/auth/me/profile",
+            new { fullName = "Nadia Hassan" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("VALIDATION_FAILED", problem.GetProperty("errorCode").GetString());
+        Assert.True(problem.GetProperty("errors").TryGetProperty("Phone", out _));
     }
 
     [Theory]
@@ -131,10 +146,10 @@ public sealed class AdminProfileTests(AdminProfileApiFactory factory) : IClassFi
         var client = await AdminClientAsync();
 
         await client.PutAsJsonAsync("/api/v1/auth/me/profile",
-            new { fullName = "Nadia Hassan", phone = (string?)null });
+            new { fullName = "Nadia Hassan", phone = "010 1234 5678" });
 
         var response = await client.PutAsJsonAsync("/api/v1/auth/me/profile",
-            new { fullName = blank, phone = (string?)null });
+            new { fullName = blank, phone = "010 1234 5678" });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
@@ -172,7 +187,7 @@ public sealed class AdminProfileTests(AdminProfileApiFactory factory) : IClassFi
         var response = await client.PutAsJsonAsync("/api/v1/auth/me/profile", new
         {
             fullName = "Nadia Hassan",
-            phone = (string?)null,
+            phone = "010 1234 5678",
             email = "hijacked@nowhere.test"
         });
 

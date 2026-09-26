@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using BeyondMovement.Modules.Identity;
 using BeyondMovement.Modules.Identity.Contracts;
 using BeyondMovement.Modules.Identity.Features.ChangePassword;
 using BeyondMovement.Modules.Identity.Features.CurrentUser;
@@ -354,14 +355,12 @@ public static class AuthEndpoints
             "A full replacement of both editable fields, not a patch: send fullName and phone " +
             "every time. Always the caller's own profile - there is no id in the route or body. " +
             "fullName is required; blank is 400 VALIDATION_FAILED. " +
-            "phone is optional - send null or an empty string to clear it, and it reads back as " +
-            "null either way. Digits and + ( ) - . only, up to 40 characters; the format is " +
-            "otherwise unconstrained because numbers are international and displayed, not dialled. " +
+            PhonePolicy.ContractDescription + " " +
             "EMAIL CANNOT BE CHANGED HERE. It is the login identity and the unique key on the " +
             "user, so changing it needs re-verification and re-issued tokens - a feature of its " +
             "own. It is absent from this request and untouched by this call. " +
-            "The response is the profile as stored, after trimming, so render from it rather " +
-            "than from what was sent.")
+            "The response is the profile as stored - name trimmed, phone in E.164 - so render " +
+            "from it rather than from what was sent.")
         .Produces<AdminProfileResponse>()
         .Produces<ApiProblemDetails>(StatusCodes.Status400BadRequest, ProblemJson)
         .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)

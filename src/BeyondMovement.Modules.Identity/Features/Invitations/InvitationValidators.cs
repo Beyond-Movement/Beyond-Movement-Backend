@@ -27,7 +27,7 @@ public sealed class RegisterValidator : AbstractValidator<RegisterRequest>
 }
 
 /// <summary>
-/// Every field but the phone is required, enforced here rather than trusted from the app: the
+/// Every field is required, enforced here rather than trusted from the app: the
 /// mobile client is not the only thing that can reach this endpoint, and
 /// <c>profileCompleted: true</c> is a promise the rest of the system reads.
 /// </summary>
@@ -42,7 +42,7 @@ public sealed class CompleteProfileValidator : AbstractValidator<CompleteProfile
         RuleFor(x => x.Sport).NotEmpty().MaximumLength(100);
 
         // The same rules the Admin's profile edit applies: one column, one definition of what
-        // may go in it. Optional here — a profile is complete without a phone number.
+        // may go in it. Required here as there — see PhonePolicy.ApplyPhoneRules.
         RuleFor(x => x.Phone).ApplyPhoneRules();
 
         // A value outside the enum never binds, so this catches the one case that does reach

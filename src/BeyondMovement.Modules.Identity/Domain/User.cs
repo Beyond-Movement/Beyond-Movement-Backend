@@ -118,13 +118,18 @@ public sealed class User
     }
 
     /// <summary>
-    /// The contact number shown on the profile. Optional, and blank is stored as null rather
-    /// than as an empty string — the contract says null for "not given", and "" would render as
-    /// a phone number that is set but empty.
+    /// The contact number, for Admin and athlete alike. Optional, and blank is stored as null
+    /// rather than as an empty string — the contract says null for "not given", and "" would
+    /// render as a phone number that is set but empty.
+    /// <para>
+    /// Stored in E.164 whatever formatting it arrived in; <see cref="PhonePolicy"/> is the one
+    /// place that parses. Endpoints validate first, so an unparseable number reaching here is a
+    /// bug in the caller and throws rather than being stored as typed.
+    /// </para>
     /// </summary>
     public void SetPhone(string? phone, DateTime nowUtc)
     {
-        Phone = string.IsNullOrWhiteSpace(phone) ? null : phone.Trim();
+        Phone = PhonePolicy.Normalize(phone);
         UpdatedAtUtc = nowUtc;
     }
 

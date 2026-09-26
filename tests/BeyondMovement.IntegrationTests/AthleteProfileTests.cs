@@ -74,7 +74,7 @@ public sealed class AthleteProfileTests(AthleteProfileApiFactory factory)
     private static Task<HttpResponseMessage> SaveAsync(HttpClient client, object body) =>
         client.PostAsJsonAsync("/api/v1/athletes/me/profile", body);
 
-    private static object FullProfile(string? phone = null) => new
+    private static object FullProfile(string? phone = "010 1234 5678") => new
     {
         fullName = "Alex Thompson",
         dateOfBirth = "2001-04-17",
@@ -108,8 +108,8 @@ public sealed class AthleteProfileTests(AthleteProfileApiFactory factory)
         Assert.Equal("Tennis", profile.Sport);
         Assert.True(profile.ProfileCompleted);
 
-        // Nothing has written one yet. This is the only field that may be null on a completed
-        // profile, and it stays optional.
+        // Nothing has written one yet: this athlete completed their profile before phone numbers
+        // were required. Reading it must still work - the next save is what asks for one.
         Assert.Null(profile.Phone);
     }
 
@@ -156,7 +156,7 @@ public sealed class AthleteProfileTests(AthleteProfileApiFactory factory)
         var returned = (await response.Content.ReadFromJsonAsync<Profile>(Json))!;
 
         Assert.Equal("Robin Vale", returned.FullName);
-        Assert.Equal("+20 100 123 4567", returned.Phone);
+        Assert.Equal("+201001234567", returned.Phone);
         Assert.True(returned.ProfileCompleted);
 
         // The response must not be the only place it is true.
@@ -166,12 +166,12 @@ public sealed class AthleteProfileTests(AthleteProfileApiFactory factory)
         Assert.Equal("1999-02-11", reread.DateOfBirth);
         Assert.Equal("Female", reread.Gender);
         Assert.Equal("Swimming", reread.Sport);
-        Assert.Equal("+20 100 123 4567", reread.Phone);
+        Assert.Equal("+201001234567", reread.Phone);
         Assert.True(reread.ProfileCompleted);
     }
 
     [Fact]
-    public async Task A_phone_number_is_stored_trimmed()
+    public async Task A_phone_number_is_stored_in_E164_rather_than_as_typed()
     {
         var (client, _) = await AthleteAsync();
 
@@ -179,41 +179,42 @@ public sealed class AthleteProfileTests(AthleteProfileApiFactory factory)
         response.EnsureSuccessStatusCode();
 
         // Read back off the entity, not echoed, so the app renders what was stored.
-        Assert.Equal("+20 111 222 3333",
+        Assert.Equal("+201112223333",
             (await response.Content.ReadFromJsonAsync<Profile>(Json))!.Phone);
-        Assert.Equal("+20 111 222 3333", (await GetProfileAsync(client)).Phone);
+        Assert.Equal("+201112223333", (await GetProfileAsync(client)).Phone);
     }
 
     [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public async Task Clearing_the_phone_stores_null_rather_than_an_empty_string(string? blank)
+    public async Task A_blank_phone_is_refused_and_the_stored_one_survives(string? blank)
     {
         var (client, _) = await AthleteAsync();
 
         (await SaveAsync(client, FullProfile("+20 100 123 4567"))).EnsureSuccessStatusCode();
 
         var response = await SaveAsync(client, FullProfile(blank));
-        response.EnsureSuccessStatusCode();
 
-        // "" would render in the app as a phone number that is set but empty.
-        Assert.Null((await response.Content.ReadFromJsonAsync<Profile>(Json))!.Phone);
-        Assert.Null((await GetProfileAsync(client)).Phone);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("VALIDATION_FAILED", problem.GetProperty("errorCode").GetString());
+        Assert.True(problem.GetProperty("errors").TryGetProperty("Phone", out _));
+
+        Assert.Equal("+201001234567", (await GetProfileAsync(client)).Phone);
     }
 
     /// <summary>
-    /// Full replacement, not a patch. A client that omits the field is saying "no phone", and
-    /// the contract says so in as many words — this is what makes that true rather than a
-    /// promise nobody checks.
+    /// Full replacement, not a patch — and phone is required, so a body without it is refused
+    /// rather than read as "clear it" or "leave it alone".
     /// </summary>
     [Fact]
-    public async Task Omitting_the_phone_clears_it_rather_than_leaving_it_alone()
+    public async Task Omitting_the_phone_is_refused_and_the_stored_one_survives()
     {
         var (client, _) = await AthleteAsync();
 
         (await SaveAsync(client, FullProfile("+20 100 123 4567"))).EnsureSuccessStatusCode();
-        Assert.Equal("+20 100 123 4567", (await GetProfileAsync(client)).Phone);
+        Assert.Equal("+201001234567", (await GetProfileAsync(client)).Phone);
 
         var response = await SaveAsync(client, new
         {
@@ -223,8 +224,12 @@ public sealed class AthleteProfileTests(AthleteProfileApiFactory factory)
             sport = "Tennis"
         });
 
-        response.EnsureSuccessStatusCode();
-        Assert.Null((await GetProfileAsync(client)).Phone);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("VALIDATION_FAILED", problem.GetProperty("errorCode").GetString());
+        Assert.True(problem.GetProperty("errors").TryGetProperty("Phone", out _));
+
+        Assert.Equal("+201001234567", (await GetProfileAsync(client)).Phone);
     }
 
     [Fact]
@@ -245,7 +250,7 @@ public sealed class AthleteProfileTests(AthleteProfileApiFactory factory)
 
     /// <summary>The same rule the Admin's profile applies — one column, one definition.</summary>
     [Fact]
-    public async Task A_phone_number_longer_than_the_column_is_refused()
+    public async Task A_phone_number_longer_than_the_input_limit_is_refused()
     {
         var (client, _) = await AthleteAsync();
 
@@ -271,7 +276,7 @@ public sealed class AthleteProfileTests(AthleteProfileApiFactory factory)
             dateOfBirth = "2001-04-17",
             gender = "Male",
             sport = "Tennis",
-            phone = (string?)null,
+            phone = "010 1234 5678",
             email = "someone.else@nowhere.test"
         });
 

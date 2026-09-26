@@ -41,12 +41,12 @@ public sealed record RegisterRequest(
 
 /// <summary>
 /// Complete Profile, and Edit Profile afterwards — one endpoint serves both, because they set
-/// the same fields and a second edit endpoint could only drift from this one. Every field but
-/// the phone is required and enforced server-side, so an athlete cannot reach
+/// the same fields and a second edit endpoint could only drift from this one. Every field,
+/// phone included, is required and enforced server-side, so an athlete cannot reach
 /// <c>profileCompleted: true</c> with a half-filled profile by bypassing the app.
 /// <para>
 /// A <b>full replacement</b>, not a patch: everything is sent every time, and a field left out
-/// of the body is a field being cleared rather than one being left alone. The same shape the
+/// of the body is refused rather than left alone. The same shape the
 /// Admin's <c>PUT /auth/me/profile</c> has, for the same reason.
 /// </para>
 /// <para>
@@ -55,20 +55,18 @@ public sealed record RegisterRequest(
 /// </para>
 /// </summary>
 /// <param name="Phone">
-/// Optional, and the one field here that may be absent without being wrong. Send null — or an
-/// empty string, which is treated identically — to clear it. Stored as null either way, so a
-/// cleared number reads back as null rather than as <c>""</c>. The format rules are shared with
-/// the Admin's profile edit; see <see cref="PhonePolicy"/>.
-/// <para>
-/// Because this is a full replacement, <b>omitting it clears a number that was already there.</b>
-/// </para>
+/// <b>Required</b>, like every other field here: missing, null, <c>""</c> and whitespace are all
+/// <c>400 VALIDATION_FAILED</c>. Accepted as typed, stored and returned in E.164; the rules are
+/// shared with the Admin's profile edit — see <see cref="PhonePolicy"/>. An athlete who
+/// completed their profile before phone numbers were collected has none on record, and has to
+/// supply one on their next save.
 /// </param>
 public sealed record CompleteProfileRequest(
     string FullName,
     DateOnly DateOfBirth,
     Gender Gender,
     string Sport,
-    string? Phone = null);
+    string Phone);
 
 /// <summary>
 /// The athlete's own profile — what the Athlete Profile screen reads, and what an edit returns.
@@ -84,7 +82,10 @@ public sealed record CompleteProfileRequest(
 /// the users table and what Google sign-in matches on, so changing it means re-verifying
 /// ownership and re-issuing tokens. That is a feature of its own, not a field on a form.
 /// </param>
-/// <param name="Phone">Null until the athlete gives one. Optional, and stays optional.</param>
+/// <param name="Phone">
+/// E.164. Null only for an athlete who has not saved their profile since phone numbers became
+/// required — every save now has to supply one.
+/// </param>
 public sealed record AthleteProfileResponse(
     Guid UserId,
     string? FullName,

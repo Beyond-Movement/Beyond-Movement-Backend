@@ -22,8 +22,9 @@ namespace BeyondMovement.Modules.Identity.Contracts;
 /// is a feature of its own, not a field on a form.
 /// </param>
 /// <param name="Phone">
-/// Null when it has never been given. Written by this screen for the Admin, and by
-/// <c>POST /athletes/me/profile</c> for an athlete — one column, one set of format rules, in
+/// E.164. Null only for an Admin who has not saved their profile since phone numbers became
+/// required — the seeded Admin starts that way. Written by this screen for the
+/// Admin, and by <c>POST /athletes/me/profile</c> for an athlete — one column, one parser, in
 /// <see cref="PhonePolicy"/>.
 /// </param>
 public sealed record AdminProfileResponse(
@@ -33,14 +34,16 @@ public sealed record AdminProfileResponse(
     string? Phone);
 
 /// <summary>
-/// A full replacement of the editable fields, not a patch: both are sent every time.
+/// A full replacement of the editable fields, not a patch: both are sent every time, and both
+/// are required.
 /// <para>
 /// There is no email here, by design — see <see cref="AdminProfileResponse.Email"/>.
 /// </para>
 /// </summary>
 /// <param name="FullName">Required. Blank is rejected with <c>VALIDATION_FAILED</c>.</param>
 /// <param name="Phone">
-/// Optional. Send null — or an empty string, which is treated identically — to clear it.
-/// Stored as null either way, so a cleared number reads back as null rather than as "".
+/// Required. Missing, null, "" and whitespace are all <c>VALIDATION_FAILED</c> — a number
+/// cannot be cleared once given. Accepted as typed and stored in E.164; see
+/// <see cref="PhonePolicy"/>.
 /// </param>
-public sealed record UpdateAdminProfileRequest(string FullName, string? Phone);
+public sealed record UpdateAdminProfileRequest(string FullName, string Phone);

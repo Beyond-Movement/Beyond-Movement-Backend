@@ -47,8 +47,9 @@ public sealed class AdminProfileHandler(IIdentityDbContext db, IClock clock)
 
         await db.SaveChangesAsync(ct);
 
-        // Read back off the entity rather than echoed from the request: both setters trim, and
-        // a blank phone becomes null, so what was stored is not always what was sent.
+        // Read back off the entity rather than echoed from the request: the name is trimmed and
+        // the phone normalized to E.164 (or null when blank), so what was stored is not always
+        // what was sent.
         return Result<AdminProfileResponse>.Success(
             new AdminProfileResponse(user.Id, user.FullName, user.Email, user.Phone));
     }

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using BeyondMovement.Infrastructure;
 using BeyondMovement.Modules.Athletes.Features;
+using BeyondMovement.Modules.Identity;
 using BeyondMovement.Modules.Identity.Contracts;
 using BeyondMovement.Modules.Identity.Domain;
 using BeyondMovement.Modules.Identity.Persistence;
@@ -79,8 +80,9 @@ public static class AthleteProfileEndpoints
             "Every field except email and profileCompleted can be null, and an athlete who has " +
             "registered but not finished Complete Profile has all of them null at once - that is " +
             "the state profileCompleted: false describes, not an error. Once profileCompleted is " +
-            "true, fullName, dateOfBirth, gender and sport are all non-null; phone stays " +
-            "optional and is null until the athlete gives one. " +
+            "true, fullName, dateOfBirth, gender and sport are all non-null. phone is E.164 " +
+            "once saved, and still null for an athlete who completed their profile before " +
+            "phone numbers were required - the POST below will make them supply one. " +
             "Profile photo is not part of this response: it needs file storage, upload and " +
             "public serving, which is a phase of its own. Show initials.")
         .Produces<AthleteProfileResponse>()
@@ -137,8 +139,8 @@ public static class AthleteProfileEndpoints
 
             // The athlete details are echoed from the request - they are what was just
             // committed, and a second round trip could only disagree. Phone is read back off
-            // the entity instead, because SetPhone trims and turns a blank into null, so what
-            // was stored is not always what was sent.
+            // the entity instead, because SetPhone normalizes to E.164 and turns a blank into
+            // null, so what was stored is not always what was sent.
             return Results.Ok(new AthleteProfileResponse(
                 user.Id, user.FullName, user.Email, user.Phone,
                 request.DateOfBirth, request.Gender, request.Sport,
@@ -151,14 +153,11 @@ public static class AthleteProfileEndpoints
             "from the token, never the body. One endpoint serves both Complete Profile and Edit " +
             "Profile: they set the same fields, and a second edit endpoint could only drift " +
             "from this one. Safe to call as often as the athlete edits. " +
-            "A FULL REPLACEMENT, NOT A PATCH: send fullName, dateOfBirth, gender and sport " +
-            "every time, and send phone every time you intend to keep it - a field left out of " +
-            "the body is cleared, not left alone. " +
-            "fullName, dateOfBirth, gender and sport are all required and enforced here, not " +
-            "only in the app. phone is optional: send null or an empty string to clear it, and " +
-            "it reads back as null either way. Digits and + ( ) - . only, up to 40 characters; " +
-            "the format is otherwise unconstrained because numbers are international and " +
-            "displayed, not dialled - the same rule the Admin's profile applies. " +
+            "A FULL REPLACEMENT, NOT A PATCH: send fullName, dateOfBirth, gender, sport and " +
+            "phone every time. " +
+            "All five are required and enforced here, not only in the app. " +
+            PhonePolicy.ContractDescription + " " +
+            "The same rule the Admin's profile applies. " +
             "EMAIL CANNOT BE CHANGED HERE. It is the login identity, the unique key on the user " +
             "and what Google sign-in matches on, so changing it needs re-verification and " +
             "re-issued tokens - a feature of its own. It is absent from this request and " +
@@ -166,7 +165,7 @@ public static class AthleteProfileEndpoints
             "Sets profileCompleted to true, after which both /auth/me and every later " +
             "authentication response report it as true and guarantee a non-null fullName, so the " +
             "app routes to Home instead of Complete Profile. " +
-            "The response carries phone as stored, after trimming, so render that field from the " +
+            "The response carries phone as stored, in E.164, so render that field from the " +
             "response rather than from what was sent. " +
             "Profile photo is not accepted yet; it needs file storage, upload and public " +
             "serving, which is a phase of its own, and the app shows initials until then.")
