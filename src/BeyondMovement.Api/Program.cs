@@ -20,6 +20,7 @@ using BeyondMovement.Infrastructure.Auditing;
 using BeyondMovement.Infrastructure.Email;
 using BeyondMovement.Infrastructure.Google;
 using BeyondMovement.Infrastructure.Calendly;
+using BeyondMovement.Infrastructure.Storage;
 using BeyondMovement.Modules.Identity.Domain;
 using BeyondMovement.Modules.Identity.Features.ChangePassword;
 using BeyondMovement.Modules.Identity.Features.CurrentUser;
@@ -216,6 +217,42 @@ builder.Services.AddScoped<ObservationRequestService>();
 builder.Services.AddScoped<ObservationRequestReader>();
 builder.Services.AddScoped<ObservationEligibility>();
 builder.Services.AddScoped<SessionNoteHistoryReader>();
+
+// --- session note images / object storage ------------------------------
+// Private S3. The bucket and region are supplied by each deployment (Storage__S3__BucketName,
+// Storage__S3__Region) and ship empty, like Payments__InstaPay__*. Credentials are NEVER
+// configured - the AWS SDK's default chain supplies the ECS task role in production. Nothing
+// here contacts AWS at startup: with no bucket, or no credentials, the API still boots and only
+// the attachment endpoints answer 503 STORAGE_UNAVAILABLE. A half-configured bucket (a name but
+// no region) is a deployment mistake, and fails at startup rather than on the first upload.
+builder.Services.AddOptions<StorageOptions>()
+    .Bind(builder.Configuration.GetSection(StorageOptions.SectionName))
+    .Validate(o => o.UploadUrlMinutes is >= 1 and <= 60, "Storage:UploadUrlMinutes must be 1-60.")
+    .Validate(o => o.DownloadUrlMinutes is >= 1 and <= 60, "Storage:DownloadUrlMinutes must be 1-60.")
+    .Validate(o => o.MaxImageBytes > 0, "Storage:MaxImageBytes must be positive.")
+    .Validate(o => o.MaxAttachmentsPerNote > 0, "Storage:MaxAttachmentsPerNote must be positive.")
+    .Validate(o => !o.IsConfigured
+                   || !string.IsNullOrWhiteSpace(o.S3.Region)
+                   || !string.IsNullOrWhiteSpace(o.S3.ServiceUrl),
+        "Storage:S3:Region must be set when Storage:S3:BucketName is (Storage__S3__Region).")
+    .Validate(o => string.IsNullOrWhiteSpace(o.S3.ServiceUrl)
+                   || (Uri.TryCreate(o.S3.ServiceUrl, UriKind.Absolute, out var u)
+                       && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps)),
+        "Storage:S3:ServiceUrl must be an absolute http(s) URL, or empty for AWS.")
+    .ValidateOnStart();
+
+// Say at startup which storage this process will use, as the email transport does. Read here
+// for the message only; the running code resolves the options per request.
+var storageOptions = builder.Configuration.GetSection(StorageOptions.SectionName).Get<StorageOptions>() ?? new();
+Console.WriteLine(storageOptions.IsConfigured
+    ? $"Storage: session note images in S3 bucket {storageOptions.S3.BucketName} " +
+      $"({(string.IsNullOrWhiteSpace(storageOptions.S3.ServiceUrl) ? storageOptions.S3.Region : storageOptions.S3.ServiceUrl)}), " +
+      "credentials from the AWS default chain."
+    : "WARNING  No object storage configured (Storage__S3__BucketName). Session note image " +
+      "endpoints will answer 503 STORAGE_UNAVAILABLE; everything else works.");
+builder.Services.AddSingleton<IObjectStorage, S3ObjectStorage>();
+builder.Services.AddScoped<SessionNoteAttachmentService>();
+builder.Services.AddScoped<SessionNoteAttachmentCleanupJob>();
 builder.Services.AddSingleton<ICalendlyWebhookVerifier, CalendlyWebhookVerifier>();
 builder.Services.AddSingleton<ICalendlyWebhookParser, CalendlyWebhookParser>();
 builder.Services.AddHttpClient<ICalendlyClient, CalendlyClient>((sp, client) =>
@@ -275,6 +312,7 @@ builder.Services.AddHealthChecks()
     .AddDbContextCheck<AppDbContext>();
 
 builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<StorageExceptionHandler>();
 builder.Services.AddExceptionHandler<JsonExceptionHandler>();
 
 var app = builder.Build();
@@ -286,6 +324,12 @@ if (app.Configuration.GetValue("Jobs:Enabled", true) && recurringJobs is not nul
         "calendly-reconciliation",
         job => job.ReconcileAsync(CancellationToken.None),
         $"*/{Math.Clamp(builder.Configuration.GetValue("Calendly:ReconciliationMinutes", 15), 5, 60)} * * * *");
+
+    // Abandoned uploads and deleted notes' images: objects first, rows second, every 30 minutes.
+    recurringJobs.AddOrUpdate<SessionNoteAttachmentCleanupJob>(
+        SessionNoteAttachmentCleanupJob.RecurringJobId,
+        job => job.RunAsync(CancellationToken.None),
+        "*/30 * * * *");
 }
 
 // --- pipeline ------------------------------------------------------------
@@ -334,6 +378,7 @@ app.MapFinanceEndpoints();
 app.MapAttendanceEndpoints();
 app.MapObservationRequestEndpoints();
 app.MapSessionNoteEndpoints();
+app.MapSessionNoteAttachmentEndpoints();
 app.MapDashboardEndpoints();
 
 if (app.Environment.IsDevelopment())

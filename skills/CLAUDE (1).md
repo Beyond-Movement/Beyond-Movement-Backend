@@ -256,9 +256,9 @@ athlete. The UX document has been annotated in place; this is the register entry
   separate observation history and deliberately **no `isObservation` flag** — it would be
   `sessionDeliveryType` compared to one value.
 - ~~Admin only. Session notes are still never shown to athletes.~~ **Superseded — see §8.3.**
-- **Image attachments on notes are not built and are not in the product specification.** When they
-  come, they use shared Files infrastructure (architecture §4.7, the pre-signed upload pipeline),
-  not a note-specific upload. Do not build a note attachment table.
+- ~~Image attachments on notes are not built. When they come, they use shared Files
+  infrastructure, not a note-specific upload. Do not build a note attachment table.~~
+  **Superseded — see §8.4.**
 
 `GET /api/v1/athletes/{athleteId}/notes` — see `contract/CHANGELOG.md` → "Phase 13c".
 
@@ -289,6 +289,35 @@ from elsewhere, and it is editable like any other title.
 **The many-notes-per-session model is unchanged and must stay.** There is no unique constraint on
 `SessionId` and the product may store several notes against one session, whatever the UX usually
 produces.
+
+### 8.4 Session note images — private S3
+
+**Decided after an architecture inspection (2026-09-27), superseding the §8.2 bullet.** Notes carry
+up to 5 images in a note-specific `SessionNoteAttachments` table rather than a generic Files
+module. The upload follows architecture §4.7 and §11: pre-signed PUT, then a verified
+`Pending → Committed` step.
+
+- **The bytes never pass through the API, and Postgres never holds them.** Keys are
+  `session-notes/{noteId}/{attachmentId}.{ext}`, both ids server-generated. There is no filename
+  and no PII in a key. The prefix is fixed because the IAM policy is.
+- **Commit only after verification**: size, stored content type **and file signature** (magic
+  bytes). The declared MIME type is never trusted on its own.
+- **Never lose a storage key before its object is gone.** Deleting marks the row `Deleting`. The
+  object is removed first and the row second. The FK to `SessionNotes` is `SET NULL`, **not**
+  `CASCADE`. Do not "tidy" it into a cascade. The Hangfire job `session-note-attachment-cleanup`
+  retries whatever an earlier attempt could not remove.
+- **Storage goes through `IObjectStorage`** (`Infrastructure/Storage`). `S3ObjectStorage` is the
+  only file that names the AWS SDK (`AWSSDK.S3`, the one package added). Credentials come from
+  the SDK's default chain only, which is the ECS task role in production. **Never add an access
+  key setting.** Tests use `FakeObjectStorage`, registered in `ApiFactory`.
+- **The bucket is deployment configuration.** `Storage__S3__BucketName` and `Storage__S3__Region`
+  ship empty and ECS supplies them. With no bucket, the API still starts and attachments return
+  503. Do not put a bucket name back into `appsettings.json`.
+- Athlete access to an image follows the note's own ownership path (`GET /me/notes`). Writing
+  stays Admin-only.
+
+See `contract/CHANGELOG.md` → "Session Note Image Attachments" and the README section
+"Session note images (S3)".
 
 **`contract/CHANGELOG.md` is the working source of truth for API behaviour.** It is regenerated and reviewed with every change; the four source documents are not. When they disagree, the changelog is what shipped.
 

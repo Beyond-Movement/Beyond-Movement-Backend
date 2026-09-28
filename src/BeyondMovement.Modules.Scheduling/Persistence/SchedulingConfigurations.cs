@@ -203,3 +203,47 @@ public sealed class SessionNoteConfiguration : IEntityTypeConfiguration<SessionN
             .OnDelete(DeleteBehavior.Cascade);
     }
 }
+
+public sealed class SessionNoteAttachmentConfiguration : IEntityTypeConfiguration<SessionNoteAttachment>
+{
+    public void Configure(EntityTypeBuilder<SessionNoteAttachment> b)
+    {
+        b.ToTable("SessionNoteAttachments", t =>
+        {
+            t.HasCheckConstraint("CK_SessionNoteAttachments_DeclaredSize", "\"DeclaredSizeBytes\" > 0");
+            t.HasCheckConstraint("CK_SessionNoteAttachments_SortOrder", "\"SortOrder\" >= 0");
+
+            // A committed attachment is one whose object was verified, so it must carry what the
+            // verification found. A pending one has not been verified and must carry nothing.
+            t.HasCheckConstraint("CK_SessionNoteAttachments_CommittedConsistency",
+                "(\"Status\" = 'Pending' AND \"CommittedAtUtc\" IS NULL AND \"SizeBytes\" IS NULL) OR " +
+                "(\"Status\" = 'Committed' AND \"CommittedAtUtc\" IS NOT NULL AND \"SizeBytes\" IS NOT NULL) OR " +
+                "\"Status\" = 'Deleting'");
+            t.HasCheckConstraint("CK_SessionNoteAttachments_DeletionConsistency",
+                "(\"Status\" = 'Deleting') = (\"DeletionRequestedAtUtc\" IS NOT NULL)");
+        });
+
+        b.HasKey(x => x.Id);
+        b.Property(x => x.StorageKey).IsRequired().HasMaxLength(SessionNoteAttachment.MaxStorageKeyLength);
+        b.Property(x => x.ContentType).IsRequired().HasMaxLength(50);
+        b.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+        b.Property(x => x.Version).IsRowVersion();
+
+        // Two rows pointing at one object would mean deleting one deletes the other's image.
+        b.HasIndex(x => x.StorageKey).IsUnique();
+
+        // The reads (a note's committed images, in order) and the limit check (a note's pending
+        // and committed count).
+        b.HasIndex(x => new { x.SessionNoteId, x.Status, x.SortOrder });
+
+        // The cleanup job: expired pending uploads and everything already marked Deleting.
+        b.HasIndex(x => new { x.Status, x.UploadExpiresAtUtc });
+
+        // SET NULL, deliberately not CASCADE. A cascade would delete the only record of where the
+        // object is, and nothing could ever remove it from storage. Orphaned here, the row is
+        // found by the cleanup job, which deletes the object first and the row second.
+        b.HasOne<SessionNote>().WithMany()
+            .HasForeignKey(x => x.SessionNoteId)
+            .OnDelete(DeleteBehavior.SetNull);
+    }
+}

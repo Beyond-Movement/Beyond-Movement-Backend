@@ -236,7 +236,7 @@ public sealed class SchemaNormalizingTransformer : IOpenApiSchemaTransformer
         string[] all =
             [.. ApiErrorCodes.All, .. PackageErrorCodes.All, .. SchedulingErrors.AllCodes,
              .. AttendanceErrors.AllCodes, .. ObservationEligibilityErrors.AllCodes,
-             .. FinanceErrorCodes.All];
+             .. FinanceErrorCodes.All, .. SessionNoteAttachmentErrors.AllCodes];
 
         if (errorCode is OpenApiSchema property)
             property.Enum =

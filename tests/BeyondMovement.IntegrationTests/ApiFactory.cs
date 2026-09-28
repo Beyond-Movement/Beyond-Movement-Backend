@@ -1,3 +1,4 @@
+using BeyondMovement.Infrastructure.Storage;
 using BeyondMovement.Modules.Identity.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -55,6 +56,12 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     public StubGoogleTokenValidator GoogleValidator { get; } = new();
 
+    /// <summary>
+    /// Object storage for every test. Registered in the base factory so no test, in any suite,
+    /// can reach real S3 — or needs AWS credentials to start the app.
+    /// </summary>
+    public FakeObjectStorage Storage { get; } = new();
+
     // Pinned to the same major version as docker-compose, so tests and local development
     // run against the same PostgreSQL.
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16").Build();
@@ -98,6 +105,9 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             services.RemoveAll<IEmailSender>();
             services.AddSingleton<TestEmailOutbox>();
             services.AddSingleton<IEmailSender>(sp => sp.GetRequiredService<TestEmailOutbox>());
+
+            services.RemoveAll<IObjectStorage>();
+            services.AddSingleton<IObjectStorage>(Storage);
         });
     }
 

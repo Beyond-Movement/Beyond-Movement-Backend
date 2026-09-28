@@ -40,6 +40,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     // Scheduling module
     public DbSet<Session> Sessions => Set<Session>();
     public DbSet<SessionNote> SessionNotes => Set<SessionNote>();
+    public DbSet<SessionNoteAttachment> SessionNoteAttachments => Set<SessionNoteAttachment>();
     public DbSet<ObservationRequest> ObservationRequests => Set<ObservationRequest>();
     public DbSet<CalendlyWebhookEvent> CalendlyWebhookEvents => Set<CalendlyWebhookEvent>();
     public DbSet<BookingOperation> BookingOperations => Set<BookingOperation>();

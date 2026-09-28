@@ -4208,9 +4208,11 @@ paths:
       tags:
       - Session notes
       summary: The notes on one session, oldest first.
-      description: Oldest first, because they read as a running record of the session
+      description: 'Oldest first, because they read as a running record of the session
         rather than a feed. An empty list is normal. An unknown session, or one belonging
-        to another coach, is 404 SESSION_NOT_FOUND.
+        to another coach, is 404 SESSION_NOT_FOUND. Each note carries attachments:
+        its COMMITTED images in sortOrder, each with a downloadUrl valid for 15 minutes.
+        Pending uploads never appear.'
       operationId: ListSessionNotes
       parameters:
       - name: sessionId
@@ -4380,7 +4382,7 @@ paths:
       summary: Remove a note.
       description: 204 with no body. Deleting a note that is already gone is 404 SESSION_NOTE_NOT_FOUND
         rather than a silent success, so a client that thinks it deleted something
-        twice finds out.
+        twice finds out. The note's images are deleted with it, pending uploads included.
       operationId: DeleteSessionNote
       parameters:
       - name: sessionId
@@ -4546,6 +4548,334 @@ paths:
                 $ref: '#/components/schemas/ApiProblemDetails'
       security:
       - bearerAuth: []
+  /api/v1/sessions/{sessionId}/notes/{noteId}/attachments:
+    post:
+      tags:
+      - Session notes
+      summary: 'Start attaching an image to a note: returns a short-lived upload URL.'
+      description: 'Step 1 of 3. Save the note first, then call this with the image''s
+        contentType (image/jpeg, image/png or image/webp - HEIC is NOT accepted, re-encode
+        to JPEG) and its exact sizeBytes (1 byte to 10 MB). Step 2: PUT the raw bytes
+        to uploadUrl with EXACTLY the requiredHeaders, before uploadUrlExpiresAtUtc
+        (5 minutes). No Authorization header on that PUT - the URL is the permission.
+        Never log or persist the URL. Step 3: POST .../attachments/{attachmentId}/complete.
+        Until then the image is invisible to every read. A note holds at most 5 images,
+        and uploads still in progress count, so a sixth request is 409 ATTACHMENT_LIMIT_REACHED.
+        An abandoned upload frees its slot about 20 minutes after it was requested.
+        400 UNSUPPORTED_ATTACHMENT_TYPE, 400 ATTACHMENT_TOO_LARGE (also for sizeBytes
+        <= 0), 404 SESSION_NOTE_NOT_FOUND for a note that is not on this session or
+        a session that is not the caller''s, 503 STORAGE_UNAVAILABLE.'
+      operationId: RequestSessionNoteAttachmentUpload
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: noteId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestSessionNoteAttachmentUploadRequest'
+        required: true
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionNoteAttachmentUploadResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '503':
+          description: Service Unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/sessions/{sessionId}/notes/{noteId}/attachments/{attachmentId}/complete:
+    post:
+      tags:
+      - Session notes
+      summary: 'Finish an upload: the API verifies the stored image and makes it visible.'
+      description: 'No body. The API checks the object that actually arrived: it must
+        exist, be exactly the declared size (and at most 10 MB), have the declared
+        content type, and START WITH THE REAL SIGNATURE of a JPEG, PNG or WebP file.
+        On success the attachment is committed and returned with a download URL. IDEMPOTENT:
+        completing an attachment that is already committed returns it again with 200,
+        so a retry after a timeout is safe. 409 ATTACHMENT_UPLOAD_INVALID when verification
+        fails. If nothing has been uploaded yet the attachment stays pending and the
+        PUT may be retried while its URL is valid; in every other case (wrong size,
+        type or file signature, or the upload window has closed) the stored object
+        is deleted, the attachment is gone, and the client must request a new upload.
+        404 ATTACHMENT_NOT_FOUND for an unknown, deleted or other note''s attachment.
+        503 STORAGE_UNAVAILABLE - nothing changed, retry.'
+      operationId: CompleteSessionNoteAttachmentUpload
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: noteId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: attachmentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionNoteAttachmentResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '503':
+          description: Service Unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/sessions/{sessionId}/notes/{noteId}/attachments/{attachmentId}:
+    delete:
+      tags:
+      - Session notes
+      summary: Remove an image from a note.
+      description: 204 with no body. Works on a committed image and on an upload still
+        pending. The image disappears from every read immediately; its stored object
+        is removed now, or by the background cleanup if storage is briefly unreachable.
+        Deleting one that is already gone is 404 ATTACHMENT_NOT_FOUND.
+      operationId: DeleteSessionNoteAttachment
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: noteId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: attachmentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '204':
+          description: No Content
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/sessions/{sessionId}/notes/{noteId}/attachments/{attachmentId}/download-url:
+    get:
+      tags:
+      - Session notes
+      summary: A fresh download URL for one image, when the one from a note read has
+        expired.
+      description: Returns the attachment with a new downloadUrl valid for 15 minutes.
+        Committed images only; anything else is 404 ATTACHMENT_NOT_FOUND.
+      operationId: GetSessionNoteAttachmentDownloadUrl
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: noteId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: attachmentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionNoteAttachmentResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '503':
+          description: Service Unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
+  /api/v1/me/notes/{noteId}/attachments/{attachmentId}/download-url:
+    get:
+      tags:
+      - Session notes
+      summary: A fresh download URL for an image on one of the caller's own notes.
+      description: The athlete's counterpart of the Admin route, READ-ONLY - an athlete
+        can never upload or delete an image. The note must be one that appears in
+        the caller's own GET /me/notes; any other note, including another athlete's,
+        is 404 SESSION_NOTE_NOT_FOUND, exactly as for an id that does not exist. An
+        attachment that is not a committed image on that note is 404 ATTACHMENT_NOT_FOUND.
+      operationId: GetMySessionNoteAttachmentDownloadUrl
+      parameters:
+      - name: noteId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: attachmentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionNoteAttachmentResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '503':
+          description: Service Unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
 components:
   schemas:
     AcceptObservationRequestRequest:
@@ -4646,6 +4976,10 @@ components:
           - ACTIVE_PACKAGE_EXISTS
           - ACTIVE_PACKAGE_NOT_FOUND
           - ATHLETE_NOT_FOUND
+          - ATTACHMENT_LIMIT_REACHED
+          - ATTACHMENT_NOT_FOUND
+          - ATTACHMENT_TOO_LARGE
+          - ATTACHMENT_UPLOAD_INVALID
           - AVAILABILITY_RANGE_INVALID
           - BOOKING_IN_PROGRESS
           - CALENDLY_RATE_LIMITED
@@ -4695,8 +5029,10 @@ components:
           - SESSION_NOT_FOUND
           - SESSION_NOT_STARTED
           - SLOT_UNAVAILABLE
+          - STORAGE_UNAVAILABLE
           - TIME_ZONE_INVALID
           - TOO_MANY_REQUESTS
+          - UNSUPPORTED_ATTACHMENT_TYPE
           - VALIDATION_FAILED
           type: string
         correlationId:
@@ -4916,6 +5252,7 @@ components:
       - sessionDeliveryType
       - sessionStatus
       - sessionLocationOrPlatform
+      - attachments
       type: object
       properties:
         id:
@@ -4951,6 +5288,10 @@ components:
           type:
           - 'null'
           - string
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionNoteAttachmentResponse'
     AthleteStatusFilter:
       enum:
       - All
@@ -6205,6 +6546,17 @@ components:
           type:
           - 'null'
           - string
+    RequestSessionNoteAttachmentUploadRequest:
+      required:
+      - contentType
+      - sizeBytes
+      type: object
+      properties:
+        contentType:
+          type: string
+        sizeBytes:
+          type: integer
+          format: int64
     RescheduleUrlResponse:
       required:
       - url
@@ -6300,6 +6652,67 @@ components:
         content:
           maxLength: 4000
           type: string
+    SessionNoteAttachmentResponse:
+      required:
+      - id
+      - sessionNoteId
+      - contentType
+      - sizeBytes
+      - sortOrder
+      - createdAtUtc
+      - downloadUrl
+      - downloadUrlExpiresAtUtc
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        sessionNoteId:
+          type: string
+          format: uuid
+        contentType:
+          type: string
+        sizeBytes:
+          type: integer
+          format: int64
+        sortOrder:
+          type: integer
+          format: int32
+        createdAtUtc:
+          type: string
+          format: date-time
+        downloadUrl:
+          type: string
+        downloadUrlExpiresAtUtc:
+          type: string
+          format: date-time
+    SessionNoteAttachmentUploadResponse:
+      required:
+      - attachmentId
+      - uploadUrl
+      - uploadMethod
+      - requiredHeaders
+      - uploadUrlExpiresAtUtc
+      - maxSizeBytes
+      type: object
+      properties:
+        attachmentId:
+          type: string
+          format: uuid
+        uploadUrl:
+          type: string
+        uploadMethod:
+          type: string
+        requiredHeaders:
+          type: object
+          additionalProperties:
+            type: string
+        uploadUrlExpiresAtUtc:
+          type: string
+          format: date-time
+        maxSizeBytes:
+          type: integer
+          format: int64
     SessionNoteResponse:
       required:
       - id
@@ -6309,6 +6722,7 @@ components:
       - content
       - createdAtUtc
       - updatedAtUtc
+      - attachments
       type: object
       properties:
         id:
@@ -6330,6 +6744,10 @@ components:
         updatedAtUtc:
           type: string
           format: date-time
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionNoteAttachmentResponse'
     SessionPackageProgress:
       required:
       - packageId

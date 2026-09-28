@@ -31,6 +31,7 @@ repository; the two are connected only by [`contract/openapi.yaml`](contract/ope
 | Scheduling — Calendly booking, availability, webhooks, reconciliation, sessions | ✅ |
 | Purchased packages — purchase at the quoted price, balance, history, close, one active each | ✅ |
 | Attendance — mark attended or no-show, exactly-once deduction, observations, session notes | ✅ |
+| Session note images — private S3, pre-signed two-phase upload, verified on completion | ✅ |
 | To-dos, finance, chat, notifications | Not started |
 
 **223 tests** — `dotnet test` needs Docker for the integration suite.
@@ -406,6 +407,89 @@ requirements.
 > **Not yet handled:** a failed send is not retried. The invitation row already exists, so
 > the athlete simply never receives a code and the Admin must resend. Architecture §5 puts
 > email behind Hangfire from phase 5 for exactly this reason.
+
+---
+
+## Session note images (S3)
+
+Images attached to session notes live in a **private** S3 bucket. The app uploads and downloads
+them directly with short-lived pre-signed URLs, so no image bytes pass through the API. Postgres
+holds only metadata and object keys. For the API behaviour, see `contract/CHANGELOG.md` →
+"Session Note Image Attachments".
+
+### Configuration
+
+**The bucket is chosen by the deployment, not by the application.** `appsettings.json` ships
+`Storage:S3:BucketName` and `Storage:S3:Region` **empty**, and each environment supplies its own.
+This is the same convention as `Payments__InstaPay__*`. None of these values is secret.
+
+| Key (env var form) | Shipped default | Meaning |
+|---|---|---|
+| `Storage__S3__BucketName` | *(empty)* | The private bucket. **Supplied per environment** |
+| `Storage__S3__Region` | *(empty)* | The bucket's region. **Required whenever a bucket is set** |
+| `Storage__S3__ServiceUrl` | *(empty)* | Only for a local S3 emulator such as MinIO. Leave empty for AWS |
+| `Storage__UploadUrlMinutes` | `5` | Lifetime of a pre-signed PUT |
+| `Storage__DownloadUrlMinutes` | `15` | Lifetime of a pre-signed GET |
+| `Storage__MaxImageBytes` | `10485760` | 10 MB per image |
+| `Storage__MaxAttachmentsPerNote` | `5` | Pending plus committed images per note |
+
+The four limits are product rules and have defaults. Only the bucket, region and emulator URL
+depend on the environment.
+
+**Production (ECS)** sets these two in the task definition:
+
+```text
+Storage__S3__BucketName=beyond-movement-files-745059801486-ap-south-1-an
+Storage__S3__Region=ap-south-1
+```
+
+How the API behaves with each combination:
+
+| Configuration | Startup | Attachment endpoints |
+|---|---|---|
+| No bucket (the default: fresh clone, local dev, tests) | Starts. Prints `WARNING  No object storage configured` | `503 STORAGE_UNAVAILABLE`, nothing created. Everything else works |
+| Bucket **and** region | Starts. Prints `Storage: session note images in S3 bucket …`. Nothing contacts AWS yet | Work if the process has AWS credentials. Otherwise `503 STORAGE_UNAVAILABLE` |
+| Bucket **without** region (and no `ServiceUrl`) | **Refuses to start**: `Storage:S3:Region must be set when Storage:S3:BucketName is` | none |
+| `ServiceUrl` that is not an absolute http(s) URL | **Refuses to start** | none |
+
+To try uploads from a developer machine against a real bucket, set the bucket and region with
+user secrets and sign in with your own AWS profile:
+
+```bash
+dotnet user-secrets set "Storage:S3:BucketName" "<a bucket you may use>" --project src/BeyondMovement.Api
+dotnet user-secrets set "Storage:S3:Region" "ap-south-1" --project src/BeyondMovement.Api
+```
+
+There is deliberately **no key prefix setting**. Keys are always `session-notes/{noteId}/{attachmentId}.{ext}`,
+because the task role's IAM policy allows only `session-notes/*`. Any other prefix would be
+denied.
+
+### Credentials: never configured
+
+**Do not put an AWS access key or secret in appsettings, user secrets, `.env`, source control or
+the Flutter app.** The API uses the AWS SDK's default credential chain:
+
+- **In ECS**, the chain picks up the task role `BeyondMovementECSTaskRole` automatically. That
+  role's inline policy `BeyondMovementSessionNoteAttachments` grants only `s3:PutObject`,
+  `s3:GetObject` and `s3:DeleteObject` on `…/session-notes/*`. The task definition supplies
+  only the bucket and region shown above, and **no** credential variables.
+- **Locally with no bucket or no AWS credentials**, the API still starts and every other endpoint
+  works. Only the attachment endpoints fail with `503 STORAGE_UNAVAILABLE`, as do note reads that
+  include images. Nothing contacts AWS at startup.
+- **Locally against a real bucket**, set the bucket and region as above and sign in with your own
+  AWS profile (`aws sso login` or `AWS_PROFILE`). The SDK finds it, and your own IAM permissions
+  apply.
+- **Tests** never touch AWS. `ApiFactory` replaces storage with an in-memory `FakeObjectStorage`.
+
+No CORS configuration is needed, because the client is native Flutter, not Flutter Web.
+
+### Cleanup
+
+The Hangfire recurring job `session-note-attachment-cleanup` runs every 30 minutes (when
+`Jobs__Enabled` is true). It deletes objects left by uploads that were never completed, and by
+images whose note was deleted, then deletes their rows. It always deletes the object before the
+row, so a failed S3 delete is simply retried on the next run. The bucket's lifecycle rule that
+aborts incomplete multipart uploads after 1 day is only a secondary safety net.
 
 ---
 

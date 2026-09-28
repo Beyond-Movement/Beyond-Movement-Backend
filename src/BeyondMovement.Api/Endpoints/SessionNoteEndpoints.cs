@@ -45,7 +45,9 @@ public static class SessionNoteEndpoints
             .WithDescription(
                 "Oldest first, because they read as a running record of the session rather than " +
                 "a feed. An empty list is normal. An unknown session, or one belonging to another " +
-                "coach, is 404 SESSION_NOT_FOUND.")
+                "coach, is 404 SESSION_NOT_FOUND. " +
+                "Each note carries attachments: its COMMITTED images in sortOrder, each with a " +
+                "downloadUrl valid for 15 minutes. Pending uploads never appear.")
             .Produces<IReadOnlyList<SessionNoteResponse>>()
             .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
             .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson)
@@ -96,7 +98,8 @@ public static class SessionNoteEndpoints
             .WithDescription(
                 "204 with no body. Deleting a note that is already gone is 404 " +
                 "SESSION_NOTE_NOT_FOUND rather than a silent success, so a client that thinks it " +
-                "deleted something twice finds out.")
+                "deleted something twice finds out. " +
+                "The note's images are deleted with it, pending uploads included.")
             .Produces(StatusCodes.Status204NoContent)
             .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
             .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson)
@@ -226,7 +229,8 @@ public static class SessionNoteEndpoints
     }
 
     private static async Task<IResult> List(
-        Guid sessionId, AppDbContext db, ClaimsPrincipal principal, HttpContext http, CancellationToken ct)
+        Guid sessionId, AppDbContext db, SessionNoteAttachmentService attachments,
+        ClaimsPrincipal principal, HttpContext http, CancellationToken ct)
     {
         if (!await SessionExists(sessionId, db, principal, ct))
             return SchedulingErrors.SessionNotFound.ToProblem(http);
@@ -236,7 +240,9 @@ public static class SessionNoteEndpoints
             .OrderBy(x => x.CreatedAtUtc).ThenBy(x => x.Id)
             .ToListAsync(ct);
 
-        return Results.Ok(notes.Select(x => x.ToResponse()).ToArray());
+        var images = await attachments.ForNotesAsync([.. notes.Select(x => x.Id)], ct);
+
+        return Results.Ok(notes.Select(x => x.ToResponse(images[x.Id])).ToArray());
     }
 
     private static async Task<IResult> Create(
@@ -256,13 +262,15 @@ public static class SessionNoteEndpoints
         db.SessionNotes.Add(note);
         await db.SaveChangesAsync(ct);
 
-        return Results.Created($"/api/v1/sessions/{sessionId}/notes/{note.Id}", note.ToResponse());
+        // A new note has no images yet: they are attached to a saved note, one upload at a time.
+        return Results.Created($"/api/v1/sessions/{sessionId}/notes/{note.Id}", note.ToResponse([]));
     }
 
     private static async Task<IResult> Edit(
         Guid sessionId, Guid noteId, SaveSessionNoteRequest request,
         IValidator<SaveSessionNoteRequest> validator, AppDbContext db, IClock clock,
-        ClaimsPrincipal principal, HttpContext http, CancellationToken ct)
+        SessionNoteAttachmentService attachments, ClaimsPrincipal principal, HttpContext http,
+        CancellationToken ct)
     {
         var validation = await validator.ValidateAsync(request, ct);
         if (!validation.IsValid) return validation.ToValidationProblem(http);
@@ -274,19 +282,32 @@ public static class SessionNoteEndpoints
         note.Revise(request.Title, request.Content, clock.UtcNow);
         await db.SaveChangesAsync(ct);
 
-        return Results.Ok(note.ToResponse());
+        // Editing the text leaves the images alone.
+        return Results.Ok(note.ToResponse(await attachments.ForNoteAsync(note.Id, ct)));
     }
 
+    /// <summary>
+    /// Deleting a note takes its images with it. They are marked for deletion in the same save
+    /// that removes the note, so no reader can see them afterwards; their objects are then removed
+    /// from storage, and any that cannot be right now are left to the cleanup job — the rows keep
+    /// the storage keys until the objects are gone.
+    /// </summary>
     private static async Task<IResult> Delete(
-        Guid sessionId, Guid noteId, AppDbContext db, ClaimsPrincipal principal,
+        Guid sessionId, Guid noteId, AppDbContext db, IClock clock,
+        SessionNoteAttachmentService attachments, ClaimsPrincipal principal,
         HttpContext http, CancellationToken ct)
     {
         var note = await OwnedNote(sessionId, noteId, db, principal, ct);
 
         if (note is null) return SchedulingErrors.SessionNoteNotFound.ToProblem(http);
 
+        var images = await db.SessionNoteAttachments.Where(x => x.SessionNoteId == note.Id).ToListAsync(ct);
+        foreach (var image in images) image.MarkForDeletion(clock.UtcNow);
+
         db.SessionNotes.Remove(note);
         await db.SaveChangesAsync(ct);
+
+        await attachments.PurgeAsync(images, ct);
 
         return Results.NoContent();
     }
@@ -301,11 +322,38 @@ public static class SessionNoteEndpoints
             ? db.Sessions.AsNoTracking().AnyAsync(x => x.Id == sessionId && x.CoachId == coachId, ct)
             : Task.FromResult(false);
 
-    private static async Task<SessionNote?> OwnedNote(
+    /// <summary>
+    /// The note, if it belongs to this session and the session to the caller's coach; otherwise
+    /// null. Shared with the attachment endpoints, so an image is authorised by exactly the same
+    /// path as the note it hangs off.
+    /// </summary>
+    internal static async Task<SessionNote?> OwnedNote(
         Guid sessionId, Guid noteId, AppDbContext db, ClaimsPrincipal principal, CancellationToken ct)
     {
         if (!await SessionExists(sessionId, db, principal, ct)) return null;
 
         return await db.SessionNotes.FirstOrDefaultAsync(x => x.Id == noteId && x.SessionId == sessionId, ct);
+    }
+
+    /// <summary>
+    /// The id of a note the calling athlete may read — one on a session of their own profile,
+    /// under their own coach — or null. The same ownership path as <c>GET /me/notes</c>: the
+    /// profile comes from the token, so a note id alone never grants access.
+    /// </summary>
+    internal static async Task<Guid?> AthleteReadableNoteId(
+        Guid noteId, AppDbContext db, ClaimsPrincipal principal, CancellationToken ct)
+    {
+        if (!principal.TryGetIdentity(out var userId, out var coachId)) return null;
+
+        return await (
+            from note in db.SessionNotes.AsNoTracking()
+            join session in db.Sessions.AsNoTracking() on note.SessionId equals session.Id
+            join profile in db.AthleteProfiles.AsNoTracking() on session.AthleteProfileId equals profile.Id
+            where note.Id == noteId
+                  && session.CoachId == coachId
+                  && profile.UserId == userId
+                  && profile.CoachId == coachId
+                  && profile.DeletedAtUtc == null
+            select (Guid?)note.Id).SingleOrDefaultAsync(ct);
     }
 }

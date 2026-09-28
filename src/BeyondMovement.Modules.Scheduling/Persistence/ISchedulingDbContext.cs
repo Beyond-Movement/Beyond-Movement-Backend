@@ -7,6 +7,7 @@ public interface ISchedulingDbContext
 {
     DbSet<Session> Sessions { get; }
     DbSet<SessionNote> SessionNotes { get; }
+    DbSet<SessionNoteAttachment> SessionNoteAttachments { get; }
     DbSet<ObservationRequest> ObservationRequests { get; }
     DbSet<CalendlyWebhookEvent> CalendlyWebhookEvents { get; }
     DbSet<BookingOperation> BookingOperations { get; }

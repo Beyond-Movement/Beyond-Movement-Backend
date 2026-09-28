@@ -190,6 +190,11 @@ public static class ObservationRequestMapping
 /// </param>
 public sealed record SaveSessionNoteRequest(string Title, string Content);
 
+/// <param name="Attachments">
+/// The note's images, <b>committed ones only</b>, in <c>sortOrder</c>. An upload that was
+/// requested but never completed or verified never appears. Always present; empty when the note
+/// has none.
+/// </param>
 public sealed record SessionNoteResponse(
     Guid Id,
     Guid SessionId,
@@ -197,10 +202,51 @@ public sealed record SessionNoteResponse(
     string Title,
     string Content,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc,
+    IReadOnlyList<SessionNoteAttachmentResponse> Attachments);
 
 public static class SessionNoteMapping
 {
-    public static SessionNoteResponse ToResponse(this SessionNote x) =>
-        new(x.Id, x.SessionId, x.AuthorUserId, x.Title, x.Content, x.CreatedAtUtc, x.UpdatedAtUtc);
+    public static SessionNoteResponse ToResponse(
+        this SessionNote x, IReadOnlyList<SessionNoteAttachmentResponse> attachments) =>
+        new(x.Id, x.SessionId, x.AuthorUserId, x.Title, x.Content, x.CreatedAtUtc, x.UpdatedAtUtc,
+            attachments);
 }
+
+/// <summary>Asking to attach one image to a note. Nothing is uploaded to the API itself.</summary>
+/// <param name="ContentType"><c>image/jpeg</c>, <c>image/png</c> or <c>image/webp</c>. HEIC is not accepted.</param>
+/// <param name="SizeBytes">The exact byte length of the file that will be PUT. Checked again after upload.</param>
+public sealed record RequestSessionNoteAttachmentUploadRequest(string ContentType, long SizeBytes);
+
+/// <summary>
+/// Where and how to upload one image. The client PUTs the raw bytes to <see cref="UploadUrl"/>
+/// with exactly <see cref="RequiredHeaders"/>, then calls the complete endpoint. The URL is
+/// short-lived and must never be logged or stored.
+/// </summary>
+/// <param name="UploadMethod">Always <c>PUT</c>.</param>
+/// <param name="RequiredHeaders">
+/// Headers the PUT must carry exactly as given. <c>Content-Type</c> is part of the signature, so
+/// sending any other value is rejected by storage.
+/// </param>
+public sealed record SessionNoteAttachmentUploadResponse(
+    Guid AttachmentId,
+    string UploadUrl,
+    string UploadMethod,
+    IReadOnlyDictionary<string, string> RequiredHeaders,
+    DateTime UploadUrlExpiresAtUtc,
+    long MaxSizeBytes);
+
+/// <summary>
+/// One committed image on a note. <see cref="DownloadUrl"/> is a short-lived pre-signed GET: when
+/// it has expired, refresh it through the attachment's download-url endpoint rather than
+/// re-reading the whole note list. It is never a permanent or public address.
+/// </summary>
+public sealed record SessionNoteAttachmentResponse(
+    Guid Id,
+    Guid SessionNoteId,
+    string ContentType,
+    long SizeBytes,
+    int SortOrder,
+    DateTime CreatedAtUtc,
+    string DownloadUrl,
+    DateTime DownloadUrlExpiresAtUtc);

@@ -1,4 +1,5 @@
 using BeyondMovement.Infrastructure;
+using BeyondMovement.Modules.Scheduling.Contracts;
 using BeyondMovement.Modules.Scheduling.Domain;
 using BeyondMovement.SharedKernel;
 using Microsoft.EntityFrameworkCore;
@@ -35,6 +36,10 @@ namespace BeyondMovement.Api.Scheduling;
 /// When the note was first written, and what the history is ordered by. It stays put when a note
 /// is edited, so correcting last week's note today does not move it to the top.
 /// </param>
+/// <param name="Attachments">
+/// The note's committed images in order, each with a short-lived download URL. Identical to the
+/// <c>attachments</c> on <c>SessionNoteResponse</c>; empty when there are none.
+/// </param>
 public sealed record AthleteSessionNoteResponse(
     Guid Id,
     Guid SessionId,
@@ -47,7 +52,8 @@ public sealed record AthleteSessionNoteResponse(
     DateTime SessionEndUtc,
     DeliveryType SessionDeliveryType,
     SessionStatus SessionStatus,
-    string? SessionLocationOrPlatform);
+    string? SessionLocationOrPlatform,
+    IReadOnlyList<SessionNoteAttachmentResponse> Attachments);
 
 /// <summary>
 /// Every session note belonging to one athlete, newest first — the Admin's Session Notes History.
@@ -67,7 +73,7 @@ public sealed record AthleteSessionNoteResponse(
 /// here can create, change or delete a note.
 /// </para>
 /// </summary>
-public sealed class SessionNoteHistoryReader(AppDbContext db)
+public sealed class SessionNoteHistoryReader(AppDbContext db, SessionNoteAttachmentService attachments)
 {
     /// <summary>
     /// A page of this athlete's notes, or <b>null when the athlete is unknown, belongs to another
@@ -122,7 +128,7 @@ public sealed class SessionNoteHistoryReader(AppDbContext db)
 
         var totalCount = await query.CountAsync(ct);
 
-        var items = await query
+        var rows = await query
             // Newest first, and the id breaks the tie so the order is total. Without it two notes
             // written in the same millisecond could swap places between pages, and offset paging
             // would show one of them twice and the other never.
@@ -130,7 +136,8 @@ public sealed class SessionNoteHistoryReader(AppDbContext db)
             .ThenByDescending(x => x.Note.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(x => new AthleteSessionNoteResponse(
+            .Select(x => new
+            {
                 x.Note.Id,
                 x.Note.SessionId,
                 x.Note.Title,
@@ -142,8 +149,18 @@ public sealed class SessionNoteHistoryReader(AppDbContext db)
                 x.Session.ScheduledEndUtc,
                 x.Session.DeliveryType,
                 x.Session.Status,
-                x.Session.LocationOrPlatform))
+                x.Session.LocationOrPlatform
+            })
             .ToListAsync(ct);
+
+        // The page's images in one more query, not one per note, and only committed ones.
+        var images = await attachments.ForNotesAsync([.. rows.Select(x => x.Id)], ct);
+
+        var items = rows.Select(x => new AthleteSessionNoteResponse(
+                x.Id, x.SessionId, x.Title, x.Content, x.AuthorUserId, x.CreatedAtUtc, x.UpdatedAtUtc,
+                x.ScheduledStartUtc, x.ScheduledEndUtc, x.DeliveryType, x.Status, x.LocationOrPlatform,
+                images[x.Id]))
+            .ToList();
 
         return new PagedResult<AthleteSessionNoteResponse>(items, page, pageSize, totalCount);
     }

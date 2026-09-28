@@ -7,6 +7,139 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ---
 
+## Session Note Image Attachments — private S3, two-phase upload
+
+**Additive for reads, new routes for writes.** Nothing was removed or renamed. Every existing note
+route keeps its path, auth and behaviour. Two response schemas gain one field each. Four Admin
+routes and one athlete route are new.
+
+| Change | Where |
+|---|---|
+| `attachments: SessionNoteAttachmentResponse[]` added (always present, often empty) | `SessionNoteResponse`: `GET/POST /sessions/{id}/notes`, `PUT /sessions/{id}/notes/{noteId}` |
+| `attachments: SessionNoteAttachmentResponse[]` added (always present, often empty) | `AthleteSessionNoteResponse`: `GET /athletes/{id}/notes`, `GET /me/notes` |
+| New: request upload | `POST /api/v1/sessions/{sessionId}/notes/{noteId}/attachments` (Admin) |
+| New: complete upload | `POST /api/v1/sessions/{sessionId}/notes/{noteId}/attachments/{attachmentId}/complete` (Admin) |
+| New: delete image | `DELETE /api/v1/sessions/{sessionId}/notes/{noteId}/attachments/{attachmentId}` (Admin) |
+| New: refresh download URL | `GET /api/v1/sessions/{sessionId}/notes/{noteId}/attachments/{attachmentId}/download-url` (Admin) |
+| New: refresh download URL | `GET /api/v1/me/notes/{noteId}/attachments/{attachmentId}/download-url` (athlete) |
+
+### Rules
+
+- **The Admin writes, the athlete reads.** Only the Admin can upload or delete. The athlete sees
+  images on their own notes, through the same ownership path as `GET /me/notes`, and can refresh
+  a download URL. No route under `/me` writes anything.
+- **At most 5 images per note.** Uploads still in progress count toward the 5.
+- **At most 10 MB per image** (10,485,760 bytes). An image must also be more than 0 bytes.
+- **Only `image/jpeg`, `image/png` and `image/webp`.** HEIC and HEIF are refused. Re-encode to
+  JPEG on the device. Re-encoding also strips EXIF and GPS data, which the backend does not do.
+- **Storage is private.** The API never returns a permanent or public URL. It returns only
+  pre-signed URLs: **5 minutes** for an upload, **15 minutes** for a download.
+- **Reads return committed images only.** An image is committed after the API has checked the
+  file that was uploaded.
+
+### Upload flow (the image bytes never pass through the API)
+
+```text
+1. Save the note (POST /sessions/{sessionId}/notes)             → note.id
+2. POST .../notes/{noteId}/attachments
+     { "contentType": "image/jpeg", "sizeBytes": 734003 }
+   → 201 {
+       "attachmentId": "…",
+       "uploadUrl": "https://…amazonaws.com/…?X-Amz-…",          // a credential: never log or store
+       "uploadMethod": "PUT",
+       "requiredHeaders": { "Content-Type": "image/jpeg" },
+       "uploadUrlExpiresAtUtc": "…",                              // +5 minutes
+       "maxSizeBytes": 10485760
+     }
+3. PUT the raw bytes to uploadUrl with EXACTLY requiredHeaders
+   (no Authorization header, no multipart: the body is the file)
+4. POST .../notes/{noteId}/attachments/{attachmentId}/complete   → 200 SessionNoteAttachmentResponse
+```
+
+`sizeBytes` must be the exact length of the bytes you PUT. `Content-Type` is part of the URL's
+signature, so storage rejects the PUT if the header is different.
+
+**Complete checks the file that actually arrived.** The object must exist and be exactly the
+declared size, and no more than 10 MB. It must have the declared content type. Its first bytes
+must be a real JPEG (`FF D8 FF`), PNG (`89 50 4E 47 0D 0A 1A 0A`) or WebP (`RIFF…WEBP`)
+signature. The API never trusts the declared type on its own.
+
+**Complete is idempotent.** On an image that is already committed it returns the same image with
+`200`, so a retry after a timeout is safe.
+
+### `SessionNoteAttachmentResponse`
+
+```jsonc
+{
+  "id": "…",
+  "sessionNoteId": "…",
+  "contentType": "image/jpeg",
+  "sizeBytes": 734003,
+  "sortOrder": 0,                      // display order within the note, ascending
+  "createdAtUtc": "…",
+  "downloadUrl": "https://…",          // pre-signed GET, 15 minutes
+  "downloadUrlExpiresAtUtc": "…"
+}
+```
+
+Every note read signs new URLs, so a URL changes on every read. **Cache images by attachment `id`,
+not by URL.** A URL has expired when storage answers `403` or the time is past
+`downloadUrlExpiresAtUtc`. Then call the matching `download-url` route, which returns this same
+shape with a new URL.
+
+### Errors
+
+| Code | Status | When |
+|---|---|---|
+| `UNSUPPORTED_ATTACHMENT_TYPE` | 400 | `contentType` is not jpeg, png or webp: HEIC, GIF, PDF, blank or missing |
+| `ATTACHMENT_TOO_LARGE` | 400 | `sizeBytes` is ≤ 0 or > 10 MB |
+| `ATTACHMENT_LIMIT_REACHED` | 409 | The note already has 5 images, committed or pending |
+| `ATTACHMENT_NOT_FOUND` | 404 | The image is unknown, deleted, still pending where a committed one is needed, or on another note |
+| `ATTACHMENT_UPLOAD_INVALID` | 409 | Complete failed. See below |
+| `STORAGE_UNAVAILABLE` | 503 | Storage is unreachable and nothing was changed, so retry. A note read that cannot sign its image URLs returns this too |
+| `SESSION_NOTE_NOT_FOUND` | 404 | The note is not on that session, the session is another coach's, or (for the athlete) the note is not theirs |
+
+`ATTACHMENT_UPLOAD_INVALID` has two cases:
+
+- **Nothing was uploaded yet.** The attachment stays pending. Retry the PUT while its URL is still
+  valid, then complete again.
+- **Any other failure:** wrong size, wrong type or signature, or the upload window has closed. The
+  uploaded object is deleted and the attachment is removed. Completing it again returns `404`.
+  Request a new upload.
+
+An upload that is never completed stops counting toward the limit 15 minutes after its URL
+expires, which is about 20 minutes after it was requested.
+
+### Deleting
+
+`DELETE .../attachments/{attachmentId}` returns `204` for a pending or committed image. The image
+disappears from every read immediately. Deleting it again returns `404 ATTACHMENT_NOT_FOUND`.
+**Deleting a note deletes its images.**
+
+### Storage and cleanup (backend only, no contract impact)
+
+- Object keys are `session-notes/{noteId}/{attachmentId}.{jpg|png|webp}`. Both ids are
+  server-generated GUIDs. A key never contains a filename, name, email, phone number or any other
+  PII.
+- Postgres stores the metadata and the key, never the image bytes. The table is
+  `SessionNoteAttachments`, added by migration `AddSessionNoteAttachments`.
+- **The API never loses a storage key before its object is deleted.** Deleting an image or a note
+  marks the row `Deleting`, which hides it at once. Then the object is deleted, and only after
+  that succeeds is the row removed. The foreign key to `SessionNotes` is `SET NULL`, not
+  `CASCADE`. So a note removed directly in the database leaves its image rows orphaned rather than
+  deleted.
+- The Hangfire job `session-note-attachment-cleanup` runs every 30 minutes. It handles abandoned
+  pending uploads, orphaned rows and anything still `Deleting`, deleting each object first and its
+  row second. If storage fails, the row is left for the next run. The bucket's lifecycle rule,
+  which aborts incomplete multipart uploads after 1 day, is only a secondary safety net.
+- AWS credentials are **never** configured. In ECS the SDK's default credential chain uses the
+  task role `BeyondMovementECSTaskRole`.
+- The bucket is supplied per deployment through `Storage__S3__BucketName` and
+  `Storage__S3__Region`, and ships empty. Without it, the API runs and the attachment routes
+  answer `503 STORAGE_UNAVAILABLE`. See the README section "Session note images (S3)".
+
+---
+
 ## Phase 14c — Phone numbers are required, validated properly and stored in E.164
 
 **Breaking for both profile saves: `phone` is now required.** No field was added, removed or
