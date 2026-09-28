@@ -7,6 +7,7 @@ using BeyondMovement.Modules.Identity.Domain;
 using BeyondMovement.Modules.Identity.Persistence;
 using BeyondMovement.SharedKernel;
 using FluentValidation;
+using FluentValidation.Results;
 using Microsoft.EntityFrameworkCore;
 
 namespace BeyondMovement.Api.Endpoints;
@@ -22,7 +23,7 @@ namespace BeyondMovement.Api.Endpoints;
 /// </para>
 /// <para>
 /// Both halves span two modules — the name and phone live on the Identity <c>User</c>, the
-/// sport, date of birth and gender on the Athletes <c>AthleteProfile</c> — so they are
+/// sport id, date of birth and gender on the Athletes <c>AthleteProfile</c> — so they are
 /// orchestrated here in the composition root rather than inside either module (CLAUDE.md
 /// section 4). The write does both in one transaction, so a half-saved profile cannot be seen.
 /// </para>
@@ -66,21 +67,23 @@ public static class AthleteProfileEndpoints
 
             return Results.Ok(new AthleteProfileResponse(
                 user.Id, user.FullName, user.Email, user.Phone,
-                profile?.DateOfBirth, profile?.Gender, profile?.Sport,
+                profile?.DateOfBirth, profile?.Gender, profile?.SportId, profile?.Sport,
                 user.ProfileCompleted));
         })
         .WithName("GetMyAthleteProfile")
         .WithSummary("The signed-in athlete's own profile.")
         .WithDescription(
             "What the Athlete Profile screen reads when it opens: fullName, email, phone, " +
-            "dateOfBirth, gender and sport. Always the caller's own - there is no athlete id, " +
+            "dateOfBirth, gender, sportId and sport. Always the caller's own - there is no athlete id, " +
             "and an athlete can never read another's profile. " +
             "EMAIL IS DISPLAY-ONLY. It is returned so the screen can show it and is not accepted " +
             "by the POST; see that endpoint for why. " +
             "Every field except email and profileCompleted can be null, and an athlete who has " +
             "registered but not finished Complete Profile has all of them null at once - that is " +
             "the state profileCompleted: false describes, not an error. Once profileCompleted is " +
-            "true, fullName, dateOfBirth, gender and sport are all non-null. phone is E.164 " +
+            "true, fullName, dateOfBirth, gender, sportId and sport are all non-null. sport is " +
+            "the display name of the catalogue entry sportId names (GET /sports); preselect " +
+            "the edit screen's sports list by sportId, never by matching the name. phone is E.164 " +
             "once saved, and still null for an athlete who completed their profile before " +
             "phone numbers were required - the POST below will make them supply one. " +
             "Profile photo is not part of this response: it needs file storage, upload and " +
@@ -118,11 +121,21 @@ public static class AthleteProfileEndpoints
             // The name and phone live on the user; the athlete details live on the profile.
             // Both move together, so a half-finished profile cannot be observed.
             var result = await profileHandler.HandleAsync(
-                userId, request.DateOfBirth, request.Gender, request.Sport, ct);
+                userId, request.DateOfBirth, request.Gender, request.SportId!.Value, ct);
 
             if (result.IsFailure)
             {
                 await transaction.RollbackAsync(ct);
+
+                // Reported like any other field that failed validation, against SportId, so
+                // the app handles a stale or invented id the same way it handles a missing one.
+                if (result.Error == CompleteProfileHandler.UnknownSport)
+                {
+                    return new ValidationResult(
+                        [new ValidationFailure(nameof(request.SportId), result.Error.Message)])
+                        .ToValidationProblem(http);
+                }
+
                 return result.Error!.ToProblem(http);
             }
 
@@ -137,13 +150,14 @@ public static class AthleteProfileEndpoints
 
             await transaction.CommitAsync(ct);
 
-            // The athlete details are echoed from the request - they are what was just
-            // committed, and a second round trip could only disagree. Phone is read back off
-            // the entity instead, because SetPhone normalizes to E.164 and turns a blank into
-            // null, so what was stored is not always what was sent.
+            // Date of birth, gender and sport id are echoed from the request - they are what was
+            // just committed, and a second round trip could only disagree. The sport's name is
+            // the catalogue's, as the handler resolved it; the request never carried one. Phone
+            // is read back off the entity, because SetPhone normalizes to E.164 and turns a
+            // blank into null, so what was stored is not always what was sent.
             return Results.Ok(new AthleteProfileResponse(
                 user.Id, user.FullName, user.Email, user.Phone,
-                request.DateOfBirth, request.Gender, request.Sport,
+                request.DateOfBirth, request.Gender, request.SportId, result.Value,
                 ProfileCompleted: true));
         })
         .WithName("CompleteAthleteProfile")
@@ -153,9 +167,13 @@ public static class AthleteProfileEndpoints
             "from the token, never the body. One endpoint serves both Complete Profile and Edit " +
             "Profile: they set the same fields, and a second edit endpoint could only drift " +
             "from this one. Safe to call as often as the athlete edits. " +
-            "A FULL REPLACEMENT, NOT A PATCH: send fullName, dateOfBirth, gender, sport and " +
+            "A FULL REPLACEMENT, NOT A PATCH: send fullName, dateOfBirth, gender, sportId and " +
             "phone every time. " +
             "All five are required and enforced here, not only in the app. " +
+            "sportId is the id of an entry from GET /sports - there is no free-text sport, and " +
+            "an athlete whose sport is not listed picks Other. A missing sportId, or one the " +
+            "catalogue does not have, is 400 VALIDATION_FAILED with the error under SportId. " +
+            "The response carries both sportId and sport, the catalogue's display name. " +
             PhonePolicy.ContractDescription + " " +
             "The same rule the Admin's profile applies. " +
             "EMAIL CANNOT BE CHANGED HERE. It is the login identity, the unique key on the user " +

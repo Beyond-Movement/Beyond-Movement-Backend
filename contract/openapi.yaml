@@ -56,6 +56,38 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ApiProblemDetails'
+  /api/v1/sports:
+    get:
+      tags:
+      - Sports
+      summary: Every sport an athlete can pick, in display order.
+      description: 'What the sport dropdown on Complete Profile and Edit Profile lists.
+        Any signed-in user, Admin or Athlete. A plain array of { id, name }, not paged
+        - the catalogue is small. Already in display order: alphabetical, with Other
+        always last, so show it as it arrives rather than re-sorting it. Send the
+        chosen id as sportId to POST /athletes/me/profile. Other is an ordinary entry,
+        for an athlete whose sport is not listed yet; there is no free-text sport.
+        The list is the same for every user and changes only when a sport is added
+        in a backend release, so it is safe to cache for the session. Ids are stable
+        across releases and environments.'
+      operationId: ListSports
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SportResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+      security:
+      - bearerAuth: []
   /api/v1/catalogue:
     get:
       tags:
@@ -985,18 +1017,20 @@ paths:
       - Athletes
       summary: The signed-in athlete's own profile.
       description: 'What the Athlete Profile screen reads when it opens: fullName,
-        email, phone, dateOfBirth, gender and sport. Always the caller''s own - there
-        is no athlete id, and an athlete can never read another''s profile. EMAIL
-        IS DISPLAY-ONLY. It is returned so the screen can show it and is not accepted
-        by the POST; see that endpoint for why. Every field except email and profileCompleted
-        can be null, and an athlete who has registered but not finished Complete Profile
-        has all of them null at once - that is the state profileCompleted: false describes,
-        not an error. Once profileCompleted is true, fullName, dateOfBirth, gender
-        and sport are all non-null. phone is E.164 once saved, and still null for
-        an athlete who completed their profile before phone numbers were required
-        - the POST below will make them supply one. Profile photo is not part of this
-        response: it needs file storage, upload and public serving, which is a phase
-        of its own. Show initials.'
+        email, phone, dateOfBirth, gender, sportId and sport. Always the caller''s
+        own - there is no athlete id, and an athlete can never read another''s profile.
+        EMAIL IS DISPLAY-ONLY. It is returned so the screen can show it and is not
+        accepted by the POST; see that endpoint for why. Every field except email
+        and profileCompleted can be null, and an athlete who has registered but not
+        finished Complete Profile has all of them null at once - that is the state
+        profileCompleted: false describes, not an error. Once profileCompleted is
+        true, fullName, dateOfBirth, gender, sportId and sport are all non-null. sport
+        is the display name of the catalogue entry sportId names (GET /sports); preselect
+        the edit screen''s sports list by sportId, never by matching the name. phone
+        is E.164 once saved, and still null for an athlete who completed their profile
+        before phone numbers were required - the POST below will make them supply
+        one. Profile photo is not part of this response: it needs file storage, upload
+        and public serving, which is a phase of its own. Show initials.'
       operationId: GetMyAthleteProfile
       responses:
         '200':
@@ -1028,27 +1062,31 @@ paths:
         Complete Profile and Edit Profile: they set the same fields, and a second
         edit endpoint could only drift from this one. Safe to call as often as the
         athlete edits. A FULL REPLACEMENT, NOT A PATCH: send fullName, dateOfBirth,
-        gender, sport and phone every time. All five are required and enforced here,
-        not only in the app. phone is REQUIRED on every save: missing, null, an empty
-        string or whitespace is 400 VALIDATION_FAILED under errors.Phone. An account
-        that has none yet - one created before phone numbers were collected - still
-        signs in and reads its profile with phone null, and must supply one the next
-        time it saves. phone is accepted as people write it - digits, spaces and +
-        ( ) - . up to 40 characters - and must be a real number for its country, or
-        400 VALIDATION_FAILED. A number without a country code (+ or 00) is read as
-        Egyptian; any other country''s number needs its code. It is STORED AND RETURNED
-        IN E.164 (+201012345678), not as typed. It is contact data only: not unique,
-        not verified, and not a sign-in method. The same rule the Admin''s profile
-        applies. EMAIL CANNOT BE CHANGED HERE. It is the login identity, the unique
-        key on the user and what Google sign-in matches on, so changing it needs re-verification
-        and re-issued tokens - a feature of its own. It is absent from this request
-        and untouched by this call. Sets profileCompleted to true, after which both
-        /auth/me and every later authentication response report it as true and guarantee
-        a non-null fullName, so the app routes to Home instead of Complete Profile.
-        The response carries phone as stored, in E.164, so render that field from
-        the response rather than from what was sent. Profile photo is not accepted
-        yet; it needs file storage, upload and public serving, which is a phase of
-        its own, and the app shows initials until then.'
+        gender, sportId and phone every time. All five are required and enforced here,
+        not only in the app. sportId is the id of an entry from GET /sports - there
+        is no free-text sport, and an athlete whose sport is not listed picks Other.
+        A missing sportId, or one the catalogue does not have, is 400 VALIDATION_FAILED
+        with the error under SportId. The response carries both sportId and sport,
+        the catalogue''s display name. phone is REQUIRED on every save: missing, null,
+        an empty string or whitespace is 400 VALIDATION_FAILED under errors.Phone.
+        An account that has none yet - one created before phone numbers were collected
+        - still signs in and reads its profile with phone null, and must supply one
+        the next time it saves. phone is accepted as people write it - digits, spaces
+        and + ( ) - . up to 40 characters - and must be a real number for its country,
+        or 400 VALIDATION_FAILED. A number without a country code (+ or 00) is read
+        as Egyptian; any other country''s number needs its code. It is STORED AND
+        RETURNED IN E.164 (+201012345678), not as typed. It is contact data only:
+        not unique, not verified, and not a sign-in method. The same rule the Admin''s
+        profile applies. EMAIL CANNOT BE CHANGED HERE. It is the login identity, the
+        unique key on the user and what Google sign-in matches on, so changing it
+        needs re-verification and re-issued tokens - a feature of its own. It is absent
+        from this request and untouched by this call. Sets profileCompleted to true,
+        after which both /auth/me and every later authentication response report it
+        as true and guarantee a non-null fullName, so the app routes to Home instead
+        of Complete Profile. The response carries phone as stored, in E.164, so render
+        that field from the response rather than from what was sent. Profile photo
+        is not accepted yet; it needs file storage, upload and public serving, which
+        is a phase of its own, and the app shows initials until then.'
       operationId: CompleteAthleteProfile
       requestBody:
         content:
@@ -5059,6 +5097,7 @@ components:
       - phone
       - dateOfBirth
       - gender
+      - sportId
       - sport
       - isLoyal
       - status
@@ -5091,6 +5130,11 @@ components:
           oneOf:
           - type: 'null'
           - $ref: '#/components/schemas/Gender'
+        sportId:
+          type:
+          - 'null'
+          - string
+          format: uuid
         sport:
           type:
           - 'null'
@@ -5110,6 +5154,7 @@ components:
       - athleteProfileId
       - fullName
       - email
+      - sportId
       - sport
       - isLoyal
       - status
@@ -5128,6 +5173,11 @@ components:
           - string
         email:
           type: string
+        sportId:
+          type:
+          - 'null'
+          - string
+          format: uuid
         sport:
           type:
           - 'null'
@@ -5206,6 +5256,7 @@ components:
       - phone
       - dateOfBirth
       - gender
+      - sportId
       - sport
       - profileCompleted
       type: object
@@ -5232,6 +5283,11 @@ components:
           oneOf:
           - type: 'null'
           - $ref: '#/components/schemas/Gender'
+        sportId:
+          type:
+          - 'null'
+          - string
+          format: uuid
         sport:
           type:
           - 'null'
@@ -5475,7 +5531,7 @@ components:
       - fullName
       - dateOfBirth
       - gender
-      - sport
+      - sportId
       - phone
       type: object
       properties:
@@ -5486,8 +5542,16 @@ components:
           format: date
         gender:
           $ref: '#/components/schemas/Gender'
-        sport:
-          type: string
+        sportId:
+          type:
+          - 'null'
+          - string
+          description: Required. The id of an entry from GET /sports; there is no
+            free-text sport, and an athlete whose sport is not listed picks Other.
+            Nullable here only so that an omitted field and an explicit null are both
+            reported as 400 VALIDATION_FAILED under errors.SportId, the same as an
+            id the catalogue does not have; null is never a valid value to send.
+          format: uuid
         phone:
           type: string
     CreateInvitationRequest:
@@ -6875,6 +6939,17 @@ components:
       properties:
         isLoyal:
           type: boolean
+    SportResponse:
+      required:
+      - id
+      - name
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
     TimeZoneResponse:
       required:
       - timeZone
@@ -7004,6 +7079,7 @@ components:
 tags:
 - name: BeyondMovement.Api
 - name: Authentication
+- name: Sports
 - name: Pricing
 - name: Calendly webhooks
 - name: Purchases

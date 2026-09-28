@@ -14,7 +14,11 @@ public sealed class AthleteProfileConfiguration : IEntityTypeConfiguration<Athle
         // One profile per user (architecture section 6.3).
         b.HasIndex(x => x.UserId).IsUnique();
 
-        b.Property(x => x.Sport).HasMaxLength(100);
+        // Nullable because a profile exists before Complete Profile picks a sport. Restrict, so a
+        // sport somebody has picked can never be deleted out from under them.
+        b.HasOne<Sport>().WithMany()
+            .HasForeignKey(x => x.SportId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         // Stored as its name, never its ordinal (CLAUDE.md section 7): the rows stay readable
         // and reordering the enum cannot silently turn every Female row into a Male one.

@@ -12,7 +12,11 @@ public sealed class AthleteProfile
     public Guid UserId { get; private set; }
     public Guid CoachId { get; private set; }
 
-    public string? Sport { get; private set; }
+    /// <summary>
+    /// The athlete's sport, as a <see cref="Sport"/> in the catalogue. Only the id is stored —
+    /// the catalogue's name is authoritative, so there is nothing here to drift from it.
+    /// </summary>
+    public Guid? SportId { get; private set; }
     public Gender? Gender { get; private set; }
     public DateOnly? DateOfBirth { get; private set; }
     public string? Notes { get; private set; }
@@ -67,13 +71,14 @@ public sealed class AthleteProfile
 
     /// <summary>
     /// Every detail is required here even though the columns are nullable: the columns allow
-    /// the gap between registering and completing, this method closes it.
+    /// the gap between registering and completing, this method closes it. That the sport exists
+    /// in the catalogue is the caller's to check, and the foreign key's to guarantee.
     /// </summary>
-    public void CompleteProfile(DateOnly dateOfBirth, Gender gender, string sport, DateTime nowUtc)
+    public void CompleteProfile(DateOnly dateOfBirth, Gender gender, Guid sportId, DateTime nowUtc)
     {
         DateOfBirth = dateOfBirth;
         Gender = gender;
-        Sport = sport;
+        SportId = sportId;
         UpdatedAtUtc = nowUtc;
     }
 }

@@ -153,7 +153,7 @@ Athlete GET /invitations/validate?code=MRPZB-AXZYY
 Athlete POST /auth/register {registrationToken, password | googleIdToken}
    → creates the account, redeems the invitation, returns tokens
    → profileCompleted = false, fullName = null
-Athlete POST /athletes/me/profile {fullName, dateOfBirth, gender, sport}
+Athlete POST /athletes/me/profile {fullName, dateOfBirth, gender, sportId, phone}   (sportId from GET /sports)
    → profileCompleted = true
 ```
 
@@ -334,7 +334,7 @@ See `contract/CHANGELOG.md` → "Session Note Image Attachments" and the README 
 | — | A-03 Observation creation. **Decided:** Admin creates them manually via `POST /sessions/observations`; the >1h rule (BR-07) is evaluated on Mark as Attended | Closed |
 | — | A-04 No-show deduction. **Decided:** one deployment-wide setting, `Features__NoShowDeducts`, default off | Closed |
 | A-07 | Athlete deletion: hard delete or anonymize? | Phase 2 cleanup |
-| — | Should `sport` become an enum? **Decided: no**, required free text for v1 | Closed |
+| — | How is an athlete's sport chosen? **Decided:** from a backend-managed catalogue (`Sports` table, `GET /sports`), not free text and not an enum. The profile stores `SportId`; `Other` covers unlisted sports; no Admin CRUD | Closed |
 | — | Admin athlete-edit endpoint | **Deferred** by the client, outside Phase 3 |
 | — | Terms of Service / Privacy Policy | **Removed** by the client. Note both app stores require a privacy policy URL at submission. |
 

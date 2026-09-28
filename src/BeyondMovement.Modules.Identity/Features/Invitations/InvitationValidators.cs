@@ -39,7 +39,12 @@ public sealed class CompleteProfileValidator : AbstractValidator<CompleteProfile
     public CompleteProfileValidator(IClock clock)
     {
         RuleFor(x => x.FullName).NotEmpty().MaximumLength(200);
-        RuleFor(x => x.Sport).NotEmpty().MaximumLength(100);
+
+        // Presence only. Whether the id is in the catalogue is the Athletes module's to answer,
+        // and CompleteProfileHandler does — this module cannot see that table.
+        RuleFor(x => x.SportId)
+            .NotEmpty()
+            .WithMessage("Choose a sport from the list.");
 
         // The same rules the Admin's profile edit applies: one column, one definition of what
         // may go in it. Required here as there — see PhonePolicy.ApplyPhoneRules.

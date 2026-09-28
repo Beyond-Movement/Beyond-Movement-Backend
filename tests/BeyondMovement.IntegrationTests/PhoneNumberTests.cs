@@ -63,7 +63,7 @@ public sealed class PhoneNumberTests(PhoneNumberApiFactory factory) : IClassFixt
             fullName = "Phone Athlete",
             dateOfBirth = "2001-04-17",
             gender = "Female",
-            sport = "Tennis",
+            sportId = Sports.Id("Tennis"),
             phone
         });
 
@@ -201,7 +201,7 @@ public sealed class PhoneNumberTests(PhoneNumberApiFactory factory) : IClassFixt
                 fullName = "Phone Athlete",
                 dateOfBirth = "2001-04-17",
                 gender = "Female",
-                sport = "Tennis"
+                sportId = Sports.Id("Tennis")
             })
             : SaveAthleteAsync(athlete, phone);
 

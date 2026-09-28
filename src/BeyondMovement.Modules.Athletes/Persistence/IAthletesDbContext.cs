@@ -10,6 +10,7 @@ namespace BeyondMovement.Modules.Athletes.Persistence;
 public interface IAthletesDbContext
 {
     DbSet<AthleteProfile> AthleteProfiles { get; }
+    DbSet<Sport> Sports { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

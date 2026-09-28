@@ -121,7 +121,8 @@ public class PhonePolicyTests
 
         var athlete = new CompleteProfileValidator(new SharedKernel.SystemClock())
             .Validate(new CompleteProfileRequest(
-                "Athlete", new DateOnly(2001, 4, 17), SharedKernel.Gender.Female, "Tennis", phone!));
+                "Athlete", new DateOnly(2001, 4, 17), SharedKernel.Gender.Female,
+                    Modules.Athletes.Domain.SportCatalogue.Tennis, phone!));
 
         Assert.Equal(valid, admin.IsValid);
         Assert.Equal(valid, athlete.IsValid);

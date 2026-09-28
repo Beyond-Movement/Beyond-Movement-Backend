@@ -25,6 +25,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
 
     // Athletes module
     public DbSet<AthleteProfile> AthleteProfiles => Set<AthleteProfile>();
+    public DbSet<Sport> Sports => Set<Sport>();
 
     // Packages module
     public DbSet<PackageOption> PackageOptions => Set<PackageOption>();

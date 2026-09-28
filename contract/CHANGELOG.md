@@ -7,6 +7,115 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ---
 
+## Sports catalogue — athlete sport is picked from a list
+
+**BREAKING for writes. Flutter must migrate.** `POST /athletes/me/profile` no longer accepts
+`sport` (free text). It requires **`sportId`**, the id of an entry from the new `GET /sports`.
+A body that still sends only `sport` is refused with `400 VALIDATION_FAILED` under
+`errors.SportId`. Reads are additive: every response that had `sport` still has it, as the
+display name, and gains `sportId` beside it.
+
+| Change | Where |
+|---|---|
+| New: the sports catalogue | `GET /api/v1/sports` (any signed-in user, Admin or Athlete) |
+| `sport: string` **removed**, `sportId: uuid` **required** | `CompleteProfileRequest`: `POST /athletes/me/profile` |
+| `sportId: uuid \| null` added before `sport` | `AthleteProfileResponse`: `GET` and `POST /athletes/me/profile` |
+| `sportId: uuid \| null` added before `sport` | `AthleteListItem`: `GET /athletes` |
+| `sportId: uuid \| null` added before `sport` | `AthleteDetail`: `GET /athletes/{id}` |
+
+### `GET /api/v1/sports`
+
+A plain array, not paged, already in display order: **alphabetical, with `Other` always last**.
+Show it as it arrives, and don't re-sort it.
+
+```json
+[
+  { "id": "0b6f3c1e-58a2-4d7e-9c41-2f8a6e1d3b70", "name": "Artistic Swimming" },
+  { "id": "3d9a5f12-7c4e-4a8b-b1f6-5e2d8c9a0f47", "name": "Athletics" },
+  …
+  { "id": "c6a3e9d1-2b7f-4d48-8a5c-7e3f1b9d4a26", "name": "Wrestling" },
+  { "id": "f0e9d8c7-2b4a-4f61-9d3e-8c5b7a1e6d29", "name": "Other" }
+]
+```
+
+- **34 sports:** Artistic Swimming, Athletics, Badminton, Basketball, Boxing, Cycling, Diving,
+  Equestrian, Fencing, Fin Swimming, Football, Golf, Gymnastics, Handball, Judo, Karate, Modern
+  Pentathlon, Padel, Rowing, Rugby, Sailing, Shooting, Squash, Swimming, Table Tennis, Taekwondo,
+  Tennis, Trampoline, Triathlon, Volleyball, Water Polo, Weightlifting, Wrestling, Other.
+- **Ids are fixed** and the same in every environment and release. The list changes only when a
+  backend release adds a sport, so caching it for the session is safe.
+- **`Other` is an ordinary entry.** It lets an athlete whose sport isn't listed finish
+  onboarding. There is no free-text field with it. When their sport is added, the athlete picks
+  it on Edit Profile.
+- There is no create, edit or delete. The backend maintains the catalogue.
+
+### `POST /athletes/me/profile`
+
+```jsonc
+{
+  "fullName": "Alex Thompson",
+  "dateOfBirth": "2001-04-17",
+  "gender": "Male",
+  "sportId": "c4a81e27-9d5f-4b3a-8e6c-1a7d9f2b5e04",   // was: "sport": "Tennis"
+  "phone": "010 1234 5678"
+}
+```
+
+| Sent | Result |
+|---|---|
+| `sportId` missing, `null` or the all-zero uuid | `400 VALIDATION_FAILED`, `errors.SportId` |
+| `sportId` not in the catalogue | `400 VALIDATION_FAILED`, `errors.SportId` |
+| `sportId` not a uuid (`""`, `"Tennis"`) | `400 VALIDATION_FAILED`, the unreadable-body envelope (no `errors`) |
+| `sport` instead of `sportId` | `sport` is ignored, so this is the missing-`sportId` case |
+
+It is still a full replacement: Edit Profile must send `sportId` every time, like every other
+field. The response's `sport` is the catalogue's name for the saved id, not an echo of the
+request.
+
+### Reads
+
+```jsonc
+"sportId": "c4a81e27-9d5f-4b3a-8e6c-1a7d9f2b5e04",
+"sport": "Tennis"
+```
+
+- **Both are null until Complete Profile.** They are null together and set together.
+- **Both are non-null whenever `profileCompleted` is true.**
+- `sport` is always the catalogue's current name, and the profile stores only the id.
+- **Preselect the Edit Profile dropdown by `sportId`, never by matching the name.**
+
+### Admin athlete list: unchanged behaviour
+
+- `search` still matches the sport, now against the catalogue name: case-insensitive and on any
+  part of it.
+- `sort=Sport` is still alphabetical by sport name, with athletes who have no sport last. It is
+  **not** the catalogue's display order, so `Other` sorts as the letter O here.
+- The saved `AthleteListSort.Sport` preference is unchanged.
+- Filtering by sport is not part of this change.
+
+### Existing data
+
+This is pre-production, so the old `sport` text column was converted and then dropped. Dev
+databases are converted by migration `AddSportsCatalogue`:
+
+- `Tennis` and `Football` map to themselves.
+- `Artistic Swimmi.g`, `artistic swimmimg` and `AS` map to Artistic Swimming.
+- `Hi` is cleared, and that athlete's profile is marked not completed. The app sends them back
+  through Complete Profile.
+- Any other value that is not a catalogue name stops the migration with the value named, rather
+  than being guessed.
+
+### What Flutter has to do
+
+1. Fetch `GET /sports` on Complete Profile and Edit Profile. Replace the text field with a
+   searchable dropdown of those names.
+2. Send the chosen `sportId` in place of `sport`. Map `errors.SportId` onto the sport field.
+3. Read `sportId` from `GET /athletes/me/profile` to preselect the dropdown on Edit Profile.
+4. Keep rendering `sport` where a name is shown: profile, athlete card, Admin detail. Nothing
+   else changes there.
+
+---
+
 ## Session Note Image Attachments — private S3, two-phase upload
 
 **Additive for reads, new routes for writes.** Nothing was removed or renamed. Every existing note
@@ -3352,7 +3461,8 @@ message and the right next action for each case.
   no allowed value list exists in any source document. Constraining them later to enums **is a
   contract change** — agree the lists with the client before the mobile screens harden.
   *(Closed in phase 3 for `gender`, now the `Female`/`Male` enum. `sport` is still free text:
-  required, but with no agreed list.)*
+  required, but with no agreed list.)* *(Closed for `sport` by the Sports catalogue: the
+  profile takes a `sportId` from `GET /sports`.)*
 
 ---
 

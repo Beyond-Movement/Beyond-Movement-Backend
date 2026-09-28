@@ -47,12 +47,18 @@ public enum AthleteStatusFilter { All, Active, Paused }
 /// Whether the coach has marked this athlete loyal, which earns 15% off every package's default
 /// price. The discount itself is never shown here — the athlete's catalogue carries final prices.
 /// </param>
+/// <param name="SportId">
+/// The catalogue id of the athlete's sport (<c>GET /sports</c>). Null until the athlete completes
+/// their profile, and null exactly when <paramref name="Sport"/> is.
+/// </param>
+/// <param name="Sport">The sport's display name, from the catalogue.</param>
 /// <param name="Status">Account status only. Sessions remaining and "no active package" arrive with purchasing.</param>
 public sealed record AthleteListItem(
     Guid Id,
     Guid AthleteProfileId,
     string? FullName,
     string Email,
+    Guid? SportId,
     string? Sport,
     bool IsLoyal,
     UserStatus Status,
@@ -77,6 +83,8 @@ public sealed record AthleteListItem(
 /// athlete's own profile (<c>POST /athletes/me/profile</c>), but still null for an athlete who
 /// has not saved it since phone numbers became required — render whatever is stored.
 /// </param>
+/// <param name="SportId">The catalogue id of the athlete's sport. See <see cref="AthleteListItem"/>.</param>
+/// <param name="Sport">The sport's display name, from the catalogue.</param>
 public sealed record AthleteDetail(
     Guid Id,
     Guid AthleteProfileId,
@@ -85,6 +93,7 @@ public sealed record AthleteDetail(
     string? Phone,
     DateOnly? DateOfBirth,
     Gender? Gender,
+    Guid? SportId,
     string? Sport,
     bool IsLoyal,
     UserStatus Status,

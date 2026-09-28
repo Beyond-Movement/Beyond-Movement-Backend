@@ -162,6 +162,7 @@ builder.Services.AddSingleton<IRegistrationTokenService, RegistrationTokenServic
 builder.Services.AddScoped<IAthletesDbContext>(sp => sp.GetRequiredService<AppDbContext>());
 builder.Services.AddScoped<CreateProfileHandler>();
 builder.Services.AddScoped<CompleteProfileHandler>();
+builder.Services.AddScoped<SportCatalogueHandler>();
 builder.Services.AddScoped<SetAccountStatusHandler>();
 builder.Services.AddScoped<AthleteDirectory>();
 
@@ -367,6 +368,7 @@ app.MapAuthEndpoints();
 app.MapInvitationEndpoints();
 app.MapRegistrationEndpoints();
 app.MapAthleteProfileEndpoints();
+app.MapSportEndpoints();
 app.MapAthleteEndpoints();
 app.MapPackageOptionEndpoints();
 app.MapPricingEndpoints();

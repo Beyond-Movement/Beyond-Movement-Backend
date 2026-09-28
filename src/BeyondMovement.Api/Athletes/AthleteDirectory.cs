@@ -32,7 +32,8 @@ public sealed class AthleteDirectory(AppDbContext db)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(x => new AthleteListItem(
-                x.User.Id, x.Profile.Id, x.User.FullName, x.User.Email, x.Profile.Sport,
+                x.User.Id, x.Profile.Id, x.User.FullName, x.User.Email,
+                x.Profile.SportId, x.Sport == null ? null : x.Sport.Name,
                 x.Profile.IsLoyal, x.User.Status, x.User.CreatedAtUtc))
             .ToListAsync(ct);
 
@@ -50,7 +51,8 @@ public sealed class AthleteDirectory(AppDbContext db)
                 x.User.Phone,
                 x.Profile.DateOfBirth,
                 x.Profile.Gender,
-                x.Profile.Sport,
+                x.Profile.SportId,
+                x.Sport == null ? null : x.Sport.Name,
                 x.Profile.IsLoyal,
                 x.User.Status,
                 x.User.ProfileCompletedAtUtc != null,
@@ -61,15 +63,21 @@ public sealed class AthleteDirectory(AppDbContext db)
     /// Every athlete of this coach, paused ones included — pausing hides an athlete from
     /// themselves, never from their coach. Deleted accounts and soft-deleted profiles are
     /// excluded; A-07 will decide what deletion actually does.
+    /// <para>
+    /// The sport is a left join: an athlete who has not completed their profile has none, and is
+    /// still listed. Its name is read from the catalogue, never stored on the profile.
+    /// </para>
     /// </summary>
     private IQueryable<UserProfilePair> BaseQuery(Guid coachId) =>
         from user in db.Users.AsNoTracking()
         join profile in db.AthleteProfiles.AsNoTracking() on user.Id equals profile.UserId
+        join sport in db.Sports.AsNoTracking() on profile.SportId equals sport.Id into sports
+        from sport in sports.DefaultIfEmpty()
         where user.CoachId == coachId
               && user.Role == UserRole.Athlete
               && user.Status != UserStatus.Deleted
               && profile.DeletedAtUtc == null
-        select new UserProfilePair { User = user, Profile = profile };
+        select new UserProfilePair { User = user, Profile = profile, Sport = sport };
 
     private static IQueryable<UserProfilePair> ApplyStatusFilter(
         IQueryable<UserProfilePair> query, AthleteStatusFilter status) => status switch
@@ -95,7 +103,7 @@ public sealed class AthleteDirectory(AppDbContext db)
         return query.Where(x =>
             (x.User.FullName != null && EF.Functions.ILike(x.User.FullName, pattern)) ||
             EF.Functions.ILike(x.User.Email, pattern) ||
-            (x.Profile.Sport != null && EF.Functions.ILike(x.Profile.Sport, pattern)));
+            (x.Sport != null && EF.Functions.ILike(x.Sport.Name, pattern)));
     }
 
     /// <summary>A name containing % or _ must match literally, not as a wildcard.</summary>
@@ -112,9 +120,11 @@ public sealed class AthleteDirectory(AppDbContext db)
                 .ThenByDescending(x => x.User.FullName)
                 .ThenBy(x => x.User.Id),
             // Athletes with no sport yet sort last rather than leading the list.
+            // By the catalogue name, alphabetically — not by the catalogue's own order, which
+            // exists to put Other last in the picker and means nothing in the coach's list.
             AthleteListSort.Sport => query
-                .OrderBy(x => x.Profile.Sport == null)
-                .ThenBy(x => x.Profile.Sport)
+                .OrderBy(x => x.Sport == null)
+                .ThenBy(x => x.Sport!.Name)
                 .ThenBy(x => x.User.FullName)
                 .ThenBy(x => x.User.Id),
             AthleteListSort.NewestFirst => query.OrderByDescending(x => x.User.CreatedAtUtc).ThenBy(x => x.User.Id),
@@ -131,5 +141,8 @@ public sealed class AthleteDirectory(AppDbContext db)
     {
         public required User User { get; init; }
         public required Modules.Athletes.Domain.AthleteProfile Profile { get; init; }
+
+        /// <summary>Null until the athlete completes their profile.</summary>
+        public Modules.Athletes.Domain.Sport? Sport { get; init; }
     }
 }

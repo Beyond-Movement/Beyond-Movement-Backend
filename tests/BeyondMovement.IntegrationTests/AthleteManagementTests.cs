@@ -96,6 +96,41 @@ public sealed class AthleteManagementTests(AthleteApiFactory factory) : IClassFi
         AssertNames(page, "Alex Thompson");
     }
 
+    /// <summary>
+    /// The sport is matched on the catalogue's name now that the profile stores only an id —
+    /// still case-insensitively, and still on any part of it.
+    /// </summary>
+    [Fact]
+    public async Task Search_matches_part_of_the_sport_name()
+    {
+        var admin = await AdminClientAsync();
+
+        AssertNames(await ListAsync(admin, "?search=SWIM"), "Jordan Blake");
+        AssertNames(await ListAsync(admin, "?search=letic"), "Sam Reed");
+    }
+
+    [Fact]
+    public async Task Every_row_carries_the_sport_id_and_its_catalogue_name()
+    {
+        var admin = await AdminClientAsync();
+
+        var items = (await ListAsync(admin, "?pageSize=100")).GetProperty("items").EnumerateArray()
+            .ToDictionary(i => i.GetProperty("email").GetString()!);
+
+        var alex = items["alex@nowhere.test"];
+        Assert.Equal(Sports.Id("Tennis"), alex.GetProperty("sportId").GetGuid());
+        Assert.Equal("Tennis", alex.GetProperty("sport").GetString());
+
+        var jordan = items["jordan@nowhere.test"];
+        Assert.Equal(Sports.Id("Swimming"), jordan.GetProperty("sportId").GetGuid());
+        Assert.Equal("Swimming", jordan.GetProperty("sport").GetString());
+
+        // Not completed: no sport yet, and both halves say so.
+        var robin = items["robin@nowhere.test"];
+        Assert.Equal(JsonValueKind.Null, robin.GetProperty("sportId").ValueKind);
+        Assert.Equal(JsonValueKind.Null, robin.GetProperty("sport").ValueKind);
+    }
+
     [Fact]
     public async Task Search_also_matches_the_email()
     {
@@ -214,9 +249,11 @@ public sealed class AthleteManagementTests(AthleteApiFactory factory) : IClassFi
 
         var names = Names(await ListAsync(admin, "?sort=Sport"));
 
-        // Otherwise a blank sport would head the list and look like a bug to the coach. Two
-        // athletes have no sport — one named, one not — and both belong at the end.
-        Assert.Equal<IEnumerable<string?>>(["Robin Vale", null], names[^2..]);
+        // Alphabetical by the catalogue name: Athletics, Swimming, Tennis. Then the two athletes
+        // with no sport — one named, one not — because a blank sport heading the list would look
+        // like a bug to the coach.
+        Assert.Equal<IEnumerable<string?>>(
+            ["Sam Reed", "Jordan Blake", "Alex Thompson", "Robin Vale", null], names);
     }
 
     [Fact]
@@ -276,6 +313,7 @@ public sealed class AthleteManagementTests(AthleteApiFactory factory) : IClassFi
         var athlete = await admin.GetFromJsonAsync<JsonElement>($"/api/v1/athletes/{id}");
 
         Assert.Equal("Alex Thompson", athlete.GetProperty("fullName").GetString());
+        Assert.Equal(Sports.Id("Tennis"), athlete.GetProperty("sportId").GetGuid());
         Assert.Equal("Tennis", athlete.GetProperty("sport").GetString());
         Assert.Equal("Female", athlete.GetProperty("gender").GetString());
         Assert.Equal("2001-04-17", athlete.GetProperty("dateOfBirth").GetString());

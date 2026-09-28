@@ -30,7 +30,7 @@ public sealed class AthleteProfileTests(AthleteProfileApiFactory factory)
 
     private sealed record Profile(
         Guid UserId, string? FullName, string Email, string? Phone,
-        string? DateOfBirth, string? Gender, string? Sport, bool ProfileCompleted);
+        string? DateOfBirth, string? Gender, Guid? SportId, string? Sport, bool ProfileCompleted);
 
     // Static: xUnit builds a new instance of this class for every test method, so an
     // instance field would restart at zero and hand two tests the same address.
@@ -79,14 +79,14 @@ public sealed class AthleteProfileTests(AthleteProfileApiFactory factory)
         fullName = "Alex Thompson",
         dateOfBirth = "2001-04-17",
         gender = "Male",
-        sport = "Tennis",
+        sportId = Sports.Id("Tennis"),
         phone
     };
 
     // ------------------------------------------------------------------- read
 
     [Fact]
-    public async Task The_profile_returns_the_six_fields_the_screen_shows_and_nothing_else()
+    public async Task The_profile_returns_the_fields_the_screen_shows_and_nothing_else()
     {
         var (client, email) = await AthleteAsync();
 
@@ -97,7 +97,7 @@ public sealed class AthleteProfileTests(AthleteProfileApiFactory factory)
 
         // Avatar is deliberately absent: it needs file storage, which is a phase of its own.
         Assert.Equal(
-            ["userId", "fullName", "email", "phone", "dateOfBirth", "gender", "sport", "profileCompleted"],
+            ["userId", "fullName", "email", "phone", "dateOfBirth", "gender", "sportId", "sport", "profileCompleted"],
             body.EnumerateObject().Select(p => p.Name).ToArray());
 
         var profile = body.Deserialize<Profile>(Json)!;
@@ -105,6 +105,7 @@ public sealed class AthleteProfileTests(AthleteProfileApiFactory factory)
         Assert.Equal("Alex Thompson", profile.FullName);
         Assert.Equal(email, profile.Email);
         Assert.Equal("2001-04-17", profile.DateOfBirth);
+        Assert.Equal(Sports.Id("Tennis"), profile.SportId);
         Assert.Equal("Tennis", profile.Sport);
         Assert.True(profile.ProfileCompleted);
 
@@ -129,6 +130,7 @@ public sealed class AthleteProfileTests(AthleteProfileApiFactory factory)
         Assert.Null(profile.FullName);
         Assert.Null(profile.DateOfBirth);
         Assert.Null(profile.Gender);
+        Assert.Null(profile.SportId);
         Assert.Null(profile.Sport);
         Assert.Null(profile.Phone);
 
@@ -148,7 +150,7 @@ public sealed class AthleteProfileTests(AthleteProfileApiFactory factory)
             fullName = "Robin Vale",
             dateOfBirth = "1999-02-11",
             gender = "Female",
-            sport = "Swimming",
+            sportId = Sports.Id("Swimming"),
             phone = "+20 100 123 4567"
         });
 
@@ -157,6 +159,8 @@ public sealed class AthleteProfileTests(AthleteProfileApiFactory factory)
 
         Assert.Equal("Robin Vale", returned.FullName);
         Assert.Equal("+201001234567", returned.Phone);
+        Assert.Equal(Sports.Id("Swimming"), returned.SportId);
+        Assert.Equal("Swimming", returned.Sport);
         Assert.True(returned.ProfileCompleted);
 
         // The response must not be the only place it is true.
@@ -165,6 +169,7 @@ public sealed class AthleteProfileTests(AthleteProfileApiFactory factory)
         Assert.Equal("Robin Vale", reread.FullName);
         Assert.Equal("1999-02-11", reread.DateOfBirth);
         Assert.Equal("Female", reread.Gender);
+        Assert.Equal(Sports.Id("Swimming"), reread.SportId);
         Assert.Equal("Swimming", reread.Sport);
         Assert.Equal("+201001234567", reread.Phone);
         Assert.True(reread.ProfileCompleted);
@@ -221,7 +226,7 @@ public sealed class AthleteProfileTests(AthleteProfileApiFactory factory)
             fullName = "Alex Thompson",
             dateOfBirth = "2001-04-17",
             gender = "Male",
-            sport = "Tennis"
+            sportId = Sports.Id("Tennis")
         });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -259,6 +264,129 @@ public sealed class AthleteProfileTests(AthleteProfileApiFactory factory)
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    // ------------------------------------------------------------------ sport
+
+    private static object ProfileWithSport(object? sportId) => new
+    {
+        fullName = "Alex Thompson",
+        dateOfBirth = "2001-04-17",
+        gender = "Male",
+        sportId,
+        phone = "010 1234 5678"
+    };
+
+    private static async Task AssertSportRefusedAsync(HttpResponseMessage response)
+    {
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("VALIDATION_FAILED", problem.GetProperty("errorCode").GetString());
+        Assert.True(problem.GetProperty("errors").TryGetProperty("SportId", out _));
+    }
+
+    /// <summary>
+    /// Complete Profile: a sport is required, and a missing one is reported against the field,
+    /// with the athlete left exactly where they were.
+    /// </summary>
+    [Fact]
+    public async Task Completing_a_profile_without_a_sport_is_refused_against_sportId()
+    {
+        var (client, _) = await AthleteAsync(complete: false);
+
+        await AssertSportRefusedAsync(await SaveAsync(client, ProfileWithSport(null)));
+        await AssertSportRefusedAsync(await SaveAsync(client, ProfileWithSport(Guid.Empty)));
+        await AssertSportRefusedAsync(await SaveAsync(client, new
+        {
+            fullName = "Alex Thompson",
+            dateOfBirth = "2001-04-17",
+            gender = "Male",
+            phone = "010 1234 5678"
+        }));
+
+        var profile = await GetProfileAsync(client);
+        Assert.False(profile.ProfileCompleted);
+        Assert.Null(profile.SportId);
+    }
+
+    /// <summary>Edit Profile is the same full replacement: dropping the sport does not clear it.</summary>
+    [Fact]
+    public async Task Editing_a_profile_without_a_sport_is_refused_and_the_stored_one_survives()
+    {
+        var (client, _) = await AthleteAsync();
+
+        await AssertSportRefusedAsync(await SaveAsync(client, ProfileWithSport(null)));
+
+        var profile = await GetProfileAsync(client);
+        Assert.Equal(Sports.Id("Tennis"), profile.SportId);
+        Assert.Equal("Tennis", profile.Sport);
+    }
+
+    /// <summary>
+    /// An id the catalogue does not have — invented, or from a stale build — is a validation
+    /// failure on the same field as a missing one, not a 404 and not a 500 from the foreign key.
+    /// </summary>
+    [Fact]
+    public async Task A_sport_id_that_is_not_in_the_catalogue_is_refused()
+    {
+        var (client, _) = await AthleteAsync();
+
+        await AssertSportRefusedAsync(await SaveAsync(client, ProfileWithSport(Guid.NewGuid())));
+
+        Assert.Equal(Sports.Id("Tennis"), (await GetProfileAsync(client)).SportId);
+    }
+
+    /// <summary>
+    /// A sport id that is not a uuid never binds, and is still the same 400 VALIDATION_FAILED —
+    /// the envelope every unreadable body gets.
+    /// </summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData("Tennis")]
+    public async Task A_sport_id_that_is_not_a_uuid_is_refused(string sportId)
+    {
+        var (client, _) = await AthleteAsync();
+
+        var response = await SaveAsync(client, ProfileWithSport(sportId));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("VALIDATION_FAILED", problem.GetProperty("errorCode").GetString());
+    }
+
+    [Fact]
+    public async Task Other_is_accepted_like_any_other_sport()
+    {
+        var (client, _) = await AthleteAsync(complete: false);
+
+        var response = await SaveAsync(client, ProfileWithSport(Sports.Id("Other")));
+
+        response.EnsureSuccessStatusCode();
+        var returned = (await response.Content.ReadFromJsonAsync<Profile>(Json))!;
+        Assert.True(returned.ProfileCompleted);
+        Assert.Equal(Sports.Id("Other"), returned.SportId);
+        Assert.Equal("Other", returned.Sport);
+    }
+
+    /// <summary>
+    /// The athlete who picked Other changes it once their sport is listed — an ordinary edit,
+    /// with the name in the response resolved from the catalogue rather than echoed.
+    /// </summary>
+    [Fact]
+    public async Task Changing_the_sport_replaces_it_and_the_name_comes_from_the_catalogue()
+    {
+        var (client, _) = await AthleteAsync();
+
+        var response = await SaveAsync(client, ProfileWithSport(Sports.Id("Fin Swimming")));
+
+        response.EnsureSuccessStatusCode();
+        var returned = (await response.Content.ReadFromJsonAsync<Profile>(Json))!;
+        Assert.Equal(Sports.Id("Fin Swimming"), returned.SportId);
+        Assert.Equal("Fin Swimming", returned.Sport);
+
+        var reread = await GetProfileAsync(client);
+        Assert.Equal(Sports.Id("Fin Swimming"), reread.SportId);
+        Assert.Equal("Fin Swimming", reread.Sport);
+    }
+
     // ------------------------------------------------------------------ email
 
     /// <summary>
@@ -275,7 +403,7 @@ public sealed class AthleteProfileTests(AthleteProfileApiFactory factory)
             fullName = "Alex Thompson",
             dateOfBirth = "2001-04-17",
             gender = "Male",
-            sport = "Tennis",
+            sportId = Sports.Id("Tennis"),
             phone = "010 1234 5678",
             email = "someone.else@nowhere.test"
         });

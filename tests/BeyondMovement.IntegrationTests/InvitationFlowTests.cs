@@ -134,7 +134,7 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
             fullName = "Alex Thompson",
             dateOfBirth = "2001-04-17",
             gender = "Male",
-            sport = "Tennis",
+            sportId = Sports.Id("Tennis"),
             phone = "010 1234 5678"
         });
 
@@ -191,7 +191,7 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
             fullName = "Robin Vale",
             dateOfBirth = "1999-02-11",
             gender = "Female",
-            sport = "Swimming",
+            sportId = Sports.Id("Swimming"),
             phone = "010 1234 5678"
         });
         await AssertSucceededAsync(completed);
@@ -464,7 +464,7 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
             fullName = "Nameless Athlete",
             dateOfBirth = "1998-03-02",
             gender = "Female",
-            sport = "Rowing",
+            sportId = Sports.Id("Rowing"),
             phone = "010 1234 5678"
         });
         await AssertSucceededAsync(completed);
@@ -510,7 +510,14 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
             $"athlete.partial.{fullName is null}.{dateOfBirth is null}.{gender is null}@nowhere.test");
 
         var response = await client.PostAsJsonAsync("/api/v1/athletes/me/profile",
-            new { fullName, dateOfBirth, gender, sport, phone = "010 1234 5678" });
+            new
+            {
+                fullName,
+                dateOfBirth,
+                gender,
+                sportId = sport is null ? (Guid?)null : Sports.Id(sport),
+                phone = "010 1234 5678"
+            });
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
 
@@ -536,7 +543,7 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
             fullName = "Gender Athlete",
             dateOfBirth = "1998-03-02",
             gender,
-            sport = "Rowing",
+            sportId = Sports.Id("Rowing"),
             phone = "010 1234 5678"
         });
 
@@ -558,7 +565,7 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
             fullName = "Lowercase Athlete",
             dateOfBirth = "1998-03-02",
             gender = "female",
-            sport = "Rowing",
+            sportId = Sports.Id("Rowing"),
             phone = "010 1234 5678"
         });
 
@@ -578,7 +585,7 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
             fullName = "Gendered Athlete",
             dateOfBirth = "1998-03-02",
             gender = "Male",
-            sport = "Rowing",
+            sportId = Sports.Id("Rowing"),
             phone = "010 1234 5678"
         });
 
@@ -599,7 +606,7 @@ public sealed class InvitationFlowTests(ApiFactory factory) : IClassFixture<ApiF
             fullName = "Future Athlete",
             dateOfBirth = "2999-01-01",
             gender = "Female",
-            sport = "Rowing",
+            sportId = Sports.Id("Rowing"),
             phone = "010 1234 5678"
         });
 

@@ -88,7 +88,7 @@ public sealed class AthleteApiFactory : ApiFactory
         // detail is one who never finished it, and must not read as completed.
         if (sport is not null && dateOfBirth is not null)
         {
-            profile.CompleteProfile(dateOfBirth.Value, gender ?? Gender.Female, sport, created);
+            profile.CompleteProfile(dateOfBirth.Value, gender ?? Gender.Female, Sports.Id(sport), created);
             user.MarkProfileCompleted(created);
         }
 

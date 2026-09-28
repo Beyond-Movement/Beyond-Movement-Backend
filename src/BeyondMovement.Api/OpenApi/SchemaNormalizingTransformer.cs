@@ -91,6 +91,15 @@ public sealed class SchemaNormalizingTransformer : IOpenApiSchemaTransformer
                 "both rejected with 400 rather than silently becoming false; null is never a " +
                 "valid value to send.");
         }
+        else if (type == typeof(CompleteProfileRequest))
+        {
+            Limit(schema, "sportId", s => s.Description =
+                "Required. The id of an entry from GET /sports; there is no free-text sport, and " +
+                "an athlete whose sport is not listed picks Other. Nullable here only so that an " +
+                "omitted field and an explicit null are both reported as 400 VALIDATION_FAILED " +
+                "under errors.SportId, the same as an id the catalogue does not have; null is " +
+                "never a valid value to send.");
+        }
         else if (type == typeof(SessionResponse))
         {
             Limit(schema, "observationDeductsSession", s => s.Description =

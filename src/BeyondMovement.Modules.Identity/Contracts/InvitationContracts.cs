@@ -61,11 +61,17 @@ public sealed record RegisterRequest(
 /// completed their profile before phone numbers were collected has none on record, and has to
 /// supply one on their next save.
 /// </param>
+/// <param name="SportId">
+/// <b>Required</b>: the <c>id</c> of an entry from <c>GET /sports</c>. There is no free-text
+/// sport — an athlete whose sport is not listed picks <c>Other</c>. Missing, null and an id the
+/// catalogue does not have are all <c>400 VALIDATION_FAILED</c> on <c>SportId</c>. Nullable here
+/// only so that a missing value reaches validation and is reported against the field.
+/// </param>
 public sealed record CompleteProfileRequest(
     string FullName,
     DateOnly DateOfBirth,
     Gender Gender,
-    string Sport,
+    Guid? SportId,
     string Phone);
 
 /// <summary>
@@ -86,6 +92,14 @@ public sealed record CompleteProfileRequest(
 /// E.164. Null only for an athlete who has not saved their profile since phone numbers became
 /// required — every save now has to supply one.
 /// </param>
+/// <param name="SportId">
+/// The catalogue id of the athlete's sport — what an edit screen preselects in the sports list.
+/// Null exactly when <paramref name="Sport"/> is.
+/// </param>
+/// <param name="Sport">
+/// The sport's display name, read from the catalogue. Null until the athlete picks one; non-null
+/// whenever <paramref name="ProfileCompleted"/> is true.
+/// </param>
 public sealed record AthleteProfileResponse(
     Guid UserId,
     string? FullName,
@@ -93,5 +107,6 @@ public sealed record AthleteProfileResponse(
     string? Phone,
     DateOnly? DateOfBirth,
     Gender? Gender,
+    Guid? SportId,
     string? Sport,
     bool ProfileCompleted);
