@@ -83,6 +83,98 @@ stops with an error and changes nothing. It never truncates or discards a number
 
 ---
 
+## Phase 14b — A purchased package carries its feature lines
+
+**Purely additive: one new field on one existing response.** The whole contract diff is five
+lines — `features` added to `PurchasedPackageResponse`, reusing the `PackageFeature` schema that
+`PackageOptionResponse` and `PackagePurchaseResponse` already use. No new schema, no new endpoint,
+no migration, and nothing removed or renamed.
+
+### The problem
+
+`PurchasedPackageResponse.includedFeatures` is a list of `PackageFeatureCode` — machine-readable,
+and deliberately carrying **no display text**, because a rule must never be decided by comparing
+words the coach is free to reword. That is right for deciding and useless for drawing: an app with
+only `["Observations"]` cannot render the card the athlete bought without either inventing a label
+from the enum name or fetching the purchase behind the package.
+
+### What was added
+
+```jsonc
+// GET /api/v1/packages/{id}  (and every other route returning a purchased package)
+{
+  "includedFeatures": ["Observations"],        // unchanged — decide with this
+  "features": [                                 // NEW — draw with this
+    { "text": "Observation Sessions", "code": "Observations" },
+    { "text": "Competition preparation", "code": null }
+  ]
+}
+```
+
+- **`features`** is the card as the athlete read it: every line, **in the order written**, each
+  `{ text, code }`. `code` is `null` for an ordinary line and a `PackageFeatureCode` for a
+  recognised one.
+- **`includedFeatures` is unchanged** — same field, same values, same meaning. It remains the
+  eligibility list and still carries no text.
+
+The two describe the same package from the same moment and **neither is derived from the other**.
+Read `includedFeatures` (or a line's own `code`) to decide; read `features[].text` to display.
+**Never decide anything from `text`** — the coach may word a line however they like, in any
+language.
+
+### It is a snapshot, not a lookup
+
+`features` comes from the purchase that produced the package, **not** from the catalogue entry it
+was bought from. Editing, rewording, re-pricing or archiving that entry afterwards cannot change
+what an existing package reports — the same guarantee `name`, `totalSessions`, `pricePaidMinor`
+and `includedFeatures` have always had.
+
+Two athletes who buy the same option either side of an edit get different cards, and that is
+correct: they were sold different things.
+
+**No display label is ever derived from `PackageFeatureCode`.** A line reading
+`"Observation Sessions"` with code `Observations` comes back with that text, not with the enum
+member's name.
+
+### Often empty, and that is not an error
+
+`features` is `[]` for every package bought **before the purchase record existed**. Those were
+backfilled with an empty snapshot deliberately: the catalogue may have been edited since, so
+copying it at backfill time would have fabricated a card nobody was shown. `includedFeatures` is
+empty on exactly the same packages and for the same reason.
+
+**Render such a package without a feature list**; do not treat it as a failure, and do not fall
+back to the catalogue's current text.
+
+### Where it appears
+
+Every route that returns a `PurchasedPackageResponse`, Admin and Athlete alike, with the same
+values:
+
+| Route | Role |
+|---|---|
+| `POST /api/v1/athletes/{athleteId}/packages` | Admin |
+| `GET /api/v1/athletes/{athleteId}/packages` | Admin (every row of the page) |
+| `GET /api/v1/athletes/{athleteId}/packages/active` | Admin |
+| `GET /api/v1/packages/{id}` | Admin |
+| `POST /api/v1/packages/{id}/close` | Admin |
+| `GET /api/v1/me/packages` | Athlete (every row) |
+| `GET /api/v1/me/package` | Athlete |
+| `POST /api/v1/purchases/{id}/mark-paid` → `package` | Admin |
+| `POST /api/v1/sessions/{id}/attend` → `package` | Admin |
+
+**No extra call is needed anywhere.** The app does not fetch the purchase to draw a package, and
+there is no new endpoint to call. The paged history resolves the whole page's lines in one query.
+
+### Nothing else changed
+
+No migration: the display snapshot was already persisted. No change to `includedFeatures`, to any
+purchase route, to the catalogue, or to how eligibility is decided —
+`POST /me/observation-requests` still reads the codes on the active purchased package and answers
+`403 OBSERVATIONS_NOT_INCLUDED` exactly as before.
+
+---
+
 ## Phase 14 — Finance: Expenses and the summary
 
 **Purely additive. No existing path, schema or field changed** — the regenerated contract is 425

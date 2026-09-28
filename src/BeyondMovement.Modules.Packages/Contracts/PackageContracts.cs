@@ -168,15 +168,41 @@ public sealed record PurchasePackageRequest(
 /// The recognised features this package grants, frozen at purchase. <b>Often empty</b>, and empty
 /// for every package bought before the codes existed.
 /// <para>
-/// This is what the app should read to show or hide a feature's action — in particular, an
-/// athlete may ask to be observed only while their active package includes
-/// <see cref="PackageFeatureCode.Observations"/>. There is deliberately no display text here: the
-/// feature lines the athlete read are on the purchase
-/// (<c>GET /me/purchases/current</c>), and a second copy of them could disagree with it.
+/// This is what the app should read to <b>decide</b> — to show or hide a feature's action. In
+/// particular, an athlete may ask to be observed only while their active package includes
+/// <see cref="PackageFeatureCode.Observations"/>. It carries no display text on purpose: a rule
+/// must never be decided by comparing words the coach is free to reword.
+/// </para>
+/// <para>
+/// To <b>display</b> the card, read <paramref name="Features"/> instead. The two describe the
+/// same package from the same moment and neither is derived from the other: this is the code set,
+/// that is the lines as written.
 /// </para>
 /// <para>
 /// Hiding the action is UX only. <c>POST /me/observation-requests</c> enforces the same rule and
 /// answers 403 OBSERVATIONS_NOT_INCLUDED regardless of what the app drew.
+/// </para>
+/// </param>
+/// <param name="Features">
+/// The feature lines this package was sold with, <b>exactly as the athlete read them</b> and in
+/// the order they read them — each one <c>{ text, code }</c>, with <c>code</c> null for an
+/// ordinary line and a <see cref="PackageFeatureCode"/> for a recognised one.
+/// <para>
+/// <b>Snapshotted at purchase, never looked up.</b> It comes from the purchase that produced this
+/// package, not from the catalogue entry it was bought from, so renaming, rewording or archiving
+/// that entry afterwards cannot change what an existing package reports. That is the whole point
+/// of it.
+/// </para>
+/// <para>
+/// <b>Display only.</b> Never decide anything from <c>text</c> — the coach may word a line
+/// however they like, in any language. Read <paramref name="IncludedFeatures"/>, or a line's own
+/// <c>code</c>, for that.
+/// </para>
+/// <para>
+/// <b>Often empty</b>, and empty for every package bought before the purchase record existed:
+/// those were backfilled with an empty snapshot deliberately, because the catalogue may have been
+/// edited since and copying it then would have fabricated a card nobody was shown. Render the
+/// package without a feature list rather than treating it as an error.
 /// </para>
 /// </param>
 public sealed record PurchasedPackageResponse(
@@ -188,6 +214,7 @@ public sealed record PurchasedPackageResponse(
     int UsedSessions,
     int RemainingSessions,
     IReadOnlyList<PackageFeatureCode> IncludedFeatures,
+    IReadOnlyList<PackageFeature> Features,
     long PricePaidMinor,
     string Currency,
     DateOnly StartDate,
@@ -199,8 +226,20 @@ public sealed record PurchasedPackageResponse(
 
 public static class PurchasedPackageMapping
 {
-    public static PurchasedPackageResponse ToResponse(this PurchasedPackage x) => new(
+    /// <summary>
+    /// <paramref name="features"/> is passed in rather than read from the package, for the reason
+    /// <c>PackagePurchaseMapping.ToResponse</c> takes the athlete's name: the display lines live
+    /// on the <c>PackagePurchase</c> in the Finance module, which this module may not reference.
+    /// Every caller sits in the Api composition root, which is the only project that sees both.
+    /// <para>
+    /// It is a <b>required</b> parameter, deliberately, so that adding a call site cannot quietly
+    /// produce a package whose card is empty. Pass <c>[]</c> only when the package genuinely has
+    /// no snapshot.
+    /// </para>
+    /// </summary>
+    public static PurchasedPackageResponse ToResponse(
+        this PurchasedPackage x, IReadOnlyList<PackageFeature> features) => new(
         x.Id, x.AthleteProfileId, x.PackageOptionId, x.Name, x.TotalSessions, x.UsedSessions,
-        x.RemainingSessions, x.IncludedFeatures, x.PricePaidMinor, x.Currency, x.StartDate,
-        x.EndDate, x.Status, x.Notes, x.CreatedAtUtc, x.UpdatedAtUtc);
+        x.RemainingSessions, x.IncludedFeatures, features, x.PricePaidMinor, x.Currency,
+        x.StartDate, x.EndDate, x.Status, x.Notes, x.CreatedAtUtc, x.UpdatedAtUtc);
 }

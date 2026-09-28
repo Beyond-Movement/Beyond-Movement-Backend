@@ -6075,6 +6075,7 @@ components:
       - usedSessions
       - remainingSessions
       - includedFeatures
+      - features
       - pricePaidMinor
       - currency
       - startDate
@@ -6111,6 +6112,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PackageFeatureCode'
+        features:
+          type: array
+          items:
+            $ref: '#/components/schemas/PackageFeature'
         pricePaidMinor:
           type: integer
           format: int64

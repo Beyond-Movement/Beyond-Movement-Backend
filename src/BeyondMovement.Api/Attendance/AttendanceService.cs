@@ -1,3 +1,4 @@
+﻿using BeyondMovement.Api.Packages;
 using BeyondMovement.Infrastructure;
 using BeyondMovement.Modules.Packages.Contracts;
 using BeyondMovement.Modules.Packages.Domain;
@@ -34,7 +35,8 @@ namespace BeyondMovement.Api.Attendance;
 /// double-tapped button is the better answer anyway.
 /// </para>
 /// </summary>
-public sealed class AttendanceService(AppDbContext db, IClock clock, IAuditLogger audit)
+public sealed class AttendanceService(
+    AppDbContext db, IClock clock, IAuditLogger audit, PurchasedPackageFeatureReader features)
 {
     public async Task<Result<AttendanceResponse>> ResolveAsync(
         Guid coachId, Guid actorUserId, Guid sessionId, AttendanceOutcome outcome,
@@ -144,7 +146,7 @@ public sealed class AttendanceService(AppDbContext db, IClock clock, IAuditLogge
         return Result<AttendanceResponse>.Success(new AttendanceResponse(
             session.ToResponse(athleteName),
             consumed,
-            package?.ToResponse(),
+            package is null ? null : package.ToResponse(await features.ForAsync(package.Id, ct)),
             package is null ? null : await ProgressAsync(session, package, ct)));
     }
 

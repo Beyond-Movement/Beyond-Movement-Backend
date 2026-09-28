@@ -257,7 +257,8 @@ public static class PurchasedPackageEndpoints
     }
 
     private static async Task<IResult> History(
-        Guid athleteId, AppDbContext db, CatalogueReader reader, ClaimsPrincipal principal,
+        Guid athleteId, AppDbContext db, CatalogueReader reader,
+        PurchasedPackageFeatureReader features, ClaimsPrincipal principal,
         HttpContext http, CancellationToken ct,
         int page = 1, int pageSize = PagedResult<PurchasedPackageResponse>.DefaultPageSize)
     {
@@ -268,7 +269,8 @@ public static class PurchasedPackageEndpoints
         if (!await reader.BelongsToCoachAsync(coachId, athleteId, ct))
             return PricingErrors.AthleteNotFound.ToProblem(http);
 
-        return Results.Ok(await HistoryPageAsync(db, coachId, athleteId, page, pageSize, ct));
+        return Results.Ok(
+            await HistoryPageAsync(db, features, coachId, athleteId, page, pageSize, ct));
     }
 
     /// <summary>
@@ -281,12 +283,14 @@ public static class PurchasedPackageEndpoints
     /// </para>
     /// </summary>
     private static async Task<IResult> MyPackages(
-        AppDbContext db, ClaimsPrincipal principal, HttpContext http, CancellationToken ct,
+        AppDbContext db, PurchasedPackageFeatureReader features, ClaimsPrincipal principal,
+        HttpContext http, CancellationToken ct,
         int page = 1, int pageSize = PagedResult<PurchasedPackageResponse>.DefaultPageSize)
     {
         if (!principal.TryGetIdentity(out var userId, out var coachId)) return Results.Unauthorized();
 
-        return Results.Ok(await HistoryPageAsync(db, coachId, userId, page, pageSize, ct));
+        return Results.Ok(
+            await HistoryPageAsync(db, features, coachId, userId, page, pageSize, ct));
     }
 
     /// <summary>
@@ -296,8 +300,8 @@ public static class PurchasedPackageEndpoints
     /// itself depending on who opened it.
     /// </summary>
     private static async Task<PagedResult<PurchasedPackageResponse>> HistoryPageAsync(
-        AppDbContext db, Guid coachId, Guid athleteUserId, int page, int pageSize,
-        CancellationToken ct)
+        AppDbContext db, PurchasedPackageFeatureReader features, Guid coachId,
+        Guid athleteUserId, int page, int pageSize, CancellationToken ct)
     {
         var (normalizedPage, normalizedSize) =
             PagedResult<PurchasedPackageResponse>.Normalize(page, pageSize);
@@ -317,12 +321,19 @@ public static class PurchasedPackageEndpoints
             .Take(normalizedSize)
             .ToListAsync(ct);
 
+        // One query for the page's feature lines, not one per package. A hundred packages is
+        // a legal page size, and a lookup per row would make this the slowest read in the API.
+        var byPackage = await features.ForManyAsync([.. packages.Select(x => x.Id)], ct);
+
         return new PagedResult<PurchasedPackageResponse>(
-            [.. packages.Select(x => x.ToResponse())], normalizedPage, normalizedSize, total);
+            [.. packages.Select(x => x.ToResponse(
+                PurchasedPackageFeatureReader.Lookup(byPackage, x.Id)))],
+            normalizedPage, normalizedSize, total);
     }
 
     private static async Task<IResult> Active(
-        Guid athleteId, AppDbContext db, ClaimsPrincipal principal, HttpContext http, CancellationToken ct)
+        Guid athleteId, AppDbContext db, PurchasedPackageFeatureReader features,
+        ClaimsPrincipal principal, HttpContext http, CancellationToken ct)
     {
         if (!principal.TryGetIdentity(out _, out var coachId)) return Results.Unauthorized();
 
@@ -333,11 +344,12 @@ public static class PurchasedPackageEndpoints
 
         return package is null
             ? PackageErrors.PackageNotFound.ToProblem(http)
-            : Results.Ok(package.ToResponse());
+            : Results.Ok(package.ToResponse(await features.ForAsync(package.Id, ct)));
     }
 
     private static async Task<IResult> Detail(
-        Guid id, AppDbContext db, ClaimsPrincipal principal, HttpContext http, CancellationToken ct)
+        Guid id, AppDbContext db, PurchasedPackageFeatureReader features,
+        ClaimsPrincipal principal, HttpContext http, CancellationToken ct)
     {
         if (!principal.TryGetIdentity(out _, out var coachId)) return Results.Unauthorized();
 
@@ -345,7 +357,7 @@ public static class PurchasedPackageEndpoints
 
         return package is null
             ? PackageErrors.PackageNotFound.ToProblem(http)
-            : Results.Ok(package.ToResponse());
+            : Results.Ok(package.ToResponse(await features.ForAsync(package.Id, ct)));
     }
 
     /// <summary>
@@ -415,7 +427,8 @@ public static class PurchasedPackageEndpoints
     }
 
     private static async Task<IResult> MyPackage(
-        AppDbContext db, ClaimsPrincipal principal, HttpContext http, CancellationToken ct)
+        AppDbContext db, PurchasedPackageFeatureReader features,
+        ClaimsPrincipal principal, HttpContext http, CancellationToken ct)
     {
         if (!principal.TryGetIdentity(out var userId, out var coachId)) return Results.Unauthorized();
 
@@ -426,7 +439,7 @@ public static class PurchasedPackageEndpoints
 
         return package is null
             ? PackageErrors.PackageNotFound.ToProblem(http)
-            : Results.Ok(package.ToResponse());
+            : Results.Ok(package.ToResponse(await features.ForAsync(package.Id, ct)));
     }
 
     /// <summary>

@@ -249,7 +249,9 @@ public sealed class PurchaseCheckoutService(
 
             return Result<MarkPurchasePaidResponse>.Success(new MarkPurchasePaidResponse(
                 purchase.ToResponse(repeatLabel.FullName, repeatLabel.Email),
-                alreadyBought.ToResponse(), AlreadyPaid: true));
+                // The purchase beside it is the snapshot, so the package's card needs no
+                // lookup and cannot disagree with the purchase it came from.
+                alreadyBought.ToResponse(purchase.Features), AlreadyPaid: true));
         }
 
         if (await HasActivePackageAsync(purchase.AthleteProfileId, ct))
@@ -310,7 +312,7 @@ public sealed class PurchaseCheckoutService(
 
         return Result<MarkPurchasePaidResponse>.Success(new MarkPurchasePaidResponse(
             purchase.ToResponse(label.FullName, label.Email),
-            package.ToResponse(), AlreadyPaid: false));
+            package.ToResponse(purchase.Features), AlreadyPaid: false));
     }
 
     private Task<bool> HasActivePackageAsync(Guid athleteProfileId, CancellationToken ct) =>

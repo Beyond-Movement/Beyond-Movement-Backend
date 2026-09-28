@@ -13,7 +13,8 @@ namespace BeyondMovement.Api.Packages;
 /// Coordinates a package purchase across athlete data, catalogue pricing and the purchased
 /// package record. This belongs in the composition root because those records span modules.
 /// </summary>
-public sealed class PackagePurchaseService(AppDbContext db, IClock clock, IAuditLogger audit)
+public sealed class PackagePurchaseService(
+    AppDbContext db, IClock clock, IAuditLogger audit, PurchasedPackageFeatureReader features)
 {
     public async Task<Result<PurchasedPackageResponse>> PurchaseAsync(
         Guid coachId,
@@ -112,7 +113,9 @@ public sealed class PackagePurchaseService(AppDbContext db, IClock clock, IAudit
             return Result<PurchasedPackageResponse>.Failure(PackageErrors.ActivePackageExists);
         }
 
-        return Result<PurchasedPackageResponse>.Success(package.ToResponse());
+        // The purchase this just created carries the snapshot, so the card comes back without
+        // a second query - and is provably the same list that was written.
+        return Result<PurchasedPackageResponse>.Success(package.ToResponse(purchase.Features));
     }
 
     public async Task<Result<PurchasedPackageResponse>> CloseAsync(
@@ -142,7 +145,8 @@ public sealed class PackagePurchaseService(AppDbContext db, IClock clock, IAudit
             ct);
         await transaction.CommitAsync(ct);
 
-        return Result<PurchasedPackageResponse>.Success(package.ToResponse());
+        return Result<PurchasedPackageResponse>.Success(
+            package.ToResponse(await features.ForAsync(package.Id, ct)));
     }
 
     private static bool IsActivePackageConflict(DbUpdateException exception) =>

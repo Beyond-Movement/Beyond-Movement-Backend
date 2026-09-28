@@ -174,6 +174,10 @@ builder.Services.AddScoped<SetLoyaltyHandler>();
 builder.Services.AddScoped<CatalogueReader>();
 builder.Services.AddScoped<PackagePurchaseService>();
 
+// The feature lines a purchased package was sold with. Spans Packages and Finance, which
+// may not reference each other, so the join lives here and reads only.
+builder.Services.AddScoped<PurchasedPackageFeatureReader>();
+
 // What a purchased package was spent on. Spans Packages, Scheduling and Athletes, so it lives
 // here for the same reason CatalogueReader does, and reads only.
 builder.Services.AddScoped<PackageSessionHistoryReader>();
