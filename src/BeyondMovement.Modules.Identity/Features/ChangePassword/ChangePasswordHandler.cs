@@ -18,6 +18,10 @@ public sealed class ChangePasswordHandler(
 {
     public async Task<Result> HandleAsync(Guid userId, ChangePasswordRequest request, CancellationToken ct = default)
     {
+        // Before reading anything: a refresh in progress commits first, so its replacement is
+        // among the tokens revoked below (UserSessionLock).
+        await using var transaction = await db.BeginUserSessionLockAsync(userId, ct);
+
         var now = clock.UtcNow;
 
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
@@ -49,6 +53,7 @@ public sealed class ChangePasswordHandler(
             token.Revoke(now);
 
         await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
 
         await audit.WriteAsync("PasswordChanged", user.Id,
             $"Password changed while signed in; {activeTokens.Count} refresh token(s) revoked.", ct);

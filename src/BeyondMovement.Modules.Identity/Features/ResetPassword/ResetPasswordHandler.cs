@@ -19,9 +19,21 @@ public sealed class ResetPasswordHandler(
 {
     public async Task<Result> HandleAsync(ResetPasswordRequest request, CancellationToken ct = default)
     {
-        var now = clock.UtcNow;
         var hash = tokens.Hash(request.Token);
 
+        // Untracked: only the owner, to know which user to lock. The token is read again under
+        // the lock, so a refresh in progress commits first and its replacement is revoked below.
+        var userId = await db.PasswordResetTokens.AsNoTracking()
+            .Where(t => t.TokenHash == hash)
+            .Select(t => (Guid?)t.UserId)
+            .FirstOrDefaultAsync(ct);
+
+        if (userId is null)
+            return Result.Failure(IdentityErrors.InvalidResetToken);
+
+        await using var transaction = await db.BeginUserSessionLockAsync(userId.Value, ct);
+
+        var now = clock.UtcNow;
         var resetToken = await db.PasswordResetTokens.FirstOrDefaultAsync(t => t.TokenHash == hash, ct);
 
         if (resetToken is null || !resetToken.IsUsable(now))
@@ -43,6 +55,7 @@ public sealed class ResetPasswordHandler(
             token.Revoke(now);
 
         await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
 
         await audit.WriteAsync("PasswordReset", user.Id,
             $"Password reset completed; {activeTokens.Count} refresh token(s) revoked.", ct);

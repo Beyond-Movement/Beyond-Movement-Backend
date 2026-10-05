@@ -57,6 +57,12 @@ public static class ApiErrorCodes
     public const string AccountPaused = "ACCOUNT_PAUSED";
     public const string InvalidToken = "INVALID_TOKEN";
     public const string InvalidRefreshToken = "INVALID_REFRESH_TOKEN";
+
+    /// <summary>
+    /// The refresh token was spent moments ago by another request carrying the same token - a
+    /// duplicate or a concurrent refresh, not a replay. Nothing was issued and nothing revoked.
+    /// </summary>
+    public const string RefreshSuperseded = "REFRESH_SUPERSEDED";
     public const string InvalidResetToken = "INVALID_RESET_TOKEN";
     public const string InvalidGoogleToken = "INVALID_GOOGLE_TOKEN";
     public const string InvitationRequired = "INVITATION_REQUIRED";
@@ -82,7 +88,7 @@ public static class ApiErrorCodes
     public static readonly string[] All =
     [
         ValidationFailed, InvalidCredentials, AccountLocked, AccountPaused, InvalidToken,
-        InvalidRefreshToken, InvalidResetToken, InvalidGoogleToken, InvitationRequired, PasswordNotSet,
+        InvalidRefreshToken, RefreshSuperseded, InvalidResetToken, InvalidGoogleToken, InvitationRequired, PasswordNotSet,
         InvitationInvalid, InvitationExpired, InvitationUsed, InvitationRevoked,
         RegistrationTokenInvalid, GoogleEmailMismatch, EmailAlreadyRegistered,
         ProfileAlreadyCompleted, TooManyRequests, AthleteNotFound, TimeZoneInvalid

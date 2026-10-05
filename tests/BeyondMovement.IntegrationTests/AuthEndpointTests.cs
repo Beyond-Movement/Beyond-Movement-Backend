@@ -195,31 +195,9 @@ public sealed class AuthEndpointTests(ApiFactory factory) : IClassFixture<ApiFac
         Assert.NotEqual(auth.RefreshToken, rotated.RefreshToken);
     }
 
-    [Fact]
-    public async Task Reusing_a_spent_refresh_token_kills_the_whole_family()
-    {
-        var client = factory.CreateClient();
-        var auth = await LoginAsync(client);
-
-        // Spend it once, legitimately.
-        var rotatedResponse = await client.PostAsJsonAsync("/api/v1/auth/refresh",
-            new { refreshToken = auth.RefreshToken });
-        var rotated = (await rotatedResponse.Content.ReadFromJsonAsync<AuthPayload>(Json))!;
-
-        // Now replay the old one, as a thief holding a stolen copy would.
-        var replay = await client.PostAsJsonAsync("/api/v1/auth/refresh",
-            new { refreshToken = auth.RefreshToken });
-        Assert.Equal(HttpStatusCode.Unauthorized, replay.StatusCode);
-
-        var body = await replay.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("INVALID_REFRESH_TOKEN", body.GetProperty("errorCode").GetString());
-
-        // The legitimate holder's newest token must die too — that is the point of
-        // family revocation. Without this assertion the test passes on a broken system.
-        var afterRevocation = await client.PostAsJsonAsync("/api/v1/auth/refresh",
-            new { refreshToken = rotated.RefreshToken });
-        Assert.Equal(HttpStatusCode.Unauthorized, afterRevocation.StatusCode);
-    }
+    // Replay detection, the grace window for duplicates and concurrent refreshes are covered with
+    // a controllable clock in RefreshRotationTests. An immediate replay, which this file used to
+    // assert as theft, is now correctly treated as the client's own duplicate.
 
     // -------------------------------------------------------------- logout
 

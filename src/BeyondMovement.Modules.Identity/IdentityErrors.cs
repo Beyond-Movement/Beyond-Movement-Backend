@@ -25,6 +25,10 @@ public static class IdentityErrors
     public static readonly Error InvalidRefreshToken =
         new(ApiErrorCodes.InvalidRefreshToken, "The refresh token is invalid or expired.", Status.Unauthorized);
 
+    public static readonly Error RefreshSuperseded =
+        new(ApiErrorCodes.RefreshSuperseded,
+            "This refresh token was already used by another request moments ago.", Status.Unauthorized);
+
     public static readonly Error InvalidResetToken =
         new(ApiErrorCodes.InvalidResetToken, "The reset link is invalid or has expired.", Status.BadRequest);
 

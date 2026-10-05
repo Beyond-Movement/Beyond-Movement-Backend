@@ -22,6 +22,10 @@ public sealed class SetAccountStatusHandler(
     public async Task<Result<UserStatus>> PauseAsync(
         Guid coachId, Guid athleteUserId, Guid actorUserId, CancellationToken ct = default)
     {
+        // Before reading anything: a refresh in progress commits first, so its replacement is
+        // among the tokens revoked below, and the two cannot deadlock (UserSessionLock).
+        await using var transaction = await db.BeginUserSessionLockAsync(athleteUserId, ct);
+
         var now = clock.UtcNow;
         var user = await FindAthleteAsync(coachId, athleteUserId, ct);
 
@@ -39,6 +43,7 @@ public sealed class SetAccountStatusHandler(
         var revoked = await RevokeRefreshTokensAsync(user.Id, now, ct);
 
         await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
 
         await audit.WriteAsync("AthletePaused", actorUserId,
             $"Athlete {user.Id} paused; {revoked} refresh token(s) revoked.", ct);
@@ -51,6 +56,10 @@ public sealed class SetAccountStatusHandler(
     public async Task<Result<UserStatus>> ReactivateAsync(
         Guid coachId, Guid athleteUserId, Guid actorUserId, CancellationToken ct = default)
     {
+        // Revokes nothing, but changes the status a refresh decides on - so it takes the same
+        // lock, and a refresh reads the status either before or after it, never half-way.
+        await using var transaction = await db.BeginUserSessionLockAsync(athleteUserId, ct);
+
         var now = clock.UtcNow;
         var user = await FindAthleteAsync(coachId, athleteUserId, ct);
 
@@ -62,6 +71,7 @@ public sealed class SetAccountStatusHandler(
 
         user.Reactivate(now);
         await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
 
         await audit.WriteAsync("AthleteReactivated", actorUserId, $"Athlete {user.Id} reactivated.", ct);
 

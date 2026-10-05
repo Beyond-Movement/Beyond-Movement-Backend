@@ -119,6 +119,11 @@ public static class AuthEndpoints
             "discard the old one. Replaying a token that was already spent is treated as theft: " +
             "every token in that family is revoked and 401 INVALID_REFRESH_TOKEN is returned, so " +
             "the user must sign in again. An expired or revoked token returns the same 401. " +
+            "Returns 401 REFRESH_SUPERSEDED when the same token was spent by another request in " +
+            "the last 10 seconds - a duplicate or concurrent refresh, not a replay. Nothing is " +
+            "issued and nothing is revoked: use the token the winning request stored, if this " +
+            "app has it, or sign in again. The same token presented after those 10 seconds is " +
+            "treated as a replay, as above. " +
             "Returns 403 ACCOUNT_PAUSED if the account was paused since the token was issued.")
         .Produces<AuthResponse>()
         .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
@@ -134,11 +139,14 @@ public static class AuthEndpoints
             return Results.NoContent();
         })
         .WithName("Logout")
-        .WithSummary("Revoke the presented refresh token.")
+        .WithSummary("End the session the presented refresh token belongs to.")
         .WithDescription(
             "Requires a valid access token as well as the refresh token in the body " +
-            "(architecture section 14.1 marks logout as authenticated). Succeeds even if the " +
-            "refresh token is already unknown or revoked, so a retry is safe.")
+            "(architecture section 14.1 marks logout as authenticated). Revokes that token and " +
+            "any token rotated from the same sign-in, including one a refresh racing this call " +
+            "has just issued. Other sign-ins - the same user on another device - are not " +
+            "affected. Succeeds even if the refresh token is already unknown or revoked, so a " +
+            "retry is safe.")
         .Produces(StatusCodes.Status204NoContent)
         .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
         .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson);

@@ -58,6 +58,45 @@ public class RefreshTokenTests
         Assert.Equal(Now.AddMinutes(1), token.RevokedAtUtc);
     }
 
+    // ------------------------------------------------------ superseded-refresh grace
+
+    [Fact]
+    public void An_unspent_token_was_not_just_rotated()
+    {
+        Assert.False(Issue().WasJustRotated(Now));
+    }
+
+    [Fact]
+    public void A_token_spent_within_ten_seconds_was_just_rotated()
+    {
+        var token = Issue();
+        token.MarkUsed(Now);
+
+        Assert.True(token.WasJustRotated(Now));
+        Assert.True(token.WasJustRotated(Now.AddSeconds(10)));
+        Assert.False(token.WasJustRotated(Now.AddSeconds(10).AddTicks(1)));
+    }
+
+    /// <summary>Another API instance whose clock is slightly behind the one that rotated it.</summary>
+    [Fact]
+    public void A_clock_slightly_behind_the_rotation_still_counts_as_inside()
+    {
+        var token = Issue();
+        token.MarkUsed(Now);
+
+        Assert.True(token.WasJustRotated(Now.AddSeconds(-2)));
+    }
+
+    [Fact]
+    public void A_revoked_token_is_never_just_rotated()
+    {
+        var token = Issue();
+        token.MarkUsed(Now);
+        token.Revoke(Now.AddSeconds(1));
+
+        Assert.False(token.WasJustRotated(Now.AddSeconds(2)));
+    }
+
     [Fact]
     public void A_reset_token_is_single_use_and_expires_in_an_hour()
     {

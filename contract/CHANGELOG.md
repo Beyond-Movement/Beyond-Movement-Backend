@@ -7,6 +7,47 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ---
 
+## Refresh rotation is atomic — new `401 REFRESH_SUPERSEDED`
+
+**Not breaking. No Flutter change needed.** The request and every success response of
+`POST /api/v1/auth/refresh` are unchanged. One new error code exists, still as a `401`.
+
+| Change | Where |
+|---|---|
+| New error code `REFRESH_SUPERSEDED` (401) | `POST /auth/refresh`; added to the `ApiProblemDetails.errorCode` enum |
+
+A refresh token now succeeds **exactly once**, however many requests present it at the same
+moment. Before, several simultaneous refreshes with one token could all succeed, each issuing its
+own replacement.
+
+What a spent token gets now:
+
+| Presented | Response | Effect |
+|---|---|---|
+| Within 10 seconds of being spent by another request | `401 REFRESH_SUPERSEDED` | Nothing issued, nothing revoked. The other request's new token stays valid |
+| Later than that | `401 INVALID_REFRESH_TOKEN` | Treated as a replay, as before: every token in the family is revoked |
+
+**What the app does today is already correct.** The interceptor sends one refresh per 401 burst, so
+it never races itself. If it does get `REFRESH_SUPERSEDED`, it treats it like any other refresh
+`401` and signs out, which is safe. Nothing is revoked, so other devices are unaffected.
+
+A client that keeps one shared token store can do better later: on `REFRESH_SUPERSEDED`, re-read the
+store, because the winning request may already have written the new token there, and retry once
+with it. That matters for browser tabs sharing a session. Native apps need nothing.
+
+**Logout ends the sign-in, not just one token.** `POST /api/v1/auth/logout` takes the same request
+and still returns `204`. It now revokes every token from the same sign-in as the presented one. In
+normal use that is still only the presented token, because the older ones are already spent. It
+differs only when a refresh of that token races the logout: the refresh's new token is revoked too,
+instead of outliving the logout. Other sign-ins (other devices) are unaffected.
+
+Password change, password reset, pause and logout no longer race a refresh. Whichever request the
+server handles first, once the operation returns there is no refresh token left that should have
+been revoked. The two can no longer deadlock, either. Before this, a deadlock showed up as an
+occasional `500`.
+
+---
+
 ## Sports catalogue — athlete sport is picked from a list
 
 **BREAKING for writes. Flutter must migrate.** `POST /athletes/me/profile` no longer accepts

@@ -1,5 +1,6 @@
 using BeyondMovement.Modules.Identity.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 
 namespace BeyondMovement.Modules.Identity.Persistence;
 
@@ -19,4 +20,10 @@ public interface IIdentityDbContext
     DbSet<Invitation> Invitations { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// For the transaction and row lock that make refresh-token rotation atomic. AppDbContext
+    /// already provides it as a DbContext; nothing else in this module should need it.
+    /// </summary>
+    DatabaseFacade Database { get; }
 }
