@@ -283,6 +283,10 @@ builder.Services.AddValidatorsFromAssemblyContaining<CreatePurchaseValidator>();
 
 builder.Services.AddApiRateLimiting();
 
+// The PWA (Flutter Web). Origins come from Cors:AllowedOrigins per environment; native apps
+// send no Origin header and are unaffected.
+builder.Services.AddWebClientCors();
+
 // Singleton: the counter has to outlive the request, or every attempt would be the first one.
 builder.Services.AddSingleton<PasswordResetRateLimiter>();
 
@@ -346,6 +350,12 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi().AllowAnonymous();
     app.MapScalarApiReference().AllowAnonymous();   // local UI at /scalar/v1
 }
+
+// Before the rate limiter and authentication: a preflight carries no token and must be answered
+// here, never refused with 401 or counted against a limit. After the exception handler, which
+// clears headers when it rewrites a failure - CORS adds its headers as the response starts, so a
+// 500 still reaches the PWA readable rather than as an opaque network error.
+app.UseCors(WebClientCors.PolicyName);
 
 // Serves wwwroot, which holds the brand assets referenced by emails. A mail client fetches
 // the logo over the public internet when the message is opened, so the file needs a real URL —

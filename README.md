@@ -257,6 +257,53 @@ Local development is plain HTTP. Android blocks that by default, so debug builds
 `android:usesCleartextTraffic="true"` (or a network security config limited to the dev
 host) in the **debug** manifest only — never in release.
 
+### Flutter Web (the PWA)
+
+A browser only lets the PWA read an API response if the API names the page's origin in
+`Access-Control-Allow-Origin`. The native apps send no `Origin` header, so nothing here affects
+them.
+
+**Locally, nothing needs configuring.** `appsettings.Development.json` sets
+`Cors:AllowLocalhostOrigins` to `true`, which allows `localhost`, `127.0.0.1` and `[::1]` on any
+port, over http or https. `flutter run -d chrome` picks a new port every run, so an exact list could
+not keep up. Run the API as usual, then from the Flutter project:
+
+```bash
+flutter run -d chrome --web-port 8080 --dart-define=API_BASE_URL=http://localhost:5229
+```
+
+- **`API_BASE_URL` must be passed.** The Flutter default is `http://localhost:5000`, and nothing
+  listens there.
+- **`--web-port` is optional for CORS**, since any port works. A fixed port is still worth using,
+  because Google Sign-In on the web only accepts origins listed in the Google Cloud console.
+- Use the API's `http` profile (`:5229`). The `https` profile (`:7264`) also works for CORS, but
+  Chrome rejects it until the dev certificate is trusted (`dotnet dev-certs https --trust`).
+
+**Deployed environments list their exact origins.** These are environment variables with numeric
+indexes, like the other arrays in this file:
+
+```text
+Cors__AllowedOrigins__0=https://app.example.com
+Cors__AllowedOrigins__1=https://staging-app.example.com
+```
+
+`appsettings.json` ships the list empty, so a deployment that sets none allows no browser at all.
+The app refuses to start if an origin is not exact (a trailing slash, a path, or `*`), if one is
+not `https` outside Development, or if `Cors__AllowLocalhostOrigins` is `true` outside
+Development.
+
+What the policy allows, taken from the client's Dio setup:
+
+| | |
+|---|---|
+| Methods | `GET` `POST` `PUT` `DELETE`. The middleware answers the `OPTIONS` preflight itself. There is no `PATCH` |
+| Request headers | `Authorization`, `Content-Type`, `Idempotency-Key`, `X-Correlation-ID` |
+| Exposed response headers | none. The client reads `retryAfterSeconds` and `correlationId` from the body |
+| Credentials | not allowed. The bearer token travels in a header, which needs no credentials mode |
+| Preflight cache | 10 minutes |
+
+To add a header or method, edit `WebClientCors.cs` and the CORS tests together.
+
 ### Reading the emails
 
 `docker compose up -d` starts **Mailpit**, a local mail server. Real email is sent to it over
@@ -481,7 +528,9 @@ the Flutter app.** The API uses the AWS SDK's default credential chain:
   apply.
 - **Tests** never touch AWS. `ApiFactory` replaces storage with an in-memory `FakeObjectStorage`.
 
-No CORS configuration is needed, because the client is native Flutter, not Flutter Web.
+The API's own CORS settings (`Cors:*`, see [Flutter Web](#flutter-web-the-pwa)) cover the PWA
+calling the API only. The bucket has no CORS configuration yet. That will be set up when web image
+uploads are built, because a browser `PUT`s to the pre-signed URL directly.
 
 ### Cleanup
 
@@ -519,6 +568,7 @@ curl -s http://localhost:5229/openapi/v1.json -o contract/openapi.json
 | `/health` is `Unhealthy` | Docker is not running, or the port in the connection string is wrong |
 | `password authentication failed for user "mc"` | Another PostgreSQL owns the port — check `POSTGRES_HOST_PORT` |
 | Phone or emulator cannot reach the API | `localhost` on a device is the device; see the base URL table |
+| Browser console: `blocked by CORS policy` | The page's origin is not in `Cors:AllowedOrigins`, or the API is not running as Development locally. See Flutter Web |
 | `401` on every endpoint including login | An endpoint is missing `.AllowAnonymous()` — the fallback policy denies by default |
 | Tests fail with "Docker is either not running" | Integration tests need Docker for Testcontainers |
 | Changed an entity and nothing happened | EF needs a new migration; the database does not follow the code |
