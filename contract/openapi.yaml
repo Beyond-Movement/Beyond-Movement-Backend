@@ -29,8 +29,20 @@ paths:
         so the app is signed in immediately, but user.profileCompleted is false and
         user.fullName is null (or Google''s display name, as a prefill): route to
         Complete Profile, not Home. The invitation is redeemed only on success, and
-        re-posting the same token afterwards returns INVITATION_USED.'
+        re-posting the same token afterwards returns INVITATION_USED. TOKEN TRANSPORT:
+        native apps send no X-Token-Transport header and nothing changes - the refresh
+        token travels in the JSON body. The web app sends X-Token-Transport: cookie
+        on a credentialed request from a trusted origin: the refresh token then travels
+        ONLY in the HttpOnly cookie __Secure-bm_refresh (Path=/api/v1/auth), refreshToken
+        in a JSON response is null, and a refreshToken in the request body is ignored.
+        Any other header value is 400 TOKEN_TRANSPORT_UNSUPPORTED; cookie transport
+        from a missing or untrusted Origin is 403 ORIGIN_NOT_ALLOWED.'
       operationId: Register
+      parameters:
+      - name: X-Token-Transport
+        in: header
+        schema:
+          type: string
       requestBody:
         content:
           application/json:
@@ -46,6 +58,12 @@ paths:
                 $ref: '#/components/schemas/AuthResponse'
         '400':
           description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
+        '403':
+          description: Forbidden
           content:
             application/problem+json:
               schema:
@@ -354,8 +372,20 @@ paths:
         ACCOUNT_LOCKED after five failed attempts, with retryAfterSeconds and a Retry-After
         header. Returns 403 ACCOUNT_PAUSED when the credentials are correct but the
         account is paused. user.profileCompleted tells the app where to go next without
-        a further call: false means route to Complete Profile rather than Home.'
+        a further call: false means route to Complete Profile rather than Home. TOKEN
+        TRANSPORT: native apps send no X-Token-Transport header and nothing changes
+        - the refresh token travels in the JSON body. The web app sends X-Token-Transport:
+        cookie on a credentialed request from a trusted origin: the refresh token
+        then travels ONLY in the HttpOnly cookie __Secure-bm_refresh (Path=/api/v1/auth),
+        refreshToken in a JSON response is null, and a refreshToken in the request
+        body is ignored. Any other header value is 400 TOKEN_TRANSPORT_UNSUPPORTED;
+        cookie transport from a missing or untrusted Origin is 403 ORIGIN_NOT_ALLOWED.'
       operationId: Login
+      parameters:
+      - name: X-Token-Transport
+        in: header
+        schema:
+          type: string
       requestBody:
         content:
           application/json:
@@ -399,13 +429,24 @@ paths:
       - Authentication
       summary: Sign in with a Google ID token obtained by the native sign-in on the
         device.
-      description: Authentication only — it never creates an account (BR-01). If the
-        Google account is unknown and no user exists with the same verified email,
+      description: 'Authentication only — it never creates an account (BR-01). If
+        the Google account is unknown and no user exists with the same verified email,
         returns 403 INVITATION_REQUIRED. If a password account already exists for
         that verified email, the Google identity is linked to it and tokens are returned.
         Returns 401 INVALID_GOOGLE_TOKEN when the token fails verification or the
-        Google email is unverified.
+        Google email is unverified. TOKEN TRANSPORT: native apps send no X-Token-Transport
+        header and nothing changes - the refresh token travels in the JSON body. The
+        web app sends X-Token-Transport: cookie on a credentialed request from a trusted
+        origin: the refresh token then travels ONLY in the HttpOnly cookie __Secure-bm_refresh
+        (Path=/api/v1/auth), refreshToken in a JSON response is null, and a refreshToken
+        in the request body is ignored. Any other header value is 400 TOKEN_TRANSPORT_UNSUPPORTED;
+        cookie transport from a missing or untrusted Origin is 403 ORIGIN_NOT_ALLOWED.'
       operationId: GoogleSignIn
+      parameters:
+      - name: X-Token-Transport
+        in: header
+        schema:
+          type: string
       requestBody:
         content:
           application/json:
@@ -451,15 +492,39 @@ paths:
         not a replay. Nothing is issued and nothing is revoked: use the token the
         winning request stored, if this app has it, or sign in again. The same token
         presented after those 10 seconds is treated as a replay, as above. Returns
-        403 ACCOUNT_PAUSED if the account was paused since the token was issued.'
+        403 ACCOUNT_PAUSED if the account was paused since the token was issued. With
+        cookie transport the token is read from the cookie, and a 200 replaces the
+        cookie with the new token. A failure of any kind sends no Set-Cookie: the
+        browser may already hold a newer cookie from another tab. The web app retries
+        once on REFRESH_SUPERSEDED or INVALID_REFRESH_TOKEN - sending whatever cookie
+        the browser holds by then - and treats a second failure as the end of the
+        session. TOKEN TRANSPORT: native apps send no X-Token-Transport header and
+        nothing changes - the refresh token travels in the JSON body. The web app
+        sends X-Token-Transport: cookie on a credentialed request from a trusted origin:
+        the refresh token then travels ONLY in the HttpOnly cookie __Secure-bm_refresh
+        (Path=/api/v1/auth), refreshToken in a JSON response is null, and a refreshToken
+        in the request body is ignored. Any other header value is 400 TOKEN_TRANSPORT_UNSUPPORTED;
+        cookie transport from a missing or untrusted Origin is 403 ORIGIN_NOT_ALLOWED.'
       operationId: Refresh
+      parameters:
+      - name: X-Token-Transport
+        in: header
+        schema:
+          type: string
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RefreshRequest'
-        required: true
+              oneOf:
+              - type: 'null'
+              - $ref: '#/components/schemas/RefreshRequest'
       responses:
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
         '200':
           description: OK
           content:
@@ -483,20 +548,40 @@ paths:
       tags:
       - Authentication
       summary: End the session the presented refresh token belongs to.
-      description: Requires a valid access token as well as the refresh token in the
-        body (architecture section 14.1 marks logout as authenticated). Revokes that
-        token and any token rotated from the same sign-in, including one a refresh
+      description: 'Requires a valid access token as well as the refresh token in
+        the body (architecture section 14.1 marks logout as authenticated). Revokes
+        that token and any token rotated from the same sign-in, including one a refresh
         racing this call has just issued. Other sign-ins - the same user on another
         device - are not affected. Succeeds even if the refresh token is already unknown
-        or revoked, so a retry is safe.
+        or revoked, so a retry is safe. With cookie transport the token is read from
+        the cookie, and the cookie is expired whether or not it held a live token.
+        TOKEN TRANSPORT: native apps send no X-Token-Transport header and nothing
+        changes - the refresh token travels in the JSON body. The web app sends X-Token-Transport:
+        cookie on a credentialed request from a trusted origin: the refresh token
+        then travels ONLY in the HttpOnly cookie __Secure-bm_refresh (Path=/api/v1/auth),
+        refreshToken in a JSON response is null, and a refreshToken in the request
+        body is ignored. Any other header value is 400 TOKEN_TRANSPORT_UNSUPPORTED;
+        cookie transport from a missing or untrusted Origin is 403 ORIGIN_NOT_ALLOWED.'
       operationId: Logout
+      parameters:
+      - name: X-Token-Transport
+        in: header
+        schema:
+          type: string
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/LogoutRequest'
-        required: true
+              oneOf:
+              - type: 'null'
+              - $ref: '#/components/schemas/LogoutRequest'
       responses:
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
         '204':
           description: No Content
         '401':
@@ -557,13 +642,26 @@ paths:
       tags:
       - Authentication
       summary: Set a new password using the token from the reset email.
-      description: The token is single-use and valid for one hour; a used, unknown
+      description: 'The token is single-use and valid for one hour; a used, unknown
         or expired token returns 400 INVALID_RESET_TOKEN. On success every refresh
         token for that user is revoked, so any other signed-in device is signed out.
         Passwords must be at least 8 characters and are rejected if they appear on
         a common-password list; both arrive as 400 VALIDATION_FAILED with per-field
-        messages in 'errors'.
+        messages in ''errors''. With cookie transport, success also expires this browser''s
+        refresh cookie; every session is revoked on the server either way. TOKEN TRANSPORT:
+        native apps send no X-Token-Transport header and nothing changes - the refresh
+        token travels in the JSON body. The web app sends X-Token-Transport: cookie
+        on a credentialed request from a trusted origin: the refresh token then travels
+        ONLY in the HttpOnly cookie __Secure-bm_refresh (Path=/api/v1/auth), refreshToken
+        in a JSON response is null, and a refreshToken in the request body is ignored.
+        Any other header value is 400 TOKEN_TRANSPORT_UNSUPPORTED; cookie transport
+        from a missing or untrusted Origin is 403 ORIGIN_NOT_ALLOWED.'
       operationId: ResetPassword
+      parameters:
+      - name: X-Token-Transport
+        in: header
+        schema:
+          type: string
       requestBody:
         content:
           application/json:
@@ -571,6 +669,12 @@ paths:
               $ref: '#/components/schemas/ResetPasswordRequest'
         required: true
       responses:
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ApiProblemDetails'
         '200':
           description: OK
         '400':
@@ -597,8 +701,20 @@ paths:
         to be on. The existing ACCESS token keeps working for up to its remaining
         15 minutes, so do not wait to be told. This is deliberate and matches the
         password reset: changing a password is how a user responds to someone else
-        having it, and every other session has to end.'
+        having it, and every other session has to end. With cookie transport, success
+        also expires the refresh cookie. TOKEN TRANSPORT: native apps send no X-Token-Transport
+        header and nothing changes - the refresh token travels in the JSON body. The
+        web app sends X-Token-Transport: cookie on a credentialed request from a trusted
+        origin: the refresh token then travels ONLY in the HttpOnly cookie __Secure-bm_refresh
+        (Path=/api/v1/auth), refreshToken in a JSON response is null, and a refreshToken
+        in the request body is ignored. Any other header value is 400 TOKEN_TRANSPORT_UNSUPPORTED;
+        cookie transport from a missing or untrusted Origin is 403 ORIGIN_NOT_ALLOWED.'
       operationId: ChangePassword
+      parameters:
+      - name: X-Token-Transport
+        in: header
+        schema:
+          type: string
       requestBody:
         content:
           application/json:
@@ -5056,6 +5172,7 @@ components:
           - OBSERVATION_RANGE_INVALID
           - OBSERVATION_REQUEST_NOT_FOUND
           - OBSERVATION_REQUEST_NOT_PENDING
+          - ORIGIN_NOT_ALLOWED
           - PACKAGE_ALREADY_CLOSED
           - PACKAGE_NAME_CONFLICT
           - PACKAGE_NOT_ACTIVE
@@ -5077,6 +5194,7 @@ components:
           - SLOT_UNAVAILABLE
           - STORAGE_UNAVAILABLE
           - TIME_ZONE_INVALID
+          - TOKEN_TRANSPORT_UNSUPPORTED
           - TOO_MANY_REQUESTS
           - UNSUPPORTED_ATTACHMENT_TYPE
           - VALIDATION_FAILED
@@ -5411,7 +5529,9 @@ components:
         accessToken:
           type: string
         refreshToken:
-          type: string
+          type:
+          - 'null'
+          - string
         expiresInSeconds:
           type: integer
           format: int32
@@ -5936,7 +6056,9 @@ components:
       type: object
       properties:
         refreshToken:
-          type: string
+          type:
+          - 'null'
+          - string
     LoyaltyResponse:
       required:
       - athleteId
@@ -6598,7 +6720,9 @@ components:
       type: object
       properties:
         refreshToken:
-          type: string
+          type:
+          - 'null'
+          - string
         deviceId:
           type:
           - 'null'

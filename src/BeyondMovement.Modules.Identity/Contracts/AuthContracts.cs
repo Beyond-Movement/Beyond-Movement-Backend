@@ -10,9 +10,14 @@ public sealed record LoginRequest(string Email, string Password, string? DeviceI
 /// <param name="IdToken">The ID token from the native Google sign-in on the device.</param>
 public sealed record GoogleSignInRequest(string IdToken, string? DeviceId = null);
 
-public sealed record RefreshRequest(string RefreshToken, string? DeviceId = null);
+/// <param name="RefreshToken">
+/// Required with body transport (the native apps). Ignored with cookie transport, where the token
+/// comes from the HttpOnly cookie instead - the web app sends no token here, or no body at all.
+/// </param>
+public sealed record RefreshRequest(string? RefreshToken, string? DeviceId = null);
 
-public sealed record LogoutRequest(string RefreshToken);
+/// <param name="RefreshToken">As for <see cref="RefreshRequest"/>: the body for native, the cookie for web.</param>
+public sealed record LogoutRequest(string? RefreshToken);
 
 public sealed record ForgotPasswordRequest(string Email);
 
@@ -50,9 +55,13 @@ public sealed record UserSummary(
     bool ProfileCompleted,
     AthleteListSort? AthleteListSort);
 
+/// <param name="RefreshToken">
+/// Always present for the native apps (body transport). Null for the web app (cookie transport):
+/// the token is in the HttpOnly <c>__Secure-bm_refresh</c> cookie instead and never in JSON.
+/// </param>
 public sealed record AuthResponse(
     string AccessToken,
-    string RefreshToken,
+    string? RefreshToken,
     int ExpiresInSeconds,
     int RefreshExpiresInSeconds,
     UserSummary User);

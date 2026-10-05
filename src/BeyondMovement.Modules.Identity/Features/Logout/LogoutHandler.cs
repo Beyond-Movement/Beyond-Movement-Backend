@@ -21,6 +21,9 @@ public sealed class LogoutHandler(IIdentityDbContext db, ITokenService tokens, I
     /// </summary>
     public async Task<Result> HandleAsync(LogoutRequest request, CancellationToken ct = default)
     {
+        if (string.IsNullOrEmpty(request.RefreshToken))
+            return Result.Success();
+
         var hash = tokens.Hash(request.RefreshToken);
 
         var owner = await db.RefreshTokens.AsNoTracking()

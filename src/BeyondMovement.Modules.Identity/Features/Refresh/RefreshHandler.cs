@@ -37,6 +37,10 @@ public sealed class RefreshHandler(
 
     public async Task<Result<AuthResponse>> HandleAsync(RefreshRequest request, CancellationToken ct = default)
     {
+        // No token at all - an empty body, or a browser with no cookie - is simply not a valid one.
+        if (string.IsNullOrEmpty(request.RefreshToken))
+            return Result<AuthResponse>.Failure(IdentityErrors.InvalidRefreshToken);
+
         var hash = tokens.Hash(request.RefreshToken);
 
         // Untracked: only the owner is needed here, to know which row to lock. The state that

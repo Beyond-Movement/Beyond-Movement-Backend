@@ -53,8 +53,8 @@ public sealed class CorsTests(WebClientApiFactory factory) : IClassFixture<WebCl
         Assert.Equal(Pwa, AllowOrigin(response));
         Assert.Contains("Origin", response.Headers.Vary);
 
-        // Bearer tokens need no credentials mode, so none is granted.
-        Assert.False(response.Headers.Contains("Access-Control-Allow-Credentials"));
+        // Credentialed, so the PWA's auth calls can carry the HttpOnly refresh cookie.
+        Assert.Equal("true", Single(response, "Access-Control-Allow-Credentials"));
 
         // The client reads retryAfterSeconds and correlationId from the body; nothing is exposed.
         Assert.False(response.Headers.Contains("Access-Control-Expose-Headers"));
@@ -140,7 +140,27 @@ public sealed class CorsTests(WebClientApiFactory factory) : IClassFixture<WebCl
         Assert.Contains("content-type", AllowHeaders(response));
         Assert.Contains("x-correlation-id", AllowHeaders(response));
         Assert.Equal("600", Single(response, "Access-Control-Max-Age"));
-        Assert.False(response.Headers.Contains("Access-Control-Allow-Credentials"));
+        Assert.Equal("true", Single(response, "Access-Control-Allow-Credentials"));
+    }
+
+    /// <summary>
+    /// What the PWA sends before a cookie-transport call: credentials and X-Token-Transport.
+    /// A trusted origin is told both are fine; anyone else gets neither.
+    /// </summary>
+    [Fact]
+    public async Task Credentialed_preflight_with_the_transport_header_is_allowed_only_for_a_trusted_origin()
+    {
+        var trusted = await PreflightAsync("/api/v1/auth/refresh", Pwa, "POST", "content-type,x-correlation-id,x-token-transport");
+
+        Assert.Equal(HttpStatusCode.NoContent, trusted.StatusCode);
+        Assert.Equal(Pwa, AllowOrigin(trusted));
+        Assert.Equal("true", Single(trusted, "Access-Control-Allow-Credentials"));
+        Assert.Contains("x-token-transport", AllowHeaders(trusted));
+
+        var stranger = await PreflightAsync("/api/v1/auth/refresh", Stranger, "POST", "content-type,x-token-transport");
+
+        Assert.Null(AllowOrigin(stranger));
+        Assert.False(stranger.Headers.Contains("Access-Control-Allow-Credentials"));
     }
 
     /// <summary>
@@ -191,7 +211,8 @@ public sealed class CorsTests(WebClientApiFactory factory) : IClassFixture<WebCl
     {
         var response = await PreflightAsync("/api/v1/auth/me", Pwa, "GET", "authorization,x-something-else");
 
-        Assert.Equal(["authorization", "content-type", "idempotency-key", "x-correlation-id"], AllowHeaders(response));
+        Assert.Equal(["authorization", "content-type", "idempotency-key", "x-correlation-id", "x-token-transport"],
+            AllowHeaders(response));
     }
 
     [Fact]

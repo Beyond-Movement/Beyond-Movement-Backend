@@ -1,8 +1,10 @@
+using BeyondMovement.Api.Authentication;
 using BeyondMovement.Infrastructure;
 using BeyondMovement.Modules.Athletes.Features;
 using BeyondMovement.Modules.Identity.Contracts;
 using BeyondMovement.Modules.Identity.Features.Register;
 using FluentValidation;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace BeyondMovement.Api.Endpoints;
@@ -20,6 +22,8 @@ public static class RegistrationEndpoints
     private static void MapRegister(IEndpointRouteBuilder app) =>
         app.MapPost("/api/v1/auth/register", async (
             RegisterRequest request,
+            [FromHeader(Name = TokenTransport.HeaderName)] string? tokenTransport,
+            TokenTransport transport,
             IValidator<RegisterRequest> validator,
             RegisterHandler registerHandler,
             CreateProfileHandler profileHandler,
@@ -27,6 +31,10 @@ public static class RegistrationEndpoints
             HttpContext http,
             CancellationToken ct) =>
         {
+            var mode = transport.Resolve(tokenTransport, http);
+            if (mode.IsFailure)
+                return mode.Error!.ToProblem(http);
+
             var validation = await validator.ValidateAsync(request, ct);
             if (!validation.IsValid)
                 return validation.ToValidationProblem(http);
@@ -49,7 +57,7 @@ public static class RegistrationEndpoints
 
             await transaction.CommitAsync(ct);
 
-            return Results.Ok(result.Value.Auth);
+            return Results.Ok(TokenTransport.Deliver(http, mode.Value, result.Value.Auth));
         })
         .AllowAnonymous()
         .WithTags("Authentication")
@@ -64,8 +72,10 @@ public static class RegistrationEndpoints
             "signed in immediately, but user.profileCompleted is false and user.fullName is null " +
             "(or Google's display name, as a prefill): route to Complete Profile, not Home. The " +
             "invitation is redeemed only on success, and re-posting the same token afterwards " +
-            "returns INVITATION_USED.")
+            "returns INVITATION_USED. " +
+            TokenTransport.ContractDescription)
         .Produces<AuthResponse>()
         .Produces<ApiProblemDetails>(StatusCodes.Status400BadRequest, ProblemJson)
+        .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson)
         .Produces<ApiProblemDetails>(StatusCodes.Status409Conflict, ProblemJson);
 }

@@ -297,12 +297,40 @@ What the policy allows, taken from the client's Dio setup:
 | | |
 |---|---|
 | Methods | `GET` `POST` `PUT` `DELETE`. The middleware answers the `OPTIONS` preflight itself. There is no `PATCH` |
-| Request headers | `Authorization`, `Content-Type`, `Idempotency-Key`, `X-Correlation-ID` |
+| Request headers | `Authorization`, `Content-Type`, `Idempotency-Key`, `X-Correlation-ID`, `X-Token-Transport` |
 | Exposed response headers | none. The client reads `retryAfterSeconds` and `correlationId` from the body |
-| Credentials | not allowed. The bearer token travels in a header, which needs no credentials mode |
+| Credentials | allowed, for trusted origins only, so the auth calls can carry the refresh cookie (below) |
 | Preflight cache | 10 minutes |
 
 To add a header or method, edit `WebClientCors.cs` and the CORS tests together.
+
+#### The PWA's refresh token is an HttpOnly cookie
+
+Native apps get the refresh token in JSON, as they always have. The PWA opts in to keeping it in
+a cookie that no script can read. It does this by sending `X-Token-Transport: cookie` on its auth
+calls, with credentials (`withCredentials: true` in Dio):
+
+| Endpoint | With `X-Token-Transport: cookie` |
+|---|---|
+| `POST /auth/login`, `/auth/google`, `/auth/register` | Sets the cookie. `refreshToken` in the JSON is `null` |
+| `POST /auth/refresh` | Reads the token from the cookie (no body needed). On success it replaces the cookie; a failure never touches it |
+| `POST /auth/logout` | Reads the cookie, ends that sign-in, expires the cookie |
+| `POST /auth/change-password`, `/auth/reset-password` | On success, also expires the cookie |
+
+The cookie is `__Secure-bm_refresh`, with `HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth`.
+It has no `Domain`, so it belongs to the API host alone. Its `Max-Age` is the refresh token's
+lifetime.
+
+- **Only a trusted origin may use it.** A cookie-transport request whose `Origin` is not on the list
+  above, or is missing, gets `403 ORIGIN_NOT_ALLOWED`, which together with `SameSite=Strict` is
+  the CSRF protection. Any header value other than `cookie` is `400 TOKEN_TRANSPORT_UNSUPPORTED`.
+  Ordinary endpoints never read the cookie; they still need `Authorization: Bearer`.
+- **The PWA and the API must be same-site**, e.g. `app.beyondmovementbyn.com` and
+  `api.beyondmovementbyn.com`. A cookie on any other domain would be a third-party cookie, and
+  browsers block those.
+- **Locally**, `http://localhost:<port>` → `http://localhost:5229` is same-site too. Chrome and
+  Firefox accept a `Secure` cookie from `http://localhost`. Safari does not, so develop in Chrome,
+  or use the API's https profile.
 
 ### Reading the emails
 

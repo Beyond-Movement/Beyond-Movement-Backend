@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using BeyondMovement.Api.Authentication;
 using BeyondMovement.Modules.Identity;
 using BeyondMovement.Modules.Identity.Contracts;
 using BeyondMovement.Modules.Identity.Features.ChangePassword;
@@ -12,6 +13,8 @@ using BeyondMovement.Modules.Identity.Features.TimeZone;
 using BeyondMovement.Modules.Identity.Features.Refresh;
 using BeyondMovement.Modules.Identity.Features.ResetPassword;
 using FluentValidation;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace BeyondMovement.Api.Endpoints;
 
@@ -41,18 +44,26 @@ public static class AuthEndpoints
     private static void MapLogin(RouteGroupBuilder group) =>
         group.MapPost("/login", async (
             LoginRequest request,
+            [FromHeader(Name = TokenTransport.HeaderName)] string? tokenTransport,
             IValidator<LoginRequest> validator,
             LoginHandler handler,
+            TokenTransport transport,
             HttpContext http,
             CancellationToken ct) =>
         {
+            var mode = transport.Resolve(tokenTransport, http);
+            if (mode.IsFailure)
+                return mode.Error!.ToProblem(http);
+
             var validation = await validator.ValidateAsync(request, ct);
             if (!validation.IsValid)
                 return validation.ToValidationProblem(http);
 
             var result = await handler.HandleAsync(request, ct);
 
-            return result.IsSuccess ? Results.Ok(result.Value) : result.Error!.ToProblem(http);
+            return result.IsSuccess
+                ? Results.Ok(TokenTransport.Deliver(http, mode.Value, result.Value))
+                : result.Error!.ToProblem(http);
         })
         .AllowAnonymous()
         .WithName("Login")
@@ -63,7 +74,8 @@ public static class AuthEndpoints
             "failed attempts, with retryAfterSeconds and a Retry-After header. Returns 403 " +
             "ACCOUNT_PAUSED when the credentials are correct but the account is paused. " +
             "user.profileCompleted tells the app where to go next without a further call: " +
-            "false means route to Complete Profile rather than Home.")
+            "false means route to Complete Profile rather than Home. " +
+            TokenTransport.ContractDescription)
         .Produces<AuthResponse>()
         .Produces<ApiProblemDetails>(StatusCodes.Status400BadRequest, ProblemJson)
         .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
@@ -73,18 +85,26 @@ public static class AuthEndpoints
     private static void MapGoogleSignIn(RouteGroupBuilder group) =>
         group.MapPost("/google", async (
             GoogleSignInRequest request,
+            [FromHeader(Name = TokenTransport.HeaderName)] string? tokenTransport,
             IValidator<GoogleSignInRequest> validator,
             GoogleSignInHandler handler,
+            TokenTransport transport,
             HttpContext http,
             CancellationToken ct) =>
         {
+            var mode = transport.Resolve(tokenTransport, http);
+            if (mode.IsFailure)
+                return mode.Error!.ToProblem(http);
+
             var validation = await validator.ValidateAsync(request, ct);
             if (!validation.IsValid)
                 return validation.ToValidationProblem(http);
 
             var result = await handler.HandleAsync(request, ct);
 
-            return result.IsSuccess ? Results.Ok(result.Value) : result.Error!.ToProblem(http);
+            return result.IsSuccess
+                ? Results.Ok(TokenTransport.Deliver(http, mode.Value, result.Value))
+                : result.Error!.ToProblem(http);
         })
         .AllowAnonymous()
         .WithName("GoogleSignIn")
@@ -94,7 +114,8 @@ public static class AuthEndpoints
             "unknown and no user exists with the same verified email, returns 403 " +
             "INVITATION_REQUIRED. If a password account already exists for that verified email, the " +
             "Google identity is linked to it and tokens are returned. Returns 401 " +
-            "INVALID_GOOGLE_TOKEN when the token fails verification or the Google email is unverified.")
+            "INVALID_GOOGLE_TOKEN when the token fails verification or the Google email is unverified. " +
+            TokenTransport.ContractDescription)
         .Produces<AuthResponse>()
         .Produces<ApiProblemDetails>(StatusCodes.Status400BadRequest, ProblemJson)
         .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
@@ -102,17 +123,34 @@ public static class AuthEndpoints
 
     private static void MapRefresh(RouteGroupBuilder group) =>
         group.MapPost("/refresh", async (
-            RefreshRequest request,
+            [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] RefreshRequest? request,
+            [FromHeader(Name = TokenTransport.HeaderName)] string? tokenTransport,
             RefreshHandler handler,
+            TokenTransport transport,
             HttpContext http,
             CancellationToken ct) =>
         {
-            var result = await handler.HandleAsync(request, ct);
+            var mode = transport.Resolve(tokenTransport, http);
+            if (mode.IsFailure)
+                return mode.Error!.ToProblem(http);
 
-            return result.IsSuccess ? Results.Ok(result.Value) : result.Error!.ToProblem(http);
+            var presented = TokenTransport.PresentedRefreshToken(http, mode.Value, request?.RefreshToken);
+            var result = await handler.HandleAsync(new RefreshRequest(presented, request?.DeviceId), ct);
+
+            if (result.IsSuccess)
+                return Results.Ok(TokenTransport.Deliver(http, mode.Value, result.Value));
+
+            // A failed refresh never touches the cookie, whatever the reason. Expiring it would
+            // remove whatever the browser holds when this response ARRIVES - possibly a newer cookie
+            // another tab's sign-in or refresh wrote after this request left with an older one. A
+            // dead token stays dead on the server whether or not the browser still holds it, so
+            // nothing is gained by deleting it here. Explicit sign-outs (logout, password change
+            // and reset) still expire it.
+            return result.Error!.ToProblem(http);
         })
         .AllowAnonymous()
         .WithName("Refresh")
+        .Produces<ApiProblemDetails>(StatusCodes.Status400BadRequest, ProblemJson)
         .WithSummary("Rotate a refresh token for a new token pair.")
         .WithDescription(
             "Refresh tokens are single-use. Each call returns a NEW refresh token; store it and " +
@@ -124,21 +162,40 @@ public static class AuthEndpoints
             "issued and nothing is revoked: use the token the winning request stored, if this " +
             "app has it, or sign in again. The same token presented after those 10 seconds is " +
             "treated as a replay, as above. " +
-            "Returns 403 ACCOUNT_PAUSED if the account was paused since the token was issued.")
+            "Returns 403 ACCOUNT_PAUSED if the account was paused since the token was issued. " +
+            "With cookie transport the token is read from the cookie, and a 200 replaces the " +
+            "cookie with the new token. A failure of any kind sends no Set-Cookie: the browser " +
+            "may already hold a newer cookie from another tab. The web app retries once on " +
+            "REFRESH_SUPERSEDED or INVALID_REFRESH_TOKEN - sending whatever cookie the browser " +
+            "holds by then - and treats a second failure as the end of the session. " +
+            TokenTransport.ContractDescription)
         .Produces<AuthResponse>()
         .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
         .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson);
 
     private static void MapLogout(RouteGroupBuilder group) =>
         group.MapPost("/logout", async (
-            LogoutRequest request,
+            [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] LogoutRequest? request,
+            [FromHeader(Name = TokenTransport.HeaderName)] string? tokenTransport,
             LogoutHandler handler,
+            TokenTransport transport,
+            HttpContext http,
             CancellationToken ct) =>
         {
-            await handler.HandleAsync(request, ct);
+            var mode = transport.Resolve(tokenTransport, http);
+            if (mode.IsFailure)
+                return mode.Error!.ToProblem(http);
+
+            var presented = TokenTransport.PresentedRefreshToken(http, mode.Value, request?.RefreshToken);
+            await handler.HandleAsync(new LogoutRequest(presented), ct);
+
+            // Whatever the cookie held - a live token, a dead one, nothing - this browser is signed out.
+            TokenTransport.EndBrowserSession(http, mode.Value);
+
             return Results.NoContent();
         })
         .WithName("Logout")
+        .Produces<ApiProblemDetails>(StatusCodes.Status400BadRequest, ProblemJson)
         .WithSummary("End the session the presented refresh token belongs to.")
         .WithDescription(
             "Requires a valid access token as well as the refresh token in the body " +
@@ -146,7 +203,9 @@ public static class AuthEndpoints
             "any token rotated from the same sign-in, including one a refresh racing this call " +
             "has just issued. Other sign-ins - the same user on another device - are not " +
             "affected. Succeeds even if the refresh token is already unknown or revoked, so a " +
-            "retry is safe.")
+            "retry is safe. With cookie transport the token is read from the cookie, and the " +
+            "cookie is expired whether or not it held a live token. " +
+            TokenTransport.ContractDescription)
         .Produces(StatusCodes.Status204NoContent)
         .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)
         .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson);
@@ -199,40 +258,62 @@ public static class AuthEndpoints
     private static void MapResetPassword(RouteGroupBuilder group) =>
         group.MapPost("/reset-password", async (
             ResetPasswordRequest request,
+            [FromHeader(Name = TokenTransport.HeaderName)] string? tokenTransport,
             IValidator<ResetPasswordRequest> validator,
             ResetPasswordHandler handler,
+            TokenTransport transport,
             HttpContext http,
             CancellationToken ct) =>
         {
+            var mode = transport.Resolve(tokenTransport, http);
+            if (mode.IsFailure)
+                return mode.Error!.ToProblem(http);
+
             var validation = await validator.ValidateAsync(request, ct);
             if (!validation.IsValid)
                 return validation.ToValidationProblem(http);
 
             var result = await handler.HandleAsync(request, ct);
+            if (result.IsFailure)
+                return result.Error!.ToProblem(http);
 
-            return result.IsSuccess ? Results.Ok() : result.Error!.ToProblem(http);
+            // The server has already revoked every session. This only tidies the cookie of the
+            // browser the reset was done in, if it asked - often it is another device entirely.
+            TokenTransport.EndBrowserSession(http, mode.Value);
+
+            return Results.Ok();
         })
         .AllowAnonymous()
         .WithName("ResetPassword")
+        .Produces<ApiProblemDetails>(StatusCodes.Status403Forbidden, ProblemJson)
         .WithSummary("Set a new password using the token from the reset email.")
         .WithDescription(
             "The token is single-use and valid for one hour; a used, unknown or expired token " +
             "returns 400 INVALID_RESET_TOKEN. On success every refresh token for that user is " +
             "revoked, so any other signed-in device is signed out. Passwords must be at least 8 " +
             "characters and are rejected if they appear on a common-password list; both arrive as " +
-            "400 VALIDATION_FAILED with per-field messages in 'errors'.")
+            "400 VALIDATION_FAILED with per-field messages in 'errors'. " +
+            "With cookie transport, success also expires this browser's refresh cookie; every " +
+            "session is revoked on the server either way. " +
+            TokenTransport.ContractDescription)
         .Produces(StatusCodes.Status200OK)
         .Produces<ApiProblemDetails>(StatusCodes.Status400BadRequest, ProblemJson);
 
     private static void MapChangePassword(RouteGroupBuilder group) =>
         group.MapPost("/change-password", async (
             ChangePasswordRequest request,
+            [FromHeader(Name = TokenTransport.HeaderName)] string? tokenTransport,
             IValidator<ChangePasswordRequest> validator,
             ChangePasswordHandler handler,
+            TokenTransport transport,
             ClaimsPrincipal principal,
             HttpContext http,
             CancellationToken ct) =>
         {
+            var mode = transport.Resolve(tokenTransport, http);
+            if (mode.IsFailure)
+                return mode.Error!.ToProblem(http);
+
             var validation = await validator.ValidateAsync(request, ct);
             if (!validation.IsValid)
                 return validation.ToValidationProblem(http);
@@ -241,8 +322,13 @@ public static class AuthEndpoints
                 return Results.Unauthorized();
 
             var result = await handler.HandleAsync(userId, request, ct);
+            if (result.IsFailure)
+                return result.Error!.ToProblem(http);
 
-            return result.IsSuccess ? Results.Ok() : result.Error!.ToProblem(http);
+            // Every session, this one included, was revoked on the server; the cookie goes too.
+            TokenTransport.EndBrowserSession(http, mode.Value);
+
+            return Results.Ok();
         })
         .WithName("ChangePassword")
         .WithSummary("Change the password while signed in.")
@@ -259,7 +345,9 @@ public static class AuthEndpoints
             "refresh fails in whatever screen the user happens to be on. The existing ACCESS " +
             "token keeps working for up to its remaining 15 minutes, so do not wait to be told. " +
             "This is deliberate and matches the password reset: changing a password is how a user " +
-            "responds to someone else having it, and every other session has to end.")
+            "responds to someone else having it, and every other session has to end. " +
+            "With cookie transport, success also expires the refresh cookie. " +
+            TokenTransport.ContractDescription)
         .Produces(StatusCodes.Status200OK)
         .Produces<ApiProblemDetails>(StatusCodes.Status400BadRequest, ProblemJson)
         .Produces<ApiProblemDetails>(StatusCodes.Status401Unauthorized, ProblemJson)

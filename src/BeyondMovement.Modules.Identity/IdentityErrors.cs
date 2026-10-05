@@ -25,6 +25,14 @@ public static class IdentityErrors
     public static readonly Error InvalidRefreshToken =
         new(ApiErrorCodes.InvalidRefreshToken, "The refresh token is invalid or expired.", Status.Unauthorized);
 
+    public static readonly Error TokenTransportUnsupported =
+        new(ApiErrorCodes.TokenTransportUnsupported,
+            "X-Token-Transport must be 'cookie', or be left out.", Status.BadRequest);
+
+    public static readonly Error OriginNotAllowed =
+        new(ApiErrorCodes.OriginNotAllowed,
+            "Cookie transport is only available to the Beyond Movement web app.", Status.Forbidden);
+
     public static readonly Error RefreshSuperseded =
         new(ApiErrorCodes.RefreshSuperseded,
             "This refresh token was already used by another request moments ago.", Status.Unauthorized);

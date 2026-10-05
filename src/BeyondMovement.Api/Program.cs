@@ -287,6 +287,10 @@ builder.Services.AddApiRateLimiting();
 // send no Origin header and are unaffected.
 builder.Services.AddWebClientCors();
 
+// Native apps keep the refresh token in JSON; the PWA opts into an HttpOnly cookie with
+// X-Token-Transport: cookie from a trusted origin. Same handlers, same tokens, either way.
+builder.Services.AddSingleton<TokenTransport>();
+
 // Singleton: the counter has to outlive the request, or every attempt would be the first one.
 builder.Services.AddSingleton<PasswordResetRateLimiter>();
 

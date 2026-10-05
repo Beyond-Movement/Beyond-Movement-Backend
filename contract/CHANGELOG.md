@@ -7,6 +7,60 @@ To regenerate: run the API, fetch `GET /openapi/v1.json`, and convert it to YAML
 
 ---
 
+## Web refresh-token cookie — opt-in `X-Token-Transport: cookie`
+
+**Not breaking for the native apps. No Flutter change needed for Android or iOS.** A request
+without the new header behaves exactly as before: the refresh token is in the request and response
+JSON. Only the web app opts in.
+
+| Change | Where |
+|---|---|
+| New optional request header `X-Token-Transport` (only value: `cookie`) | `POST /auth/login`, `/auth/google`, `/auth/register`, `/auth/refresh`, `/auth/logout`, `/auth/change-password`, `/auth/reset-password` |
+| `refreshToken: string` → `string \| null` (still always present) | `AuthResponse`. Null only with cookie transport |
+| `refreshToken` → nullable; the body itself is optional | `RefreshRequest`, `LogoutRequest`. Ignored with cookie transport |
+| New error `400 TOKEN_TRANSPORT_UNSUPPORTED` | The header was sent with any value other than `cookie` (including empty) |
+| New error `403 ORIGIN_NOT_ALLOWED` | Cookie transport from a missing or untrusted `Origin` |
+
+### With `X-Token-Transport: cookie`
+
+- The refresh token travels **only** in the cookie `__Secure-bm_refresh`
+  (`HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth`, no `Domain`, `Max-Age` = the token's
+  lifetime). The JSON carries `"refreshToken": null`, and scripts cannot read the cookie.
+- Login, Google and register set the cookie. Refresh reads it and replaces it. Logout reads it,
+  ends that sign-in and expires it. A successful password change or reset also expires it.
+- The request must come from a trusted web origin (the CORS list) and be credentialed
+  (`withCredentials: true`).
+
+### Refresh failures and the cookie
+
+**A refresh only ever replaces the cookie, and only on `200`.** No failure sends a `Set-Cookie`.
+A deletion would remove whatever cookie the browser holds when the response *arrives*. That could be
+a newer cookie, written by another tab's sign-in or refresh after this request left with an older
+one. Nothing is lost by leaving a dead cookie in place: the server keeps a revoked, expired, replayed
+or unknown token invalid, whatever the browser holds.
+
+| Refresh answer | Cookie | Web app (Phase 4C) |
+|---|---|---|
+| `200` | Replaced with the new token | Keep the new access token in memory |
+| `401 REFRESH_SUPERSEDED` | Left alone | Retry once |
+| `401 INVALID_REFRESH_TOKEN` | Left alone | Retry once |
+| `403 ACCOUNT_PAUSED` | Left alone | End the session; show the paused state |
+| `400 TOKEN_TRANSPORT_UNSUPPORTED`, `403 ORIGIN_NOT_ALLOWED` | Left alone | Configuration error; do not retry |
+
+**Bounded retry, required in the web app.** On `REFRESH_SUPERSEDED` or `INVALID_REFRESH_TOKEN`,
+retry the refresh **once**. The browser then sends whatever cookie it holds at that moment, which
+may be a newer one written by another tab. If the retry fails as well, end the web session: drop the
+access token and go to Login. Never retry more than once. The worst case is then two refresh calls,
+and there is no loop: a browser holding only a dead cookie gets two 401s and the Login screen.
+
+The cookie is still expired by explicit sign-outs: logout, and in cookie mode a successful password
+change or reset.
+
+**Native apps:** a request without the header never reads or sets a cookie and never checks
+`Origin`. The new nullable types mean nothing to them, because they always receive a token.
+
+---
+
 ## Refresh rotation is atomic — new `401 REFRESH_SUPERSEDED`
 
 **Not breaking. No Flutter change needed.** The request and every success response of

@@ -63,6 +63,12 @@ public static class ApiErrorCodes
     /// duplicate or a concurrent refresh, not a replay. Nothing was issued and nothing revoked.
     /// </summary>
     public const string RefreshSuperseded = "REFRESH_SUPERSEDED";
+
+    /// <summary><c>X-Token-Transport</c> was sent with a value other than <c>cookie</c>.</summary>
+    public const string TokenTransportUnsupported = "TOKEN_TRANSPORT_UNSUPPORTED";
+
+    /// <summary>Cookie transport was requested from a missing or untrusted <c>Origin</c>.</summary>
+    public const string OriginNotAllowed = "ORIGIN_NOT_ALLOWED";
     public const string InvalidResetToken = "INVALID_RESET_TOKEN";
     public const string InvalidGoogleToken = "INVALID_GOOGLE_TOKEN";
     public const string InvitationRequired = "INVITATION_REQUIRED";
@@ -88,7 +94,7 @@ public static class ApiErrorCodes
     public static readonly string[] All =
     [
         ValidationFailed, InvalidCredentials, AccountLocked, AccountPaused, InvalidToken,
-        InvalidRefreshToken, RefreshSuperseded, InvalidResetToken, InvalidGoogleToken, InvitationRequired, PasswordNotSet,
+        InvalidRefreshToken, RefreshSuperseded, TokenTransportUnsupported, OriginNotAllowed, InvalidResetToken, InvalidGoogleToken, InvitationRequired, PasswordNotSet,
         InvitationInvalid, InvitationExpired, InvitationUsed, InvitationRevoked,
         RegistrationTokenInvalid, GoogleEmailMismatch, EmailAlreadyRegistered,
         ProfileAlreadyCompleted, TooManyRequests, AthleteNotFound, TimeZoneInvalid

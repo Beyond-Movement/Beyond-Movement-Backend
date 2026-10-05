@@ -1,3 +1,4 @@
+using BeyondMovement.Api.Authentication;
 using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.Extensions.Options;
 
@@ -49,9 +50,11 @@ public static class WebClientCors
     /// Headers beyond the CORS safelist that the client sends. <c>Accept</c> is safelisted and
     /// needs no entry; <c>Content-Type: application/json</c> is not, which is why every write is
     /// preflighted. <c>X-Correlation-ID</c> is sent on every request by the client's interceptor,
-    /// so without it here every preflight would fail.
+    /// so without it here every preflight would fail. <c>X-Token-Transport</c> opts the PWA's auth
+    /// calls into the refresh cookie (<see cref="TokenTransport"/>).
     /// </summary>
-    private static readonly string[] Headers = ["Authorization", "Content-Type", "Idempotency-Key", "X-Correlation-ID"];
+    private static readonly string[] Headers =
+        ["Authorization", "Content-Type", "Idempotency-Key", "X-Correlation-ID", TokenTransport.HeaderName];
 
     /// <summary>
     /// How long a browser may reuse a preflight answer. Each authenticated request is otherwise
@@ -63,10 +66,12 @@ public static class WebClientCors
     /// No response headers are exposed: the client reads <c>retryAfterSeconds</c> and
     /// <c>correlationId</c> from the problem body, never from <c>Retry-After</c>.
     /// <para>
-    /// Credentials are NOT allowed. Tokens travel in the <c>Authorization</c> header, which CORS
-    /// permits without credentials mode. A future HttpOnly refresh cookie needs
-    /// <c>.AllowCredentials()</c> added below, and nothing else: origins are already an exact list,
-    /// which credentials mode requires.
+    /// Credentials ARE allowed, for one reason: the PWA's refresh token lives in an HttpOnly cookie
+    /// (<see cref="RefreshCookie"/>) that the browser sends only on a credentialed request. Access
+    /// tokens still travel in the <c>Authorization</c> header and no endpoint authenticates from a
+    /// cookie except the refresh/logout pair, which also demand the transport header and a trusted
+    /// <c>Origin</c>. Credentials mode forbids a wildcard origin; this policy never had one - only
+    /// the exact origins of <see cref="TrustedWebOrigins"/>, the same list the cookie check uses.
     /// </para>
     /// </summary>
     public static IServiceCollection AddWebClientCors(this IServiceCollection services)
@@ -84,25 +89,19 @@ public static class WebClientCors
                 "Cors:AllowedOrigins must be https outside Development.")
             .ValidateOnStart();
 
+        services.AddSingleton<TrustedWebOrigins>();
+
         // Resolved when CORS first needs its options, not captured at startup, so configuration
         // added after the host is built - as WebApplicationFactory does in tests - is seen.
         services.AddCors();
         services.AddOptions<CorsOptions>()
-            .Configure<IOptions<WebClientCorsOptions>>((cors, configured) =>
-            {
-                var options = configured.Value;
-                var origins = options.AllowedOrigins
-                    .Select(x => TryNormalize(x, out var origin) ? origin : null)
-                    .OfType<string>()
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
+            .Configure<TrustedWebOrigins>((cors, trusted) =>
                 cors.AddPolicy(PolicyName, policy => policy
-                    .SetIsOriginAllowed(origin =>
-                        origins.Contains(origin) || (options.AllowLocalhostOrigins && IsLocalhost(origin)))
+                    .SetIsOriginAllowed(trusted.IsTrusted)
                     .WithMethods(Methods)
                     .WithHeaders(Headers)
-                    .SetPreflightMaxAge(PreflightMaxAge));
-            });
+                    .AllowCredentials()
+                    .SetPreflightMaxAge(PreflightMaxAge)));
 
         return services;
     }
@@ -112,7 +111,7 @@ public static class WebClientCors
     /// host, the port only when it is not the default. A path, even "/", would never match a real
     /// request, so it is refused rather than silently ignored.
     /// </summary>
-    private static bool TryNormalize(string? value, out string origin)
+    internal static bool TryNormalize(string? value, out string origin)
     {
         origin = "";
         if (string.IsNullOrWhiteSpace(value) || value.Contains('*')) return false;
@@ -130,10 +129,36 @@ public static class WebClientCors
         return true;
     }
 
-    private static bool IsLocalhost(string origin) =>
+    internal static bool IsLocalhost(string origin) =>
         Uri.TryCreate(origin, UriKind.Absolute, out var uri)
         && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
         && uri.IsLoopback
         && uri.AbsolutePath == "/"
         && uri.Query.Length == 0;
+}
+
+/// <summary>
+/// The one list of browser origins the API trusts: configured <c>Cors:AllowedOrigins</c>, plus any
+/// localhost port when <c>Cors:AllowLocalhostOrigins</c> is on (Development only - startup refuses
+/// it anywhere else). CORS asks it whether to answer a browser; <see cref="TokenTransport"/> asks it
+/// whether a cookie-transport request came from the PWA. One source, so the two cannot drift.
+/// </summary>
+public sealed class TrustedWebOrigins(IOptions<WebClientCorsOptions> options)
+{
+    private readonly Lazy<(HashSet<string> Origins, bool Localhost)> _trusted = new(() =>
+    {
+        var configured = options.Value;
+        var origins = configured.AllowedOrigins
+            .Select(x => WebClientCors.TryNormalize(x, out var origin) ? origin : null)
+            .OfType<string>()
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return (origins, configured.AllowLocalhostOrigins);
+    });
+
+    /// <summary>Exact match on what a browser sends in <c>Origin</c>. Missing or "null" is never trusted.</summary>
+    public bool IsTrusted(string? origin) =>
+        !string.IsNullOrEmpty(origin)
+        && (_trusted.Value.Origins.Contains(origin)
+            || (_trusted.Value.Localhost && WebClientCors.IsLocalhost(origin)));
 }
